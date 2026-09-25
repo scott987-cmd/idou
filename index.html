@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>i豆 企业桌面 Agent</title>
+<meta name="description" content="i豆 是飞书用户的企业桌面 Agent：用飞书账号登录，在一个窗口里发消息、改文档、做网站、查知识、写代码。每个对外动作，都等你点头。">
+<meta property="og:title" content="i豆 企业桌面 Agent">
+<meta property="og:description" content="工作、编程、搜索，一台搞定。飞书账号即登录，权限跟随飞书，SaaS 与私有化都能用，可以接入客户自己的大模型。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0.05' y1='0' x2='0.72' y2='1'%3E%3Cstop offset='0' stop-color='%23F6B13A'/%3E%3Cstop offset='0.48' stop-color='%23E07A24'/%3E%3Cstop offset='1' stop-color='%23A83E17'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='116' fill='url(%23g)'/%3E%3Crect x='228' y='226' width='56' height='172' rx='28' fill='%23FFFAF0'/%3E%3Cellipse cx='256' cy='146' rx='54' ry='43' fill='%23FFFAF0' transform='rotate(-22 256 146)'/%3E%3C/svg%3E">
+<style>
+:root {
+  --ink: #0A1320;
+  --ink-2: #0F1C31;
+  --panel: rgba(255, 248, 236, .045);
+  --panel-2: rgba(255, 248, 236, .075);
+  --line: rgba(255, 248, 236, .11);
+  --cream: #FFF8EC;
+  --muted: rgba(255, 248, 236, .68);
+  --faint: rgba(255, 248, 236, .46);
+  --amber-1: #F6B13A;
+  --amber-2: #E07A24;
+  --amber-3: #A83E17;
+  --blue: #3370FF;
+  --ok: #4CC38A;
+  --part: #E9B949;
+  --bad: #F0605D;
+  --zh: "PingFang SC", "HarmonyOS Sans SC", "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
+  --num: "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  --wrap: 1120px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }
+body {
+  margin: 0; color: var(--cream); font: 400 17px/1.75 var(--zh); -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(900px 620px at 8% 108%, rgba(224, 122, 36, .20), transparent 70%),
+    radial-gradient(900px 640px at 96% -6%, rgba(51, 112, 255, .20), transparent 70%),
+    linear-gradient(170deg, var(--ink-2) 0%, var(--ink) 48%, #070E18 100%) fixed;
+  background-color: var(--ink);
+}
+a { color: inherit; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--amber-1); outline-offset: 3px; border-radius: 6px; }
+.wrap { width: 100%; max-width: var(--wrap); margin: 0 auto; padding: 0 24px; }
+.bean { display: inline-block; width: .52em; height: .42em; border-radius: 50%; transform: rotate(-22deg); flex: none;
+  background: linear-gradient(160deg, var(--amber-1) 0%, var(--amber-2) 55%, var(--amber-3) 100%); }
+.amber { background: linear-gradient(100deg, #F8BF52, #E4862A); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* 顶栏 */
+.top { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  background: rgba(10, 19, 32, .72); border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; align-items: center; gap: 24px; height: 64px; }
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; font-weight: 600; font-size: 20px; letter-spacing: .02em; }
+.brand svg { width: 34px; height: 34px; border-radius: 8px; }
+.brand small { font-weight: 400; font-size: 13px; color: var(--muted); letter-spacing: .06em; }
+.top nav { margin-left: auto; display: flex; gap: 26px; font-size: 15px; }
+.top nav a { text-decoration: none; color: var(--muted); }
+.top nav a:hover { color: var(--cream); }
+
+/* 首屏 */
+.hero { padding: 88px 0 40px; }
+.eyebrow { display: inline-flex; align-items: center; gap: 12px; font-size: 15px; letter-spacing: .16em; color: var(--amber-1); font-weight: 600; }
+.eyebrow .bean { font-size: 30px; }
+h1 { margin: 22px 0 0; font-size: clamp(40px, 7vw, 84px); line-height: 1.12; font-weight: 600; letter-spacing: .01em; }
+/* 中文标题只在词组之间换行，不把「搜索」拆成两行 */
+.ph { display: inline-block; }
+.lead { margin: 26px 0 0; max-width: 40em; font-size: clamp(17px, 2.1vw, 21px); color: var(--muted); }
+.lead strong { color: var(--cream); font-weight: 600; }
+.cta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 34px; }
+.btn { display: inline-flex; align-items: center; gap: 10px; height: 48px; padding: 0 24px; border-radius: 999px; font: 600 16px/1 var(--zh);
+  text-decoration: none; border: 1px solid var(--line); background: var(--panel); color: var(--cream); cursor: pointer; }
+.btn.primary { border: 0; color: #2A1405; background: linear-gradient(100deg, #F8BF52, #E4862A); }
+.btn:hover { filter: brightness(1.06); }
+.film { margin-top: 56px; position: relative; border-radius: 18px; overflow: hidden; background: #000;
+  box-shadow: 0 40px 120px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 248, 236, .10), 0 0 90px rgba(224, 122, 36, .16); }
+.film video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; }
+.film .play { position: absolute; inset: 0; display: grid; place-items: end start; border: 0; padding: clamp(16px, 3vw, 32px); cursor: pointer;
+  background: linear-gradient(180deg, rgba(5, 10, 20, 0) 40%, rgba(5, 10, 20, .55)); color: var(--cream); }
+.film .play span { display: inline-flex; align-items: center; gap: 14px; padding: 16px 26px 16px 20px; border-radius: 999px;
+  background: rgba(10, 19, 32, .72); box-shadow: 0 0 0 1px rgba(255, 248, 236, .18); font: 600 18px/1 var(--zh); backdrop-filter: blur(8px); }
+.film .play i { width: 0; height: 0; border-left: 16px solid var(--amber-1); border-top: 10px solid transparent; border-bottom: 10px solid transparent; }
+.film.playing .play { display: none; }
+.caption { display: flex; justify-content: space-between; gap: 16px; margin-top: 14px; font-size: 14px; color: var(--faint); }
+
+/* 通用段落 */
+section { padding: 104px 0 0; }
+.kicker { display: flex; align-items: center; gap: 12px; font-size: 15px; letter-spacing: .16em; color: var(--amber-1); font-weight: 600; }
+.kicker .rule { height: 1px; width: 64px; background: linear-gradient(90deg, var(--amber-1), transparent); }
+h2 { margin: 14px 0 0; font-size: clamp(30px, 4.4vw, 48px); line-height: 1.2; font-weight: 600; text-wrap: balance; }
+.intro { margin: 18px 0 0; max-width: 40em; color: var(--muted); font-size: 18px; }
+
+/* 数据 */
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 44px; }
+.stat { padding: 26px 26px 24px; border-radius: 16px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); display: flex; flex-direction: column; gap: 8px; }
+.stat .n { font: 700 clamp(40px, 5vw, 56px)/1.05 var(--num); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat .n small { font-size: .5em; font-weight: 600; letter-spacing: 0; margin-left: 4px; font-family: var(--zh); }
+.stat .k { font-weight: 600; font-size: 17px; }
+.stat .d { color: var(--muted); font-size: 15px; line-height: 1.65; }
+.stat sup, .panel sup { color: var(--amber-1); font-size: 12px; margin-left: 2px; }
+.stat.lead-stat { background: linear-gradient(160deg, rgba(246, 177, 58, .14), rgba(255, 248, 236, .04) 60%); box-shadow: inset 0 0 0 1px rgba(246, 177, 58, .32); }
+
+/* 图表 */
+.panel { margin-top: 16px; padding: 26px 28px 22px; border-radius: 16px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.panel > h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.panel > .sub { margin: 4px 0 0; color: var(--faint); font-size: 14px; }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; margin-top: 20px; }
+.trio h4 { margin: 0 0 8px; font-size: 14.5px; color: var(--muted); font-weight: 600; }
+.duo { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; }
+.duo .panel { display: flex; flex-direction: column; }
+.duo .panel svg { margin: auto 0; padding-top: 18px; }
+.duo .panel .note { margin: 14px 0 0; color: var(--faint); font-size: 13.5px; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; font-size: 12.5px; color: var(--faint); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+svg.chart, svg.diagram { display: block; width: 100%; height: auto; overflow: visible; }
+svg.chart text, svg.diagram text { font-family: var(--zh); }
+.c-grid line { stroke: rgba(255, 248, 236, .10); stroke-width: 1; }
+.c-grid line.top { stroke-dasharray: 4 5; stroke: rgba(255, 248, 236, .22); }
+.c-lbl { fill: var(--muted); font-size: 14px; }
+.c-tick { fill: var(--faint); font-size: 12px; }
+.c-val { font-size: 14px; font-weight: 700; }
+.c-val.dark { fill: #2A1405; }
+.c-val.light { fill: var(--cream); }
+.bar-us { fill: url(#amberbar); }
+.bar-them { fill: rgba(255, 248, 236, .30); }
+.w-ok { fill: var(--ok); } .w-part { fill: var(--part); } .w-bad { fill: var(--bad); }
+.c-dot { fill: var(--ink); stroke: #F6B13A; stroke-width: 3; }
+.c-solved { fill: url(#amberbar); }
+.c-check { fill: none; stroke: #2A1405; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.c-miss { fill: none; stroke: rgba(255, 248, 236, .35); stroke-width: 2; }
+.c-missline { stroke: rgba(255, 248, 236, .45); stroke-width: 2; stroke-linecap: round; }
+
+/* 工作方式 */
+.flow { list-style: none; margin: 44px 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 30px; }
+.flow li { position: relative; padding: 22px 20px 20px; border-radius: 16px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.flow li:not(:last-child)::after { content: ""; position: absolute; top: 42px; right: -26px; width: 22px; height: 2px; background: rgba(255, 248, 236, .35); }
+.flow li:not(:last-child)::before { content: ""; position: absolute; top: 37px; right: -27px; border-left: 8px solid rgba(255, 248, 236, .5); border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+.flow .no { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; font: 700 17px/1 var(--num); color: var(--cream); box-shadow: inset 0 0 0 1.5px rgba(255, 248, 236, .3); }
+.flow h3 { margin: 14px 0 0; font-size: 19px; font-weight: 600; }
+.flow p { margin: 8px 0 0; color: var(--muted); font-size: 14.5px; line-height: 1.65; }
+.flow li.gate { background: linear-gradient(170deg, rgba(246, 177, 58, .18), rgba(255, 248, 236, .04) 70%); box-shadow: inset 0 0 0 1.5px rgba(246, 177, 58, .55); }
+.flow li.gate .no { color: #2A1405; box-shadow: none; background: linear-gradient(100deg, #F8BF52, #E4862A); }
+.flow li.gate .badge { position: absolute; top: 18px; right: 16px; font-size: 12px; letter-spacing: .08em; color: var(--amber-1); font-weight: 600; }
+
+/* 能力 */
+.caps { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; margin-top: 44px; }
+.cap { grid-column: span 3; border-radius: 16px; overflow: hidden; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); display: flex; flex-direction: column; }
+.cap:nth-child(n+5) { grid-column: span 4; }
+.cap img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border-bottom: 1px solid var(--line); }
+.cap-body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 8px; }
+.cap .steps { display: flex; gap: 5px; }
+.cap .steps i { width: 9px; height: 7px; border-radius: 50%; transform: rotate(-22deg); box-shadow: inset 0 0 0 1.5px rgba(255, 248, 236, .28); }
+.cap .steps i.on { box-shadow: none; background: linear-gradient(160deg, var(--amber-1), var(--amber-2) 55%, var(--amber-3)); }
+.cap h3 { margin: 2px 0 0; font-size: 19px; font-weight: 600; }
+.cap p { margin: 0; color: var(--muted); font-size: 14.5px; line-height: 1.65; }
+
+/* 为什么 */
+.arch { margin-top: 44px; padding: 28px 28px 20px; border-radius: 20px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.arch h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.arch .sub { margin: 4px 0 18px; color: var(--faint); font-size: 14px; }
+.scroll-x { overflow-x: auto; }
+.scroll-x svg { min-width: 760px; }
+.d-box { fill: rgba(255, 248, 236, .035); stroke: rgba(255, 248, 236, .16); stroke-width: 1.5; }
+.d-box.us { stroke: rgba(246, 177, 58, .6); fill: rgba(246, 177, 58, .05); }
+.d-bound { fill: none; stroke: rgba(255, 248, 236, .28); stroke-width: 1.5; stroke-dasharray: 6 6; }
+.d-title { fill: var(--cream); font-size: 18px; font-weight: 600; }
+.d-pill { fill: rgba(255, 248, 236, .07); stroke: rgba(255, 248, 236, .14); }
+.d-pill.amber { fill: rgba(246, 177, 58, .2); stroke: rgba(246, 177, 58, .7); }
+.d-pilltxt { fill: var(--cream); font-size: 14.5px; }
+.d-note { fill: var(--faint); font-size: 13px; }
+.d-label { fill: var(--muted); font-size: 13px; }
+.d-arrow { stroke: rgba(255, 248, 236, .5); stroke-width: 2; }
+.why { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; margin-top: 16px; }
+.point { display: flex; gap: 16px; padding: 24px 26px; border-radius: 16px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.point .bean { font-size: 30px; margin-top: 7px; }
+.point h3 { margin: 0; font-size: 20px; font-weight: 600; }
+.point p { margin: 8px 0 0; color: var(--muted); font-size: 15.5px; line-height: 1.72; }
+.point.feature { background: linear-gradient(120deg, rgba(246, 177, 58, .12), rgba(51, 112, 255, .08) 70%); box-shadow: inset 0 0 0 1px rgba(246, 177, 58, .28); }
+.point.feature h3 { font-size: 24px; }
+
+/* 企业可控 */
+.consent { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 44px; align-items: center; margin-top: 44px; }
+.consent ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+.consent li { display: flex; gap: 12px; color: var(--muted); font-size: 16.5px; }
+.consent li .bean { font-size: 22px; margin-top: 8px; }
+.consent li b { color: var(--cream); font-weight: 600; }
+figure.shot { margin: 0; }
+figure.shot img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .45), 0 0 0 1px rgba(255, 248, 236, .12); }
+figure.shot figcaption { margin-top: 10px; font-size: 13.5px; color: var(--faint); }
+
+/* 部署 */
+.deploy { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 44px; }
+.tier { padding: 26px; border-radius: 16px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.tier .tag { display: inline-block; font-size: 13px; letter-spacing: .1em; color: var(--amber-1); font-weight: 600; }
+.tier h3 { margin: 8px 0 0; font-size: 21px; font-weight: 600; }
+.tier p { margin: 10px 0 0; color: var(--muted); font-size: 15.5px; }
+
+/* 开源 */
+.open { margin-top: 44px; padding: 44px; border-radius: 22px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 40px; align-items: center;
+  background: radial-gradient(600px 300px at 0% 100%, rgba(224, 122, 36, .22), transparent 70%), var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); }
+.open h3 { margin: 0; font-size: clamp(26px, 3.4vw, 36px); line-height: 1.25; font-weight: 600; }
+.open p { margin: 14px 0 0; color: var(--muted); }
+.open ol { margin: 26px 0 0; padding: 0; list-style: none; display: grid; gap: 16px; }
+.open li { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; align-items: start; }
+.open li .no { font: 700 22px/1.3 var(--num); color: var(--amber-1); font-variant-numeric: tabular-nums; }
+.open li b { display: block; font-weight: 600; }
+.open li span { color: var(--muted); font-size: 15px; }
+.fw { max-width: 420px; margin: 0 auto; }
+.fw-arc { fill: none; stroke: #F6B13A; stroke-width: 3; stroke-linecap: round; }
+.fw-node { fill: #15233A; stroke: rgba(255, 248, 236, .18); }
+.fw-txt { fill: var(--cream); font-size: 15px; font-weight: 600; }
+.fw-center { fill: var(--muted); font-size: 14px; }
+
+/* 数据说明与页脚 */
+.notes { margin-top: 104px; padding: 32px 0 0; border-top: 1px solid var(--line); color: var(--faint); font-size: 13.5px; line-height: 1.8; }
+.notes h4 { margin: 0 0 10px; color: var(--muted); font-size: 14px; font-weight: 600; letter-spacing: .08em; }
+.notes ol { margin: 0; padding-left: 1.4em; display: grid; gap: 6px; max-width: 64em; }
+footer { padding: 48px 0 56px; color: var(--faint); font-size: 14px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+@media (max-width: 1080px) {
+  .cap, .cap:nth-child(n+5) { grid-column: span 6; }
+  .cap:last-child { grid-column: 1 / -1; flex-direction: row; }
+  .cap:last-child img { width: 50%; border-bottom: 0; border-right: 1px solid var(--line); }
+  .flow { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .flow li:not(:last-child)::after { top: auto; bottom: -18px; right: auto; left: 38px; width: 2px; height: 14px; }
+  .flow li:not(:last-child)::before { top: auto; bottom: -23px; right: auto; left: 33px; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid rgba(255, 248, 236, .5); border-bottom: 0; }
+}
+@media (max-width: 900px) {
+  .stats, .deploy { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trio { grid-template-columns: minmax(0, 1fr); }
+  .duo, .consent, .open { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .wrap { padding: 0 16px; }
+  .top nav { display: none; }
+  .hero { padding-top: 56px; }
+  section { padding-top: 72px; }
+  .stats, .deploy, .why { grid-template-columns: minmax(0, 1fr); }
+  .cap, .cap:nth-child(n+5), .cap:last-child { grid-column: 1 / -1; flex-direction: column; }
+  .cap:last-child img { width: 100%; border-right: 0; border-bottom: 1px solid var(--line); }
+  .panel, .arch { padding: 20px 18px 16px; }
+  .open { padding: 28px 22px; }
+  .caption { flex-direction: column; gap: 2px; }
+  .film .play span { gap: 10px; padding: 10px 16px 10px 14px; font-size: 15px; }
+  .film .play i { border-left-width: 12px; border-top-width: 7px; border-bottom-width: 7px; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="amberbar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#E4862A"/><stop offset="1" stop-color="#F8BF52"/></linearGradient>
+    <linearGradient id="amberfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F6B13A" stop-opacity=".32"/><stop offset="1" stop-color="#F6B13A" stop-opacity="0"/></linearGradient>
+    <linearGradient id="logo-tile" x1="0.05" y1="0" x2="0.72" y2="1"><stop offset="0" stop-color="#F6B13A"/><stop offset="0.48" stop-color="#E07A24"/><stop offset="1" stop-color="#A83E17"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="rgba(255,248,236,.6)"/></marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#F6B13A"/></marker>
+  </defs>
+</svg>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="i豆 首页">
+      <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="116" fill="url(#logo-tile)"/><rect x="228" y="226" width="56" height="172" rx="28" fill="#FFFAF0"/><ellipse cx="256" cy="146" rx="54" ry="43" fill="#FFFAF0" transform="rotate(-22 256 146)"/></svg>
+      <span>i豆 <small>企业桌面 Agent</small></span>
+    </a>
+    <nav aria-label="页面导航">
+      <a href="#data">数据</a>
+      <a href="#how">工作方式</a>
+      <a href="#capabilities">能力</a>
+      <a href="#why">为什么</a>
+      <a href="#open">开源</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap">
+    <div class="hero">
+      <div class="eyebrow"><span class="bean"></span>飞书用户的企业桌面 Agent</div>
+      <h1><span class="ph">工作、</span><span class="ph">编程、</span><span class="ph">搜索，</span><span class="ph amber">一台搞定。</span></h1>
+      <p class="lead">用你的<strong>飞书账号</strong>登录，在同一个窗口里发消息、改文档、做网站、查知识、写代码。<strong>每个对外动作，都等你点头。</strong></p>
+      <div class="cta">
+        <a class="btn primary" href="#film">看 2 分钟介绍</a>
+        <a class="btn" href="#data">看实测数据</a>
+      </div>
+      <div class="film" id="film">
+        <video id="promo" controls playsinline preload="metadata" poster="media/poster.jpg">
+          <source src="media/idou-promo.mp4" type="video/mp4">
+          你的浏览器不能直接播放视频，可以<a href="media/idou-promo.mp4">下载后观看</a>。
+        </video>
+        <button class="play" type="button" aria-label="播放 2 分钟介绍视频"><span><i></i>播放 2 分钟介绍</span></button>
+      </div>
+      <div class="caption"><span>片中的演示都是 i豆 真实运行的录屏，开场的概念视频也是 i豆 自己生成的。</span><span>1080p · 2 分钟</span></div>
+    </div>
+
+    <section id="data" aria-labelledby="data-title">
+      <div class="kicker"><span class="rule"></span>实测数据</div>
+      <h2 id="data-title">不靠形容词，靠同一套题。</h2>
+      <p class="intro">和同类产品用同一批文档、同一批问题正面比；用公开编程题检验真本事。评测条件写在页面最下方，可以复核。</p>
+      <div class="stats">
+        <div class="stat lead-stat"><div class="n">61 : 60</div><div class="k">企业知识问答，对比豆包工作<sup>1</sup></div><div class="d">同 16 篇文档、32 道题（满分 64）。i豆 不用向量数据库，照样打平。</div></div>
+        <div class="stat"><div class="n">0<small>道答错</small></div><div class="k">同一轮评测<sup>1</sup></div><div class="d">豆包工作答错 2 道。i豆 的每个可答题都点名了正确来源。</div></div>
+        <div class="stat"><div class="n">18<small>秒</small></div><div class="k">平均回答耗时<sup>1</sup></div><div class="d">豆包工作约 32 秒。更快，而且答案带出处。</div></div>
+        <div class="stat"><div class="n">8 / 10</div><div class="k">公开编程题抽测解出<sup>2</sup></div><div class="d">Terminal-Bench 2.1 公开题，用国产 GLM-5.3 模型，每题只跑一次。</div></div>
+        <div class="stat"><div class="n">17 → 27</div><div class="k">知识问答全对题数（共 28 题）<sup>3</sup></div><div class="d">两轮检索改进带来的提升，同一套题复测。能力是按数据一步步提上来的。</div></div>
+        <div class="stat"><div class="n">2133<small>项</small></div><div class="k">自动化测试<sup>4</sup></div><div class="d">每个版本发布前全部通过，另有 32 项桌面自动验收。</div></div>
+      </div>
+
+      <div class="panel">
+        <h3>对比豆包工作：同一批文档、同一批题<sup>1</sup></h3>
+        <p class="sub">2026-09-21 · 16 篇企业文档 · 32 道题 · 两边都用真实飞书账号</p>
+        <div class="trio">
+          <div><h4>得分（满分 64）</h4><svg class="chart" viewBox="0 0 360 136" role="img" aria-label="得分（满分 64）：i豆 61，豆包工作 60">
+  <g class="c-grid"><line x1="80" y1="12" x2="80" y2="108"/><line x1="205" y1="12" x2="205" y2="108"/><line x1="330" y1="12" x2="330" y2="108"/></g>
+  <text class="c-lbl" x="0" y="42">i豆</text>
+  <rect class="bar-us" x="80" y="24" width="238.3" height="26" rx="5"/>
+  <text class="c-val dark" x="310.3" y="42" text-anchor="end">61</text>
+  <text class="c-lbl" x="0" y="92">豆包工作</text>
+  <rect class="bar-them" x="80" y="74" width="234.4" height="26" rx="5"/>
+  <text class="c-val light" x="306.4" y="92" text-anchor="end">60</text>
+  <text class="c-tick" x="80" y="128" text-anchor="middle">0</text><text class="c-tick" x="205" y="128" text-anchor="middle">32</text><text class="c-tick" x="330" y="128" text-anchor="middle">64</text>
+</svg></div>
+          <div><h4>逐题结果（32 题）</h4><svg class="chart" viewBox="0 0 360 136" role="img" aria-label="逐题结果（32 题）：i豆 全对 29、部分 3、答错 0；豆包工作 全对 30、部分 0、答错 2">
+  <text class="c-lbl" x="0" y="42">i豆</text><rect class="w-ok" x="80" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="87.8" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="95.6" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="103.4" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="111.2" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="119" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="126.8" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="134.6" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="142.4" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="150.2" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="158" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="165.8" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="173.6" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="181.4" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="189.2" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="197" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="204.8" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="212.6" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="220.4" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="228.2" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="236" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="243.8" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="251.6" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="259.4" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="267.2" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="275" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="282.8" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="290.6" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="298.4" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-part" x="306.2" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-part" x="314" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-part" x="321.8" y="24" width="6.2" height="26" rx="1.5"/>
+  <text class="c-lbl" x="0" y="92">豆包工作</text><rect class="w-ok" x="80" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="87.8" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="95.6" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="103.4" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="111.2" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="119" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="126.8" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="134.6" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="142.4" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="150.2" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="158" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="165.8" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="173.6" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="181.4" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="189.2" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="197" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="204.8" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="212.6" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="220.4" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="228.2" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="236" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="243.8" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="251.6" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="259.4" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="267.2" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="275" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="282.8" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="290.6" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="298.4" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="306.2" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-bad" x="314" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-bad" x="321.8" y="74" width="6.2" height="26" rx="1.5"/>
+  <text class="c-tick" x="80" y="128">第 1 题</text><text class="c-tick" x="329.6" y="128" text-anchor="end">第 32 题</text>
+</svg><div class="legend"><span><i style="background:var(--ok)"></i>全对</span><span><i style="background:var(--part)"></i>部分对</span><span><i style="background:var(--bad)"></i>答错</span></div></div>
+          <div><h4>平均回答耗时</h4><svg class="chart" viewBox="0 0 360 136" role="img" aria-label="平均回答耗时：i豆 18 秒，豆包工作 32 秒">
+  <g class="c-grid"><line x1="80" y1="12" x2="80" y2="108"/><line x1="205" y1="12" x2="205" y2="108"/><line x1="330" y1="12" x2="330" y2="108"/></g>
+  <text class="c-lbl" x="0" y="42">i豆</text>
+  <rect class="bar-us" x="80" y="24" width="112.5" height="26" rx="5"/>
+  <text class="c-val dark" x="184.5" y="42" text-anchor="end">18 秒</text>
+  <text class="c-lbl" x="0" y="92">豆包工作</text>
+  <rect class="bar-them" x="80" y="74" width="200" height="26" rx="5"/>
+  <text class="c-val light" x="272" y="92" text-anchor="end">32 秒</text>
+  <text class="c-tick" x="80" y="128" text-anchor="middle">0</text><text class="c-tick" x="205" y="128" text-anchor="middle">20</text><text class="c-tick" x="330" y="128" text-anchor="middle">40</text>
+</svg></div>
+        </div>
+      </div>
+      <div class="duo">
+        <div class="panel">
+          <h3>检索迭代：知识问答全对题数<sup>3</sup></h3>
+          <p class="sub">2026-09-12 · 同一个应用 · 同一套 28 道可回答的题，每轮改进后复测</p>
+          <svg class="chart" viewBox="0 0 520 220" role="img" aria-label="知识问答全对题数（共 28 题）：改造前 17，第一轮改进 25，第二轮改进 27">
+  <g class="c-grid"><line x1="64" y1="180" x2="496" y2="180"/><line x1="64" y1="105" x2="496" y2="105"/><line x1="64" y1="30" x2="496" y2="30" class="top"/></g><text class="c-tick" x="54" y="184" text-anchor="end">0</text><text class="c-tick" x="54" y="109" text-anchor="end">14</text><text class="c-tick" x="54" y="34" text-anchor="end">28</text>
+  <text class="c-tick" x="70" y="22">满分 28</text>
+  <path d="M112 88.9 L280 46.1 L448 35.4 L448 180 L112 180 Z" fill="url(#amberfill)"/>
+  <path d="M112 88.9 L280 46.1 L448 35.4" fill="none" stroke="#F6B13A" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle class="c-dot" cx="112" cy="88.9" r="6"/><text class="c-val light" x="112" y="72.9" text-anchor="middle">17</text><circle class="c-dot" cx="280" cy="46.1" r="6"/><text class="c-val light" x="280" y="30.1" text-anchor="middle">25</text><circle class="c-dot" cx="448" cy="35.4" r="6"/><text class="c-val light" x="448" y="19.4" text-anchor="middle">27</text><text class="c-lbl" x="112" y="208" text-anchor="middle">改造前</text><text class="c-lbl" x="280" y="208" text-anchor="middle">第一轮改进</text><text class="c-lbl" x="448" y="208" text-anchor="middle">第二轮改进</text>
+</svg>
+        </div>
+        <div class="panel">
+          <h3>公开编程题抽测<sup>2</sup></h3>
+          <p class="sub">Terminal-Bench 2.1 · 10 道题 · 每题一次 · GLM-5.3</p>
+          <svg class="chart" viewBox="0 0 520 100" role="img" aria-label="公开编程题抽测：10 道解出 8 道">
+  <circle class="c-solved" cx="35" cy="42" r="20"/><path class="c-check" d="M28 42 l5 5 l9 -10"/><circle class="c-solved" cx="85" cy="42" r="20"/><path class="c-check" d="M78 42 l5 5 l9 -10"/><circle class="c-solved" cx="135" cy="42" r="20"/><path class="c-check" d="M128 42 l5 5 l9 -10"/><circle class="c-solved" cx="185" cy="42" r="20"/><path class="c-check" d="M178 42 l5 5 l9 -10"/><circle class="c-solved" cx="235" cy="42" r="20"/><path class="c-check" d="M228 42 l5 5 l9 -10"/><circle class="c-solved" cx="285" cy="42" r="20"/><path class="c-check" d="M278 42 l5 5 l9 -10"/><circle class="c-solved" cx="335" cy="42" r="20"/><path class="c-check" d="M328 42 l5 5 l9 -10"/><circle class="c-solved" cx="385" cy="42" r="20"/><path class="c-check" d="M378 42 l5 5 l9 -10"/><circle class="c-miss" cx="435" cy="42" r="19"/><line class="c-missline" x1="429" y1="42" x2="441" y2="42"/><circle class="c-miss" cx="485" cy="42" r="19"/><line class="c-missline" x1="479" y1="42" x2="491" y2="42"/>
+  <text class="c-lbl" x="15" y="92">解出 8 道</text><text class="c-lbl" x="505" y="92" text-anchor="end">未解出 2 道</text>
+</svg>
+          <p class="note">每个圆点是一道公开编程题：实心为解出，空心为未解出。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="how" aria-labelledby="how-title">
+      <div class="kicker"><span class="rule"></span>工作方式</div>
+      <h2 id="how-title">你说一句，它把事办完。</h2>
+      <ol class="flow">
+        <li><span class="no">1</span><h3>你说一句</h3><p>在 i豆 里说，或者在飞书会话旁边的 Agent 里说。</p></li>
+        <li><span class="no">2</span><h3>它读懂上下文</h3><p>按你的飞书权限，读消息、文档、表格和知识库。</p></li>
+        <li><span class="no">3</span><h3>它动手</h3><p>写文档、做网站、生成图片视频、写代码。</p></li>
+        <li class="gate"><span class="no">4</span><span class="badge">确认卡</span><h3>你点头</h3><p>对外动作之前先问你：发给谁、改哪里、谁能看到。</p></li>
+        <li><span class="no">5</span><h3>结果回到飞书</h3><p>写进文档、发进会话、存进云盘，再自己检查一遍。</p></li>
+      </ol>
+    </section>
+
+    <section id="capabilities" aria-labelledby="caps-title">
+      <div class="kicker"><span class="rule"></span>能做什么</div>
+      <h2 id="caps-title"><span class="ph">一个窗口，十件事：</span><span class="ph">飞书里的、电脑上的，</span><span class="ph">都能办。</span></h2>
+      <p class="intro">消息、文档、云盘、知识库就在 i豆 旁边打开；电脑上的文件和应用，它也能动手。下面每张图都是 i豆 真实运行时的画面。</p>
+      <div class="caps">
+        <article class="cap"><img src="media/shots/msg.jpg" width="1280" height="720" alt="发送飞书消息前弹出的确认卡" loading="lazy"><div class="cap-body"><div class="steps"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>飞书消息</h3><p>一句话，替你发出去。发之前弹确认卡，你点了才发。</p></div></article>
+        <article class="cap"><img src="media/shots/doc.jpg" width="1280" height="720" alt="飞书文档里刚被改写的段落" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>飞书文档</h3><p>边看边改，改动直接写进飞书文档。</p></div></article>
+        <article class="cap"><img src="media/shots/local.jpg" width="1280" height="720" alt="i豆 读本机文件写成的三季度经营复盘网页报告" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>本地文件</h3><p>读你电脑上的表格、文档和 PDF，算好的报告写回原来的文件夹。</p></div></article>
+        <article class="cap"><img src="media/shots/media.jpg" width="1280" height="720" alt="i豆 生成的视频直接在应用里预览" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>图片视频</h3><p>说一句就生成；要花钱的事，先问你。</p></div></article>
+        <article class="cap"><img src="media/shots/site.jpg" width="1280" height="720" alt="i豆 写好并发布的产品网站" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div><h3>文档网站</h3><p>说需求，它写好网站并发布；谁能打开由你选。</p></div></article>
+        <article class="cap"><img src="media/shots/game.jpg" width="1280" height="720" alt="i豆 改好的小游戏「收豆子」" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div><h3>小游戏</h3><p>一个模板，改成你的游戏，改完就能玩。</p></div></article>
+        <article class="cap"><img src="media/shots/kb.jpg" width="1280" height="720" alt="知识问答的答案注明出处和条款" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div><h3>企业知识</h3><p>问公司制度，答案带出处；只查你有权读的资料。</p></div></article>
+        <article class="cap"><img src="media/shots/sched.jpg" width="1280" height="720" alt="定时任务的运行记录：报告已存进飞书云盘" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div><h3>定时任务</h3><p>说好做什么、几点做，到点自己跑；报告存进飞书云盘，只推送给你本人。</p></div></article>
+        <article class="cap"><img src="media/shots/check.jpg" width="1280" height="720" alt="浏览器自检三项全部通过" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div><h3>浏览器自检</h3><p>做完，它自己打开网页检查一遍。</p></div></article>
+        <article class="cap"><img src="media/shots/computer.jpg" width="1280" height="720" alt="i豆 在「文本编辑」里写好的发布会准备清单" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i></div><h3>操作电脑</h3><p>看得见屏幕，也动得了手。要进哪个应用操作，先问过你。</p></div></article>
+      </div>
+    </section>
+
+    <section id="why" aria-labelledby="why-title">
+      <div class="kicker"><span class="rule"></span>为什么是 i豆</div>
+      <h2 id="why-title">把力气花在对企业重要的地方。</h2>
+      <div class="arch">
+        <h3>整体架构（示意）</h3>
+        <p class="sub">i豆 装在员工电脑上，用员工自己的飞书身份和权限工作；服务端只做很少的事。</p>
+        <div class="scroll-x"><svg class="diagram" viewBox="0 0 1000 500" role="img" aria-label="整体架构示意：员工电脑上的 i豆 桌面端，用员工的飞书身份和权限读写飞书；企业服务端很轻，可部署在企业自己的服务器上，接入客户自有或自选的大模型">
+  <rect class="d-box us" x="20" y="40" width="430" height="210" rx="18"/>
+  <text class="d-title" x="44" y="78">员工电脑 · i豆 桌面端</text>
+  <rect class="d-pill" x="44" y="100" width="190" height="42" rx="21"/><text class="d-pilltxt" x="139" y="127" text-anchor="middle">Agent（Codex 内核）</text><rect class="d-pill" x="246" y="100" width="190" height="42" rx="21"/><text class="d-pilltxt" x="341" y="127" text-anchor="middle">飞书一体化窗口</text>
+  <rect class="d-pill" x="44" y="156" width="190" height="42" rx="21"/><text class="d-pilltxt" x="139" y="183" text-anchor="middle">本机知识副本（加密）</text><rect class="d-pill amber" x="246" y="156" width="190" height="42" rx="21"/><text class="d-pilltxt" x="341" y="183" text-anchor="middle">对外动作 · 本人确认</text>
+  <text class="d-note" x="44" y="234">装在每位员工的电脑上</text>
+
+  <rect class="d-box" x="550" y="40" width="430" height="210" rx="18"/>
+  <text class="d-title" x="574" y="78">飞书 · SaaS 或私有化</text>
+  <rect class="d-pill" x="574" y="100" width="190" height="42" rx="21"/><text class="d-pilltxt" x="669" y="127" text-anchor="middle">账号 · 登录态</text><rect class="d-pill" x="776" y="100" width="190" height="42" rx="21"/><text class="d-pilltxt" x="871" y="127" text-anchor="middle">原生权限</text>
+  <rect class="d-pill" x="574" y="156" width="190" height="42" rx="21"/><text class="d-pilltxt" x="669" y="183" text-anchor="middle">消息 · 文档 · 表格</text><rect class="d-pill" x="776" y="156" width="190" height="42" rx="21"/><text class="d-pilltxt" x="871" y="183" text-anchor="middle">云盘 · 知识库 · 日程</text>
+  <text class="d-note" x="574" y="234">i豆 的飞书能力跟随飞书 CLI</text>
+
+  <line class="d-arrow" x1="458" y1="145" x2="542" y2="145" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="d-label" x="500" y="131" text-anchor="middle">你的身份</text>
+  <text class="d-label" x="500" y="171" text-anchor="middle">你的权限</text>
+
+  <rect class="d-bound" x="8" y="306" width="454" height="186" rx="22"/>
+  <text class="d-note" x="24" y="296">可部署在企业自己的服务器上</text>
+  <rect class="d-box" x="20" y="318" width="430" height="162" rx="18"/>
+  <text class="d-title" x="44" y="354">企业服务端 · 很轻</text>
+  <rect class="d-pill" x="44" y="372" width="120" height="42" rx="21"/><text class="d-pilltxt" x="104" y="399" text-anchor="middle">登录对接</text><rect class="d-pill" x="176" y="372" width="120" height="42" rx="21"/><text class="d-pilltxt" x="236" y="399" text-anchor="middle">模型接入</text><rect class="d-pill" x="308" y="372" width="120" height="42" rx="21"/><text class="d-pilltxt" x="368" y="399" text-anchor="middle">网站发布</text>
+  <text class="d-note" x="44" y="458">无向量数据库，部署运维简单</text>
+
+  <rect class="d-box" x="550" y="318" width="430" height="162" rx="18"/>
+  <text class="d-title" x="574" y="354">大模型 · 客户自有或自选</text>
+  <rect class="d-pill" x="574" y="372" width="170" height="42" rx="21"/><text class="d-pilltxt" x="659" y="399" text-anchor="middle">推理 · 编程</text><rect class="d-pill" x="756" y="372" width="200" height="42" rx="21"/><text class="d-pilltxt" x="856" y="399" text-anchor="middle">图片 · 视频生成</text>
+  <text class="d-note" x="574" y="458">可以接入客户自己的大模型，国产模型也能用</text>
+
+  <line class="d-arrow" x1="235" y1="258" x2="235" y2="312" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="d-label" x="250" y="290">模型调用 · 网站发布</text>
+  <line class="d-arrow" x1="458" y1="420" x2="542" y2="420" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+</svg></div>
+      </div>
+      <div class="why">
+        <div class="point feature"><span class="bean"></span><div><h3>站在 Codex 的肩膀上，能力持续进化</h3><p>Agent 的内核是 OpenAI 持续迭代的 Codex。绝大多数团队自己写不出比它更好的 Agent，i豆 不重复造轮子，而是把精力放在飞书一体化和企业可控上。Codex 每一次升级，i豆 的编程和执行能力都随之提升。</p></div></div>
+        <div class="point feature"><span class="bean"></span><div><h3>可以用客户自己的大模型</h3><p>i豆 可以接入企业自有或指定的大模型：用哪家、放在哪里，由企业决定。国产模型同样能用——上面的编程抽测，用的就是 GLM-5.3。</p></div></div>
+        <div class="point"><span class="bean"></span><div><h3>能力跟随飞书 CLI，一起更新</h3><p>i豆 的飞书能力跟随飞书官方 CLI：消息、文档、电子表格、多维表格、云盘、知识库、日程、任务，都已接入。飞书 CLI 每新增一项能力，i豆 就能多替你做一件事。</p></div></div>
+        <div class="point"><span class="bean"></span><div><h3>飞书账号即登录，不用另起炉灶</h3><p>直接沿用飞书的登录态：不用单独建设账号体系，员工也不用多记一套密码。</p></div></div>
+        <div class="point"><span class="bean"></span><div><h3>权限跟随飞书原生</h3><p>你在飞书里看不到的，i豆 也读不到。查知识时每次都按你当前的飞书身份重新核验，收回的权限，下一次查询就生效。</p></div></div>
+        <div class="point"><span class="bean"></span><div><h3>服务端很轻，运维很省心</h3><p>不需要向量数据库，也不需要额外的检索集群，部署和维护都简单——知识问答照样和豆包工作打平。</p></div></div>
+        <div class="point"><span class="bean"></span><div><h3>SaaS 和私有化都能用</h3><p>兼容飞书 SaaS 与飞书私有化部署。私有化里的使用体验，与 SaaS 几乎一致。</p></div></div>
+        <div class="point"><span class="bean"></span><div><h3>私有化也能一句话做应用</h3><p>网站、小游戏、数据看板，说需求就能做出来，本人确认后发布——私有化环境里同样有妙搭式的应用搭建体验。</p></div></div>
+      </div>
+    </section>
+
+    <section aria-labelledby="consent-title">
+      <div class="kicker"><span class="rule"></span>企业可控</div>
+      <h2 id="consent-title">每个对外动作，都等你点头。</h2>
+      <div class="consent">
+        <ul>
+          <li><span class="bean"></span><span><b>发消息、写文档、发布网站</b>，执行前都弹出确认卡，写明发给谁、改哪里、谁能看到。</span></li>
+          <li><span class="bean"></span><span><b>要花钱的生成</b>（图片、视频），先告诉你模型和规格，你点了才开始。</span></li>
+          <li><span class="bean"></span><span><b>打开浏览器、操作网页</b>，每一次调用都单独问你。</span></li>
+          <li><span class="bean"></span><span><b>你不点，它就不做</b>——取消或者超时，这一步都不会执行。</span></li>
+        </ul>
+        <figure class="shot">
+          <img src="media/shots/publish.jpg" width="1280" height="720" alt="i豆 发布网站前弹出的确认卡：谁能打开、发布哪些文件" loading="lazy">
+          <figcaption>真实界面：发布网站之前，先确认谁能打开。</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="deploy" aria-labelledby="deploy-title">
+      <div class="kicker"><span class="rule"></span>部署</div>
+      <h2 id="deploy-title">装在桌面，接入你的飞书。</h2>
+      <div class="deploy">
+        <div class="tier"><span class="tag">飞书 SaaS</span><h3>登录即用</h3><p>用飞书账号登录，消息、文档、云盘、知识库马上能用。</p></div>
+        <div class="tier"><span class="tag">飞书私有化</span><h3>与 SaaS 几乎一样</h3><p>服务端可以部署在企业自己的服务器上；知识副本加密存放在员工本机。</p></div>
+        <div class="tier"><span class="tag">运维</span><h3>轻，好维护</h3><p>没有向量数据库，没有额外的检索集群；权限和账号都交给飞书。</p></div>
+        <div class="tier"><span class="tag">大模型</span><h3>用客户自己的</h3><p>接入企业自有或指定的大模型服务，国产模型也能用。</p></div>
+      </div>
+    </section>
+
+    <section id="open" aria-labelledby="open-title">
+      <div class="kicker"><span class="rule"></span>开源与进化</div>
+      <div class="open">
+        <div>
+          <h3 id="open-title">源代码将来会开源。</h3>
+          <p>i豆 会在这里公开源代码。在那之前，每一个版本都要先通过全部自动化测试和桌面验收，才会发到用户手上。</p>
+          <ol>
+            <li><span class="no">01</span><div><b>Codex 持续更新</b><span>Agent 的推理、编程和执行能力，随 Codex 升级一起变强。</span></div></li>
+            <li><span class="no">02</span><div><b>飞书 CLI 持续更新</b><span>i豆 的飞书能力跟随飞书 CLI：它开放的能力越多，i豆 能直接替你完成的事越多。</span></div></li>
+            <li><span class="no">03</span><div><b>按数据迭代</b><span>用固定的评测集复测每一次改动：知识问答全对题数从 17 提到 27（共 28 题）。</span></div></li>
+          </ol>
+        </div>
+        <svg class="diagram fw" viewBox="0 0 420 420" role="img" aria-label="持续进化：Codex 更新、飞书 CLI 更新、评测集复测、测试全部通过，循环产出更强的新版本">
+  <circle cx="210" cy="210" r="140" fill="none" stroke="rgba(255,248,236,.07)" stroke-width="20"/>
+  <path class="fw-arc" d="M271.4 84.2 A140 140 0 0 1 335.8 148.6" marker-end="url(#arrow-amber)"/><path class="fw-arc" d="M335.8 271.4 A140 140 0 0 1 271.4 335.8" marker-end="url(#arrow-amber)"/><path class="fw-arc" d="M148.6 335.8 A140 140 0 0 1 84.2 271.4" marker-end="url(#arrow-amber)"/><path class="fw-arc" d="M84.2 148.6 A140 140 0 0 1 148.6 84.2" marker-end="url(#arrow-amber)"/><rect class="fw-node" x="137" y="48" width="146" height="44" rx="22"/><text class="fw-txt" x="210" y="76" text-anchor="middle">Codex 更新</text><rect class="fw-node" x="280" y="188" width="140" height="44" rx="22"/><text class="fw-txt" x="350" y="216" text-anchor="middle">飞书 CLI 更新</text><rect class="fw-node" x="137" y="328" width="146" height="44" rx="22"/><text class="fw-txt" x="210" y="356" text-anchor="middle">评测集复测</text><rect class="fw-node" x="0" y="188" width="140" height="44" rx="22"/><text class="fw-txt" x="70" y="216" text-anchor="middle">测试全部通过</text>
+  <g transform="translate(180 158) scale(0.1171875)"><rect width="512" height="512" rx="116" fill="url(#logo-tile)"/><rect x="228" y="226" width="56" height="172" rx="28" fill="#FFFAF0"/><ellipse cx="256" cy="146" rx="54" ry="43" fill="#FFFAF0" transform="rotate(-22 256 146)"/></g>
+  <text class="fw-center" x="210" y="244" text-anchor="middle">更强的新版本</text>
+</svg>
+      </div>
+    </section>
+
+    <div class="notes" role="note">
+      <h4>数据说明</h4>
+      <ol>
+        <li>知识问答对比：2026-09-21。两边使用同一批 16 篇企业文档（约 10.3 万字）、同一批 32 道题、同样的问法，都用真实飞书账号；每题 2 分，按答案全文评分（i豆 全对 29 / 部分 3 / 答错 0，豆包工作 全对 30 / 部分 0 / 答错 2）。平均耗时：i豆 32 题都有读数，豆包工作 21 题有读数。32 道题的样本足以看出两边错在哪里，但不足以分出 1–2 分的高下，因此结论是打平。</li>
+        <li>编程抽测：2026-09-14。Terminal-Bench 2.1 公开题中的 10 道，每题运行一次，模型为 GLM-5.3。这是抽测，不是排行榜成绩；排行榜成绩是全部 89 道题、每题至少 5 次的平均。</li>
+        <li>检索迭代：2026-09-12。同一个应用、同一套 28 道可回答的题，改进前全对 17 题，第一轮改进后 25 题，第二轮改进后 27 题。</li>
+        <li>测试数量：以 2026-09-25 发布的版本为准。</li>
+      </ol>
+    </div>
+
+    <footer>
+      <span>i豆 · 飞书用户的企业桌面 Agent</span>
+      <span>源代码将来在这里开源</span>
+    </footer>
+  </div>
+</main>
+<script>
+  // 播放前只显示海报和「播放」按钮；点了才带声音播放，原生控件这时才出现（没有脚本时一直保留原生控件）
+  (() => {
+    const film = document.getElementById("film"), video = document.getElementById("promo"), play = film.querySelector(".play");
+    const start = () => { film.classList.add("playing"); video.controls = true; };
+    video.controls = false;
+    play.addEventListener("click", () => { start(); video.play().catch(() => {}); video.focus(); });
+    video.addEventListener("play", start);
+  })();
+</script>
+</body>
+</html>
