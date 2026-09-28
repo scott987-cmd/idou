@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>i豆 企业桌面 Agent</title>
-<meta name="description" content="i豆 是飞书用户的企业桌面 Agent：用飞书账号登录，在一个窗口里发消息、改文档、做网站、查知识、写代码。每个对外动作，都等你点头。">
+<meta name="description" content="i豆 是飞书用户的企业桌面 Agent：用飞书账号登录，在一个窗口里发消息、改文档、做网站、查知识、写代码。默认每一步先问你；你一授权，它就全自动做完。">
 <meta property="og:title" content="i豆 企业桌面 Agent">
 <meta property="og:description" content="工作、编程、搜索，一台搞定。飞书账号即登录，权限跟随飞书，SaaS 与私有化都能用，可以接入客户自己的大模型。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0.05' y1='0' x2='0.72' y2='1'%3E%3Cstop offset='0' stop-color='%23F6B13A'/%3E%3Cstop offset='0.48' stop-color='%23E07A24'/%3E%3Cstop offset='1' stop-color='%23A83E17'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='116' fill='url(%23g)'/%3E%3Crect x='228' y='226' width='56' height='172' rx='28' fill='%23FFFAF0'/%3E%3Cellipse cx='256' cy='146' rx='54' ry='43' fill='%23FFFAF0' transform='rotate(-22 256 146)'/%3E%3C/svg%3E">
@@ -279,7 +279,7 @@ footer { padding: 48px 0 56px; color: var(--faint); font-size: 14px; display: fl
     <div class="hero">
       <div class="eyebrow"><span class="bean"></span>飞书用户的企业桌面 Agent</div>
       <h1><span class="ph">工作、</span><span class="ph">编程、</span><span class="ph">搜索，</span><span class="ph amber">一台搞定。</span></h1>
-      <p class="lead">用你的<strong>飞书账号</strong>登录，在同一个窗口里发消息、改文档、做网站、查知识、写代码。<strong>每个对外动作，都等你点头。</strong></p>
+      <p class="lead">用你的<strong>飞书账号</strong>登录，在同一个窗口里发消息、改文档、做网站、查知识、写代码。<strong>默认每一步先问你；你一授权，它就全自动做完。</strong></p>
       <div class="cta">
         <a class="btn primary" href="#film">看 2 分钟介绍</a>
         <a class="btn" href="#data">看实测数据</a>
@@ -369,7 +369,7 @@ footer { padding: 48px 0 56px; color: var(--faint); font-size: 14px; display: fl
         <li><span class="no">1</span><h3>你说一句</h3><p>在 i豆 里说，或者在飞书会话旁边的 Agent 里说。</p></li>
         <li><span class="no">2</span><h3>它读懂上下文</h3><p>按你的飞书权限，读消息、文档、表格和知识库。</p></li>
         <li><span class="no">3</span><h3>它动手</h3><p>写文档、做网站、生成图片视频、写代码。</p></li>
-        <li class="gate"><span class="no">4</span><span class="badge">确认卡</span><h3>你点头</h3><p>对外动作之前先问你：发给谁、改哪里、谁能看到。</p></li>
+        <li class="gate"><span class="no">4</span><span class="badge">确认卡</span><h3>你点头</h3><p>默认对外动作之前先问你：发给谁、改哪里、谁能看到。你授权过的，就不再逐次问。</p></li>
         <li><span class="no">5</span><h3>结果回到飞书</h3><p>写进文档、发进会话、存进云盘，再自己检查一遍。</p></li>
       </ol>
     </section>
@@ -379,16 +379,16 @@ footer { padding: 48px 0 56px; color: var(--faint); font-size: 14px; display: fl
       <h2 id="caps-title"><span class="ph">一个窗口，十件事：</span><span class="ph">飞书里的、电脑上的，</span><span class="ph">都能办。</span></h2>
       <p class="intro">消息、文档、云盘、知识库就在 i豆 旁边打开；电脑上的文件和应用，它也能动手。下面每张图都是 i豆 真实运行时的画面。</p>
       <div class="caps">
-        <article class="cap"><img src="media/shots/msg.jpg" width="1280" height="720" alt="发送飞书消息前弹出的确认卡" loading="lazy"><div class="cap-body"><div class="steps"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>飞书消息</h3><p>一句话，替你发出去。发之前弹确认卡，你点了才发。</p></div></article>
+        <article class="cap"><img src="media/shots/msg.jpg" width="1280" height="720" alt="发送飞书消息前弹出的确认卡" loading="lazy"><div class="cap-body"><div class="steps"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>飞书消息</h3><p>一句话，替你发出去。默认先弹确认卡，你点了才发；授权过就直接发。</p></div></article>
         <article class="cap"><img src="media/shots/doc.jpg" width="1280" height="720" alt="飞书文档里刚被改写的段落" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>飞书文档</h3><p>边看边改，改动直接写进飞书文档。</p></div></article>
         <article class="cap"><img src="media/shots/local.jpg" width="1280" height="720" alt="i豆 读本机文件写成的三季度经营复盘网页报告" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>本地文件</h3><p>读你电脑上的表格、文档和 PDF，算好的报告写回原来的文件夹。</p></div></article>
-        <article class="cap"><img src="media/shots/media.jpg" width="1280" height="720" alt="i豆 生成的视频直接在应用里预览" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>图片视频</h3><p>说一句就生成；要花钱的事，先问你。</p></div></article>
+        <article class="cap"><img src="media/shots/media.jpg" width="1280" height="720" alt="i豆 生成的视频直接在应用里预览" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>图片视频</h3><p>说一句就生成；默认先告诉你模型和规格，视频每次都问你。</p></div></article>
         <article class="cap"><img src="media/shots/site.jpg" width="1280" height="720" alt="i豆 写好并发布的产品网站" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div><h3>文档网站</h3><p>说需求，它写好网站并发布；谁能打开由你选。</p></div></article>
         <article class="cap"><img src="media/shots/game.jpg" width="1280" height="720" alt="i豆 改好的小游戏「收豆子」" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div><h3>小游戏</h3><p>一个模板，改成你的游戏，改完就能玩。</p></div></article>
         <article class="cap"><img src="media/shots/kb.jpg" width="1280" height="720" alt="知识问答的答案注明出处和条款" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div><h3>企业知识</h3><p>问公司制度，答案带出处；只查你有权读的资料。</p></div></article>
-        <article class="cap"><img src="media/shots/sched.jpg" width="1280" height="720" alt="定时任务的运行记录：报告已存进飞书云盘" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div><h3>定时任务</h3><p>说好做什么、几点做，到点自己跑；报告存进飞书云盘，只推送给你本人。</p></div></article>
+        <article class="cap"><img src="media/shots/sched.jpg" width="1280" height="720" alt="定时任务的运行记录：报告已存进飞书云盘" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div><h3>定时任务</h3><p>说好做什么、几点做，到点自己跑；报告存进你的云空间，还能照你选好的，自动写进文档、发到群里。</p></div></article>
         <article class="cap"><img src="media/shots/check.jpg" width="1280" height="720" alt="浏览器自检三项全部通过" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div><h3>浏览器自检</h3><p>做完，它自己打开网页检查一遍。</p></div></article>
-        <article class="cap"><img src="media/shots/computer.jpg" width="1280" height="720" alt="i豆 在「文本编辑」里写好的发布会准备清单" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i></div><h3>操作电脑</h3><p>看得见屏幕，也动得了手。要进哪个应用操作，先问过你。</p></div></article>
+        <article class="cap"><img src="media/shots/computer.jpg" width="1280" height="720" alt="i豆 在「文本编辑」里写好的发布会准备清单" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i></div><h3>操作电脑</h3><p>看得见屏幕，也动得了手。默认要进哪个应用操作，先问过你。</p></div></article>
       </div>
     </section>
 
@@ -402,7 +402,7 @@ footer { padding: 48px 0 56px; color: var(--faint); font-size: 14px; display: fl
   <rect class="d-box us" x="20" y="40" width="430" height="210" rx="18"/>
   <text class="d-title" x="44" y="78">员工电脑 · i豆 桌面端</text>
   <rect class="d-pill" x="44" y="100" width="190" height="42" rx="21"/><text class="d-pilltxt" x="139" y="127" text-anchor="middle">Agent（Codex 内核）</text><rect class="d-pill" x="246" y="100" width="190" height="42" rx="21"/><text class="d-pilltxt" x="341" y="127" text-anchor="middle">飞书一体化窗口</text>
-  <rect class="d-pill" x="44" y="156" width="190" height="42" rx="21"/><text class="d-pilltxt" x="139" y="183" text-anchor="middle">本机知识副本（加密）</text><rect class="d-pill amber" x="246" y="156" width="190" height="42" rx="21"/><text class="d-pilltxt" x="341" y="183" text-anchor="middle">对外动作 · 本人确认</text>
+  <rect class="d-pill" x="44" y="156" width="190" height="42" rx="21"/><text class="d-pilltxt" x="139" y="183" text-anchor="middle">本机知识副本（加密）</text><rect class="d-pill amber" x="246" y="156" width="190" height="42" rx="21"/><text class="d-pilltxt" x="341" y="183" text-anchor="middle">对外动作 · 先问或授权</text>
   <text class="d-note" x="44" y="234">装在每位员工的电脑上</text>
 
   <rect class="d-box" x="550" y="40" width="430" height="210" rx="18"/>
@@ -446,13 +446,14 @@ footer { padding: 48px 0 56px; color: var(--faint); font-size: 14px; display: fl
 
     <section aria-labelledby="consent-title">
       <div class="kicker"><span class="rule"></span>企业可控</div>
-      <h2 id="consent-title">每个对外动作，都等你点头。</h2>
+      <h2 id="consent-title"><span class="ph">默认先问你，</span><span class="ph">授权了就自己做完。</span></h2>
       <div class="consent">
         <ul>
-          <li><span class="bean"></span><span><b>发消息、写文档、发布网站</b>，执行前都弹出确认卡，写明发给谁、改哪里、谁能看到。</span></li>
-          <li><span class="bean"></span><span><b>要花钱的生成</b>（图片、视频），先告诉你模型和规格，你点了才开始。</span></li>
-          <li><span class="bean"></span><span><b>打开浏览器、操作网页</b>，每一次调用都单独问你。</span></li>
-          <li><span class="bean"></span><span><b>你不点，它就不做</b>——取消或者超时，这一步都不会执行。</span></li>
+          <li><span class="bean"></span><span><b>默认每一步先问你</b>：发消息、写文档、发布网站，执行前都弹出确认卡，写明发给谁、改哪里、谁能看到。</span></li>
+          <li><span class="bean"></span><span><b>你一授权，它就全自动做完</b>：给任务开「完全访问」，发消息、改文档、存云盘、生成图片、建日程和任务、操作电脑，都不再逐次确认。</span></li>
+          <li><span class="bean"></span><span><b>定时任务到点自己交付</b>：建任务时选好结果写进哪份文档、发到哪个群，之后每次跑完自动写过去；任务自己改不了去处。</span></li>
+          <li><span class="bean"></span><span><b>生成视频</b>，不管怎样授权，每一次都单独问你。</span></li>
+          <li><span class="bean"></span><span><b>没授权的，你不点它就不做</b>——取消或者超时，这一步都不会执行。</span></li>
         </ul>
         <figure class="shot">
           <img src="media/shots/publish.jpg" width="1280" height="720" alt="i豆 发布网站前弹出的确认卡：谁能打开、发布哪些文件" loading="lazy">
