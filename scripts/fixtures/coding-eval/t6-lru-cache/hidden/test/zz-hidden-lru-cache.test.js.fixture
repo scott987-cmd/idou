@@ -1,0 +1,91 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { LruCache } from "../src/lru-cache.js";
+
+const clock = () => {
+  let time = 0;
+  const now = () => time;
+  now.advance = ms => { time += ms; };
+  return now;
+};
+
+test("hidden: has does not change recency", () => {
+  const cache = new LruCache({ maxEntries: 2 });
+  cache.set("a", 1);
+  cache.set("b", 2);
+  assert.equal(cache.has("a"), true);
+  cache.set("c", 3);
+  assert.equal(cache.has("a"), false);
+  assert.equal(cache.get("b"), 2);
+});
+
+test("hidden: set replaces a value, refreshes recency and restarts expiry", () => {
+  const now = clock();
+  const cache = new LruCache({ maxEntries: 2, ttlMs: 50, now });
+  cache.set("a", 1);
+  cache.set("b", 2);
+  now.advance(40);
+  cache.set("a", 10);
+  cache.set("c", 3);
+  assert.equal(cache.get("b"), undefined);
+  now.advance(40);
+  assert.equal(cache.get("a"), 10);
+  now.advance(10);
+  assert.equal(cache.get("a"), undefined);
+});
+
+test("hidden: delete says whether there was an entry", () => {
+  const cache = new LruCache({ maxEntries: 2 });
+  cache.set("a", 1);
+  assert.equal(cache.delete("a"), true);
+  assert.equal(cache.delete("a"), false);
+  assert.equal(cache.size, 0);
+});
+
+test("hidden: prune removes expired entries and counts them", () => {
+  const now = clock();
+  const cache = new LruCache({ maxEntries: 5, ttlMs: 10, now });
+  cache.set("a", 1);
+  now.advance(5);
+  cache.set("b", 2);
+  now.advance(5);
+  assert.equal(cache.size, 2);
+  assert.equal(cache.prune(), 1);
+  assert.equal(cache.size, 1);
+  assert.deepEqual(cache.keys(), ["b"]);
+});
+
+test("hidden: keys run from least to most recent and skip expired entries without removing them", () => {
+  const now = clock();
+  const cache = new LruCache({ maxEntries: 5, ttlMs: 100, now });
+  cache.set("a", 1);
+  cache.set("b", 2);
+  now.advance(50);
+  cache.set("c", 3);
+  cache.get("a");
+  assert.deepEqual(cache.keys(), ["b", "c", "a"]);
+  now.advance(50);
+  assert.deepEqual(cache.keys(), ["c"]);
+  assert.equal(cache.size, 3);
+});
+
+test("hidden: get removes an expired entry it finds", () => {
+  const now = clock();
+  const cache = new LruCache({ maxEntries: 2, ttlMs: 1, now });
+  cache.set("a", 1);
+  now.advance(1);
+  assert.equal(cache.get("a"), undefined);
+  assert.equal(cache.size, 0);
+});
+
+test("hidden: maxEntries must be a positive integer", () => {
+  for (const maxEntries of [0, -1, 1.5, undefined]) assert.throws(() => new LruCache({ maxEntries }), RangeError);
+});
+
+test("hidden: without a ttl nothing expires", () => {
+  const now = clock();
+  const cache = new LruCache({ maxEntries: 1, now });
+  cache.set("a", 1);
+  now.advance(1e12);
+  assert.equal(cache.get("a"), 1);
+});

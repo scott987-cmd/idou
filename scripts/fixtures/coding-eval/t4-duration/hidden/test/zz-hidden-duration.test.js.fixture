@@ -1,0 +1,49 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { parseDuration } from "../src/duration.js";
+
+test("hidden: units are case-insensitive", () => {
+  assert.equal(parseDuration("1H 2M"), 3_720_000);
+});
+
+test("hidden: whitespace around the whole string", () => {
+  assert.equal(parseDuration("  45s "), 45_000);
+});
+
+test("hidden: zero is a valid amount", () => {
+  assert.equal(parseDuration("0s"), 0);
+});
+
+test("hidden: m and ms are different units", () => {
+  assert.equal(parseDuration("1m 1ms"), 60_001);
+  assert.equal(parseDuration("1m1ms"), 60_001);
+});
+
+test("hidden: empty and blank strings", () => {
+  assert.throws(() => parseDuration(""), SyntaxError);
+  assert.throws(() => parseDuration("   "), SyntaxError);
+});
+
+test("hidden: a unit may appear only once", () => {
+  assert.throws(() => parseDuration("1m2m"), SyntaxError);
+});
+
+test("hidden: units must come in order", () => {
+  assert.throws(() => parseDuration("30m1h"), SyntaxError);
+  assert.throws(() => parseDuration("5ms 1s"), SyntaxError);
+});
+
+test("hidden: amounts are plain non-negative integers", () => {
+  assert.throws(() => parseDuration("1.5h"), SyntaxError);
+  assert.throws(() => parseDuration("-5s"), SyntaxError);
+  assert.throws(() => parseDuration("h"), SyntaxError);
+});
+
+test("hidden: no whitespace inside a part", () => {
+  assert.throws(() => parseDuration("5 s"), SyntaxError);
+});
+
+test("hidden: null and other non-strings", () => {
+  assert.throws(() => parseDuration(null), TypeError);
+  assert.throws(() => parseDuration(["1h"]), TypeError);
+});

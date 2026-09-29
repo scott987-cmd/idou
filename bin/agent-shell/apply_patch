@@ -1,0 +1,11 @@
+#!/bin/sh
+# Codex applies a patch itself when a command is exactly `apply_patch <<'EOF' ... EOF`,
+# and shows it to the person as a reviewable file change; this program never runs
+# then. Anything around the patch -- a `cd`, `&&`, a second command after EOF --
+# turns it into an ordinary shell command, which lands here instead of ending in
+# "command not found" (which sent the Agent hunting for a patch tool). Nothing is
+# applied: the patch has to be sent again on its own.
+[ -t 0 ] || cat >/dev/null
+echo "apply_patch was not applied: this command had something besides the patch." >&2
+echo "Send exactly apply_patch <<'EOF' ... EOF as the whole command, with nothing before or after it, and run tests or other commands in a separate call." >&2
+exit 2

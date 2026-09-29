@@ -1,0 +1,6 @@
+import { calcTotal } from "./cart.js";
+
+export function checkout(items, { couponCents = 0 } = {}) {
+  const subtotal = calcTotal(items);
+  return { subtotal, total: Math.max(0, subtotal - couponCents) };
+}

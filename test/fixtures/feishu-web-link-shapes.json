@@ -1,0 +1,16 @@
+{
+  "source": "Recorded 2026-09-29 from a live SaaS tenant: POST /open-apis/drive/v1/metas/batch_query with with_url=true (every type below), and lark-cli 1.0.96 `drive +inspect` for a file. Tenant host and tokens replaced; paths exactly as Feishu returned them.",
+  "metas": {
+    "docx": "https://tenant.feishu.cn/docx/DocTokenFixture0001",
+    "sheet": "https://tenant.feishu.cn/sheets/SheetTokenFixture01",
+    "bitable": "https://tenant.feishu.cn/base/BaseTokenFixture001",
+    "file": "https://tenant.feishu.cn/file/FileTokenFixture001",
+    "folder": "https://tenant.feishu.cn/drive/folder/FolderTokenFixture1"
+  },
+  "inspect": {
+    "file": "https://www.feishu.cn/file/FileTokenFixture001"
+  },
+  "notOpened": {
+    "file": "https://tenant.feishu.cn/drive/file/FileTokenFixture001"
+  }
+}

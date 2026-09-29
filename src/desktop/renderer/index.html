@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>i豆</title><link rel="stylesheet" href="../../../node_modules/@xterm/xterm/css/xterm.css"><link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="brand-tile" x1="0.05" y1="0" x2="0.72" y2="1"><stop offset="0" stop-color="#F6B13A"/><stop offset="0.48" stop-color="#E07A24"/><stop offset="1" stop-color="#A83E17"/></linearGradient></defs><rect width="512" height="512" rx="116" fill="url(#brand-tile)"/><rect x="228" y="226" width="56" height="172" rx="28" fill="#FFFAF0"/><ellipse cx="256" cy="146" rx="54" ry="43" fill="#FFFAF0" transform="rotate(-22 256 146)"/></svg></span><div>i豆<small>企业工作空间</small></div><button id="sidebar-close" type="button" aria-label="关闭左侧导航" title="关闭左侧导航">×</button></div>
+    <button id="new-task" class="new-task">＋ 新工作任务</button>
+    <nav aria-label="主导航">
+      <button data-section="cowork" aria-current="page"><span>▣</span>工作任务</button>
+      <button data-section="coding"><span>⌘</span>编程任务</button>
+      <button data-section="sites"><span>◨</span>文档网站</button>
+      <button data-section="schedules"><span>◷</span>定时任务</button>
+      <button data-section="skills"><span>▦</span>技能中心</button>
+      <button data-section="knowledge"><span>▤</span>企业知识库</button>
+      <button data-section="feishu"><span>◌</span>飞书消息</button>
+      <button data-section="feishu-docs"><span>▤</span>飞书文档</button>
+    </nav>
+    <div class="task-nav-tools"><input id="task-search" type="search" maxlength="200" aria-label="搜索当前账号任务" placeholder="搜索任务或项目"><button id="show-archived" type="button" aria-pressed="false">已归档</button></div>
+    <div class="recent-label" id="recent-label">最近任务</div><div id="recent-tasks" class="recent-tasks"></div>
+    <button id="settings" class="account"><span class="avatar">我</span><span><span id="account-name">本地开发测试</span><small id="connection-state">检查连接中</small></span><span>⌄</span></button>
+  </aside>
+  <main>
+    <header class="toolbar"><div><button id="sidebar-toggle" type="button" aria-label="收起左侧导航" title="收起左侧导航">☰</button><span id="section-title">工作任务</span><span class="divider" hidden>/</span><strong id="task-title" hidden></strong><button id="project-chip" type="button" hidden title="更换工作目录"></button></div><div><div id="task-tools" role="toolbar" aria-label="任务工作区" hidden><button id="workbench-diff" type="button">改动</button><button id="workbench-files" type="button">文件</button><button id="workbench-preview" type="button">预览</button><button id="workbench-terminal" type="button">终端</button></div><button id="feishu-rail-toggle" type="button" hidden></button><button id="theme-toggle" type="button" aria-label="界面配色"></button><span id="task-status"></span></div></header>
+    <div id="error-banner" role="alert" hidden></div>
+    <div id="confirmations-home"></div>
+    <nav id="task-tabs" class="task-tabs" aria-label="任务工作区" hidden><button data-tab="chat" aria-current="page">对话</button><button data-tab="media" hidden>图片与视频</button><button data-tab="apps" hidden>应用版本</button><button id="reopen-panel" type="button" hidden>展开预览 ‹</button></nav>
+    <p id="task-skill-label" hidden></p>
+    <p id="task-mcp-label" hidden></p>
+    <div id="task-stage"><div id="work-area">
+    <section id="welcome" class="welcome">
+      <span class="eyebrow">i豆 / WORKSPACE</span><h1>今天，我们一起做什么？</h1><p>从一个工作问题开始，直到拿到可以交付的成果。</p>
+      <div id="project-step" class="project-step" hidden>
+        <div id="recent-projects" class="recent-projects" role="list"></div>
+      </div>
+      <button id="pick-workspace" class="workspace-picker">选择工作目录</button><small id="selected-workspace">工作任务也可以使用独立的本地目录</small>
+      
+      <button id="welcome-app-reviews" class="workspace-picker" hidden>应用清单审核</button>
+      <button id="welcome-app-runtime" class="workspace-picker" hidden>应用运行验收</button>
+    </section>
+    <div id="artifact-panel" hidden>
+    <header id="panel-header" hidden><button id="back-to-chat" type="button" hidden>‹ 返回对话</button><span id="panel-title">预览</span><button id="collapse-panel" type="button">关闭</button></header>
+    <section id="changes-panel" class="changes-panel" hidden><div id="changes-content" class="diff-dialog-body"><p class="diff-dialog-note">打开后读取当前工作目录的改动。</p></div></section>
+    <section id="apps-panel" class="apps-panel" hidden>
+      <header><div><h2>应用版本</h2><p>从编程成果保留一个可核对的版本。</p></div><button id="refresh-apps">刷新目录</button></header>
+      <form id="app-candidate-form"><label>静态应用入口<input id="app-entry" aria-label="静态应用入口" placeholder="例如 dist/index.html" required></label><p>会收集入口所在目录的静态文件。请先在浏览器预览中验收，再提交版本清单。</p><button id="submit-app-candidate" type="submit">保存并提交待审版本</button><button id="publish-static-app" type="button">发布为单文件网页</button><p id="publish-note" class="publish-note">纯前端成品：把入口目录里的样式、脚本和图片全部内联成一个 HTML，可以直接发给别人打开，不需要服务端。需要后端的功能不会工作。</p><p id="publish-result" role="status"></p></form>
+      <p class="apps-boundary">版本清单进入服务端；源码包可另行确认归档到飞书云盘。清单审核不等于安全审查或部署，临时运行验收需要单独授权。</p>
+      <button id="open-app-reviews">应用清单审核</button>
+      <button id="open-app-runtime">应用运行验收</button>
+      <label>归档目标文件夹<input id="app-archive-folder" aria-label="应用归档云盘文件夹" placeholder="企业配置的飞书云盘文件夹链接" type="url"></label>
+      <p id="apps-notice" role="status"></p><div id="app-candidates"></div>
+    </section>
+    <section id="media-panel" class="media-panel" hidden>
+      <div id="media-preview-frame" hidden><div id="media-preview-heading"><span>临时成果预览 · 尚未保存到飞书云盘</span><button id="close-media-preview" type="button">关闭预览</button></div><div id="media-preview-area"></div></div>
+      <p id="media-notice" role="status">在对话里描述你要的图片或视频，成果会在这里预览。</p>
+      <div id="media-results" aria-label="媒体成果"></div>
+    </section>
+    <section id="files" class="files" hidden><header><button id="parent-folder" hidden>↑ 上一级</button><span id="file-count" class="file-count"></span><span id="folder-name">任务文件</span><button id="attach-files" class="primary">＋ 添加文件</button><div class="file-menu-field"><button id="file-menu-toggle" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="更多操作">⋯</button><div id="file-menu" role="menu" aria-label="更多操作" hidden><button id="refresh-files" type="button" role="menuitem">刷新</button><button id="reveal-folder" type="button" role="menuitem">在访达中打开</button><button id="show-document-url" type="button" role="menuitem">打开飞书内容</button><button id="upload-to-drive" type="button" role="menuitem">上传到飞书云盘</button><button id="show-local-files" type="button" role="menuitem" hidden>回到本地文件</button></div></div></header>
+      <form id="document-url-form" hidden><select id="resource-kind" aria-label="飞书内容类型"><option value="document">文档</option><option value="sheet">电子表格</option><option value="base">多维表格</option></select><input id="document-url" type="text" aria-label="搜索飞书文档或粘贴链接" placeholder="输入标题关键词搜索，或粘贴文档链接" maxlength="300" autocomplete="off" required><button id="open-document" type="submit">搜索 / 打开</button></form>
+      <form id="drive-upload-form" hidden><input id="drive-upload-folder" type="url" aria-label="云盘文件夹链接" placeholder="粘贴目标飞书云盘文件夹链接" required><button id="drive-upload-pick" type="submit">选择文件并上传</button><p id="drive-upload-note" role="status"></p></form><div id="document-search" hidden><p id="document-search-status" role="status"></p><div id="document-search-results" role="listbox" aria-label="飞书文档搜索结果"></div><button id="document-search-more" hidden>加载更多</button></div>
+      <div class="file-workspace"><section id="file-empty" class="file-empty" hidden><span class="file-empty-icon" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M9.5 13.5h11l3.5 4h14.5v19h-29z"/><path d="M9.5 17.5h29"/></svg></span><strong id="file-empty-title">把资料放进这个任务</strong><p id="file-empty-copy">Agent 可以读取你添加的文件，也会把生成结果保存在这里。</p><div><button id="empty-attach-files" class="primary" type="button">添加本机文件</button><button id="empty-open-document" type="button">打开飞书内容</button></div></section><div id="file-list"></div><article><div id="file-heading"><span id="file-title">选择文件查看</span><span id="file-note" hidden></span><button id="send-document" type="button" hidden>发送给…</button><button id="feishu-native-view" hidden>飞书原样</button><button id="feishu-view-reload" hidden>重新加载</button><button id="open-preview" hidden>浏览器预览</button></div><div id="document-meta" hidden></div>
+        <section id="document-delivery" hidden aria-label="发送飞书文档"><header><strong>发送文档链接</strong><button id="close-document-delivery" type="button">关闭</button></header><p>只发送标题、链接和附言，不发送正文，也不改变文档权限。</p><form id="document-recipient-search"><select id="document-recipient-kind" aria-label="发送方式"><option value="user">私信</option><option value="group">群聊</option></select><input id="document-recipient-query" aria-label="搜索收件人或群" maxlength="50" placeholder="姓名、邮箱或群名" required><button type="submit">搜索</button></form><div id="document-recipient-results" role="listbox" aria-label="收件人搜索结果"></div><div id="document-delivery-selection" hidden></div><div id="document-delivery-members" hidden></div><label>附言<textarea id="document-delivery-note" maxlength="1000" placeholder="可选；不支持 @ 语法"></textarea></label><div class="document-delivery-actions"><button id="prepare-document-delivery" type="button" disabled>预览发送内容</button><button id="send-document-delivery" type="button" disabled>继续到发送确认</button></div><pre id="document-delivery-preview" hidden></pre><p id="document-delivery-status" role="status">尚未选择收件人，也没有发送。</p></section>
+        <form id="sheet-range-form" hidden><label>工作表<select id="sheet-selector" aria-label="工作表"></select></label><label>读取范围<input id="sheet-range" aria-label="单元格范围" placeholder="A1:F20" maxlength="30" required></label><button id="read-sheet-range" type="submit">读取范围</button></form>
+        <div id="sheet-grid" hidden role="region" aria-label="电子表格范围预览" tabindex="0"></div>
+        <form id="base-page-form" hidden><label>数据表<select id="base-table-selector" aria-label="数据表"></select></label><label>从第几条读起<input id="base-offset" aria-label="从第几条记录读起" type="number" min="1" step="1" value="1" required></label><button id="read-base-page" type="submit">读取这一页</button></form>
+        <div id="base-grid" hidden role="region" aria-label="多维表格记录预览" tabindex="0"></div>
+        <div id="feishu-native-area" hidden></div><div id="file-view-empty" class="file-view-empty"><span aria-hidden="true">⌁</span><strong>选择一个文件查看</strong><p>可以阅读、引用到对话，或在支持时直接预览。</p></div><div id="file-text-view" hidden><pre id="file-line-numbers" aria-hidden="true">1</pre><textarea id="file-content" aria-label="文件内容" readonly spellcheck="false" placeholder=""></textarea></div><div id="file-visual" hidden><img id="file-image" alt="" hidden><div id="file-card"><strong id="file-card-title"></strong><p id="file-card-note"></p><div><button id="open-system-file" type="button" hidden>用系统应用打开</button><button id="reveal-task-file" type="button">显示所在位置</button><button id="open-readable-copy" type="button" hidden>查看文字版</button></div></div></div><button id="quote-selection" hidden disabled>引用选中内容</button></article></div></section>
+    <section id="browser" class="browser" hidden><header><button id="preview-back" type="button" aria-label="后退" disabled>‹</button><button id="preview-forward" type="button" aria-label="前进" disabled>›</button><span class="preview-location"><strong id="preview-title">尚未打开网页成果</strong><small id="preview-address"></small></span><button id="reference-preview-page" type="button" hidden>引用当前页面</button><button id="refresh-preview" disabled>刷新</button><button id="site-from-task" hidden>发布到文档网站</button><button id="close-preview">返回文件</button></header><div id="preview-area"><div class="empty"><h2>预览你的应用</h2><p>让 Agent 生成网页成果后在这里预览，不需要时可以收起。</p><p>本地运行与预览已接入；企业发布平台还在开发中。</p></div></div></section>
+    </div>
+    <div id="workbench-divider" role="separator" aria-label="调整对话和工作区宽度" aria-orientation="vertical" tabindex="0" hidden></div>
+    <div id="agent-panel">
+    <header id="agent-heading" hidden><strong>与 Agent 一起修改</strong><span>沿用当前任务对话</span></header>
+    <section id="conversation" class="conversation" hidden><div id="messages" class="messages" aria-live="polite"></div><button id="jump-latest" type="button" hidden>回到最新 ↓</button><div id="approvals" class="approvals"></div><div id="task-actions" class="task-actions" hidden><button id="compact-task" type="button">压缩对话</button><button id="rollback-task" type="button">撤回上一轮</button><small id="task-actions-note"></small></div><details id="activity-panel"><summary>执行记录</summary><div id="activity"></div></details></section>
+    <label id="document-edit-option" hidden><input id="propose-document-edit" type="checkbox">生成选区修改建议 · 确认后才写回</label>
+    <label id="sheet-edit-option" hidden><input id="propose-sheet-edit" type="checkbox">生成逐格修改建议 · 核对确认后才写入</label>
+    <label id="base-edit-option" hidden><input id="propose-base-edit" type="checkbox">生成记录修改建议 · 核对确认后才写入</label>
+    <div id="confirmations" aria-live="assertive"></div>
+    <form id="composer"><section id="task-queue" aria-label="下一轮队列" hidden></section><div id="context-row" hidden><label><input id="include-context" type="checkbox" checked><span id="context-label"></span></label><button id="add-context-reference" type="button">引用到对话</button><button id="clear-selection" type="button" hidden>清除选区</button></div><div class="compose-box"><div id="mention-menu" role="listbox" aria-label="选择要 @ 的人、群或文件" hidden></div><textarea id="prompt" aria-label="任务内容" rows="3" placeholder="描述你的任务，或继续提出修改…（回车发送，Shift+回车换行，@ 添加引用）" aria-autocomplete="list" aria-controls="mention-menu"></textarea><div id="mention-row" aria-label="随消息发送的引用" hidden></div><div id="image-row" aria-label="要随消息发送的图片" hidden></div><div class="compose-actions"><button id="open-files" type="button" class="chip">任务文件</button><div id="knowledge-scope-field" class="permission-field" hidden><button id="knowledge-scope-toggle" type="button" class="chip" aria-haspopup="menu" aria-expanded="false" aria-label="知识范围"></button><div id="knowledge-scope-menu" role="menu" aria-label="知识范围" hidden></div></div><div id="permission-field" class="permission-field"><button id="permission-toggle" type="button" class="chip" aria-haspopup="menu" aria-expanded="false" aria-label="权限模式"></button><div id="permission-menu" role="menu" aria-label="权限模式" hidden></div></div><span id="model-label">企业模型网关</span><div class="compose-send"><span id="stop-hint" role="status" hidden>再按一次 Esc 停止这一轮</span><button type="button" id="queue-send" hidden>下一轮</button><button type="submit" id="send">发送 ↑</button></div></div></div><small>当前为开发版连接 · 工作文件留在本机 · 对外操作按权限确认</small></form>
+    </div>
+    </div>
+    <section id="task-terminal" aria-label="当前编程任务的终端" hidden><div id="terminal-resizer" role="separator" aria-label="调整终端高度" aria-orientation="horizontal" tabindex="0"></div><header><strong>终端</strong><span id="terminal-status">尚未打开</span><button id="terminal-add-selection" type="button" disabled>选中内容添加到对话</button><button id="terminal-reopen" type="button" hidden>重新打开</button><button id="terminal-end" type="button">结束</button></header><div id="terminal-screen"></div></section>
+    </div>
+    <section id="library" class="library" hidden></section>
+  </main>
+  <dialog id="detail"><header><h2 id="detail-title"></h2><button id="close-detail">关闭</button></header><pre id="detail-content"></pre></dialog>
+  <dialog id="skill-detail" aria-labelledby="skill-detail-title">
+    <header class="sd-head"><span id="skill-detail-avatar" class="sc-avatar sd-avatar" aria-hidden="true"></span><div class="sd-titles"><h2 id="skill-detail-title"></h2><p id="skill-detail-sub"></p></div><div id="skill-detail-switch" class="sd-switch"></div><button id="close-skill-detail" class="sd-close" type="button" aria-label="关闭">×</button></header>
+    <div class="sd-scroll"><p id="skill-detail-meta" class="sd-meta"></p><div id="skill-detail-extra" class="sd-extra"></div><div id="skill-detail-body" class="sd-body"></div></div>
+    <p id="skill-detail-error" class="sd-error" role="alert" hidden></p>
+    <footer class="sd-foot"><div id="skill-detail-more" class="sd-more"></div><div id="skill-detail-actions" class="sd-actions"></div></footer>
+  </dialog>
+  <dialog id="app-review" aria-labelledby="app-review-title">
+    <header><h2 id="app-review-title">应用清单审核</h2><button id="close-app-review">关闭</button></header>
+    <p class="apps-boundary">仅核对版本清单与声明。不读取或执行源码，不代表安全审查通过，不授予运行、飞书或数据访问权限。</p>
+    <button id="refresh-app-reviews">刷新待审列表</button><p id="app-review-notice" role="status"></p>
+    <div id="app-review-content"></div><footer id="app-review-footer"></footer>
+  </dialog>
+  <dialog id="app-runtime" aria-labelledby="app-runtime-title">
+    <header><h2 id="app-runtime-title">应用运行验收</h2><button id="close-app-runtime">关闭</button></header>
+    <p class="apps-boundary">仅运行操作员可签发临时许可。清单通过不等于源码安全或云盘来源已独立验证；导出不自动启动、不正式发布、不授予飞书数据权限。</p>
+    <button id="refresh-app-runtimes">刷新可验收版本</button><p id="app-runtime-notice" role="status"></p>
+    <div id="app-runtime-content"></div><footer id="app-runtime-footer"></footer>
+  </dialog>
+  
+  <script type="module" src="app.js"></script>
+</body></html>

@@ -1,0 +1,5 @@
+export function summarize(numbers) {
+  const count = numbers.length;
+  const sum = numbers.reduce((total, value) => total + value, 0);
+  return { count, sum, mean: count ? sum / count : 0 };
+}

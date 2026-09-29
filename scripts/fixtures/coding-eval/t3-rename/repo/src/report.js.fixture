@@ -1,0 +1,7 @@
+import { calcTotal, itemCount } from "./cart.js";
+
+export function dailyReport(orders) {
+  const revenue = orders.reduce((sum, order) => sum + calcTotal(order.items), 0);
+  const units = orders.reduce((sum, order) => sum + itemCount(order.items), 0);
+  return `orders=${orders.length} units=${units} revenueCents=${revenue}`;
+}

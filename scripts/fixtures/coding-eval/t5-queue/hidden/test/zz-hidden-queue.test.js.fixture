@@ -1,0 +1,29 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { processAll } from "../src/queue.js";
+
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+test("hidden: only one worker runs at a time", async () => {
+  let running = 0, peak = 0;
+  const results = await processAll([1, 2, 3, 4], async task => {
+    running += 1; peak = Math.max(peak, running);
+    await delay(5);
+    running -= 1;
+    return task * 10;
+  });
+  assert.deepEqual(results, [10, 20, 30, 40]);
+  assert.equal(peak, 1);
+});
+
+test("hidden: an empty list resolves to an empty list", async () => {
+  assert.deepEqual(await processAll([], async () => 1), []);
+});
+
+test("hidden: a worker that throws synchronously also rejects", async () => {
+  await assert.rejects(processAll([1], () => { throw new Error("sync"); }), /sync/);
+});
+
+test("hidden: plain values from a synchronous worker are collected", async () => {
+  assert.deepEqual(await processAll(["a", "b"], task => task.toUpperCase()), ["A", "B"]);
+});

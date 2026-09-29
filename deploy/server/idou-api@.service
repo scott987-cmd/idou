@@ -1,0 +1,26 @@
+# A model replica: `bin/server.js --role api` (docs/scaling-plan.md §2.3).
+# Instance N reads /etc/idou/api-N.env after the shared configuration:
+# its own IDOU_PORT (3043, 3044, ...) and IDOU_METRICS_PORT (9465,
+# 9466, ...), which nginx-idou.conf and the monitoring expect.
+# Installed as /etc/systemd/system/idou-api@.service; enabled as
+# idou-api@1 and idou-api@2.
+[Unit]
+Description=i豆 model replica %i
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+
+[Service]
+Type=simple
+User=idou
+Group=idou
+Environment=HOME=/home/idou
+WorkingDirectory=/opt/idou/app
+ExecStart=/bin/bash -c "set -a; . /etc/idou/idou.env; . /etc/idou/api-%i.env; set +a; exec /usr/local/bin/node bin/server.js --feishu --role api"
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+UMask=0077
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

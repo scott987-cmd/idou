@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "0.1.0-20260918.19",
+  "createdAt": "2026-09-18T12:08:54.812Z",
+  "keyId": "dc9a5173c44fc9333d3c83893f5cc0d9d79709ad060c2e829842bb6d2792b1dd",
+  "application": {
+    "name": "mydoubao",
+    "version": "0.1.0",
+    "sourceSha256": "802c76fe20f71f12cac1ba1d274e0666078cfee86267c6f4a14822c53a6c95d8",
+    "packageLockSha256": "0a08bb2e827b46b8942d96bb6660fe09769533b12c98a6e0ec99cb048db901fe",
+    "adapterContracts": {
+      "codex": "app-server-jsonrpc-v2",
+      "feishu": "feishu-cli-v1"
+    }
+  },
+  "upstreamsSha256": "57b409c88433f876cafdaa1b8b0da33d23c6d4bfb855aa84bd671b396d61ae64",
+  "upstreams": {
+    "schemaVersion": 1,
+    "codex": {
+      "distribution": "@openai/codex",
+      "version": "0.147.0",
+      "integrationBoundary": "app-server-jsonrpc-v2",
+      "source": "https://github.com/openai/codex",
+      "inspectedCommit": "553df1c691fe8bf7747e50da22f1342984495ae0",
+      "vendorArtifacts": {
+        "provenance": "First-use pins, not upstream-published checksums. npm verifies each platform tarball against the registry's sha512 at install time, but a global install keeps no record of it, and @openai/codex publishes no per-file digests. These are the bytes that ran every verified task in this repository: darwin-arm64 from the local npm install that is packaged into MyDouBao.app, linux-arm64 from the sandbox image (sha256:f7a2c6899113e25680cdc3560f44ece7b8f7669c1f22e16ee6ae8e05747bce8c) that ran the live scheduled tasks. A new Codex version is pinned the same way only after its own contract runs pass.",
+        "darwin-arm64": {
+          "package": "@openai/codex-darwin-arm64",
+          "target": "aarch64-apple-darwin",
+          "files": {
+            "bin/codex": "19c4f144c5226a9f17c58e6f0fa854843b0f77a6eb420f40e2745a12f10f5d37",
+            "bin/codex-code-mode-host": "a059beb029cdbc989e72e23f8680be9f703cb6cf83d9598d91041f82178d018d",
+            "codex-package.json": "60f3fa0b518399444c28b3a98c785315abd89c1e87b3c5a0e2b59d03ce5c32f5",
+            "codex-path/rg": "842e37b57c419f66f1914009a88d8a0ad7d12199bfd8dbebc9cce8842634e7af",
+            "codex-resources/zsh/bin/zsh": "4da1e21a0c7f4ff41811930665ce99d674d068d8560dc477023228d8266137bf"
+          }
+        },
+        "linux-arm64": {
+          "package": "@openai/codex-linux-arm64",
+          "target": "aarch64-unknown-linux-musl",
+          "files": {
+            "bin/codex": "e23d0be344d2496986c985cd3db61e6f649b1ddd900e6afc1b5aaabbffcbb4e2",
+            "bin/codex-code-mode-host": "c8fd26e2ddb0243d79d7c3dfa8bcd47b6a30b14695083790fc51884e82e8ebc2",
+            "codex-package.json": "0d0d2dbe7908ad298395bf8858a701064728b768c980567d637e71ef071d7883",
+            "codex-path/rg": "e36d0eb52e70696bdf1781392722e05a21bb91d3b7b762ef5ec20e5df2ec687b",
+            "codex-resources/bwrap": "c547cbdc762a70ed216789ffaa4c6c0e7d2beabe32245a498f8e365a9fc8dab4",
+            "codex-resources/zsh/bin/zsh": "7feeacd883e1dc749847936948c378653c80a69ec4a9542f0f126b411882c179"
+          }
+        }
+      }
+    },
+    "sandbox": {
+      "repository": "mydoubao/sandbox",
+      "baseImage": "node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5",
+      "baseImageNote": "The multi-platform index digest Docker recorded when node:22-bookworm-slim was pulled for the image that ran the live scheduled tasks. The tag moves; this does not."
+    },
+    "feishu": {
+      "provider": "saas-cli",
+      "binary": "lark-cli",
+      "version": "1.0.78",
+      "inspectedCommit": "03de81c5f3986c2af98a3296328df9c98afabd39",
+      "buildTags": [
+        "authsidecar"
+      ],
+      "buildDate": "2026-07-27",
+      "goVersion": "go1.24.3",
+      "integrationBoundary": "feishu-cli-v1",
+      "bundledArtifacts": {
+        "darwin-arm64": {
+          "sha256": "8b90b392b3f0b75e5f3ef347f4c47e4774d0089b6ecb64d84d2718f70eb5c427"
+        },
+        "linux-arm64": {
+          "sha256": "42ba16178985cef0f1f7c4156621cdc93b5e381e052d6a208372daa4d1ea1b85",
+          "purpose": "scheduled-task sandbox image; a Mach-O build cannot run in a Linux container at any architecture",
+          "builtFromSource": {
+            "reason": "The published releases are built without the authsidecar tag (.goreleaser.yml sets no build tags), and that binary refuses to run at all when LARKSUITE_CLI_AUTH_PROXY is set: 'the sidecar credential-isolation feature is compiled out'. Since the sandbox reaches Feishu only through that sidecar, the published artifact cannot be used here.",
+            "repository": "https://github.com/larksuite/cli",
+            "commit": "03de81c5f3986c2af98a3296328df9c98afabd39",
+            "command": "GOOS=linux GOARCH=arm64 go build -trimpath -tags authsidecar -ldflags '-s -w -X github.com/larksuite/cli/internal/build.Version=1.0.78 -X github.com/larksuite/cli/internal/build.Date=2026-07-27' -o lark-cli .",
+            "goVersion": "go1.24.3",
+            "notByteReproducible": "scripts/fetch_meta.py downloads internal/registry/meta_data.json from open.feishu.cn at build time and it is not committed, so two builds of the same commit differ. Verified by behaviour instead: same version string, same 36 top-level commands, accepts LARKSUITE_CLI_AUTH_PROXY, and the upstream sidecar suites pass (extension/credential/sidecar, extension/transport/sidecar, tests/sidecar_e2e).",
+            "publishedArchiveForReference": {
+              "url": "https://github.com/larksuite/cli/releases/download/v1.0.78/lark-cli-1.0.78-linux-arm64.tar.gz",
+              "archiveSha256": "98426f80125919f628135e555c36d74188f8e708e711f06f74da5249fc669c47",
+              "unusable": "no authsidecar"
+            }
+          }
+        }
+      }
+    }
+  },
+  "licenses": {
+    "codex": {
+      "spdx": "Apache-2.0",
+      "source": "https://github.com/openai/codex/blob/rust-v0.147.0",
+      "licenseFile": "third_party/codex/LICENSE",
+      "licenseSha256": "d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc",
+      "noticeFile": "third_party/codex/NOTICE",
+      "noticeSha256": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915"
+    }
+  },
+  "sandboxImages": {
+    "linux-arm64": {
+      "reference": "mydoubao/sandbox@sha256:d0f29a9c44830cbabff237fe3b99d4142707d4ea3f9273f8d0f7d3f28136fc4e",
+      "id": "sha256:d0f29a9c44830cbabff237fe3b99d4142707d4ea3f9273f8d0f7d3f28136fc4e",
+      "baseImage": "node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5"
+    }
+  }
+}

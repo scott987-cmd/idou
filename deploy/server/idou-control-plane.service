@@ -1,0 +1,28 @@
+# The coordinator: everything but the desktops' model requests
+# (docs/server-deployment.md). Installed as
+# /etc/systemd/system/idou-control-plane.service.
+[Unit]
+Description=i豆 control plane
+After=network-online.target docker.service postgresql.service
+Wants=network-online.target docker.service postgresql.service
+
+[Service]
+Type=simple
+User=idou
+Group=idou
+# No Docker: the runs go to the pool (IDOU_SCHEDULE_EXECUTION=pool), and
+# only the workers' own account may start containers -- membership of the
+# docker group is root on this machine (docs/server-deployment.md §11). Runs
+# executed here instead would need it back.
+Environment=HOME=/home/idou
+WorkingDirectory=/opt/idou/app
+# Loaded the way the Mac LaunchAgent loads it, so quoting means the same thing.
+ExecStart=/bin/bash -c "set -a; . /etc/idou/idou.env; set +a; exec /usr/local/bin/node bin/server.js --feishu"
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+UMask=0077
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

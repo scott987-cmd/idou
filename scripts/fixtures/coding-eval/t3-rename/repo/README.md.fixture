@@ -1,0 +1,10 @@
+# cart
+
+Order totals for the shop.
+
+- `calcTotal(items)` — sum of `priceCents × quantity`, in cents.
+- `itemCount(items)` — number of units in the cart.
+- `checkout(items, { couponCents })` — subtotal and total after a coupon.
+- `dailyReport(orders)` — one summary line for a day's orders.
+
+`node bin/receipt.js <items.json>` prints a receipt ending with the total.

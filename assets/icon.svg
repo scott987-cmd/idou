@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="i豆">
+  <defs>
+    <linearGradient id="tile" x1="0.05" y1="0" x2="0.72" y2="1">
+      <stop offset="0" stop-color="#F6B13A"/>
+      <stop offset="0.48" stop-color="#E07A24"/>
+      <stop offset="1" stop-color="#A83E17"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.24" cy="0.14" r="0.7">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g transform="translate(100,84)">
+    <rect width="824" height="824" rx="185" fill="url(#tile)"/>
+    <rect width="824" height="824" rx="185" fill="url(#glow)"/>
+    <rect x="364" y="362" width="98" height="302" rx="49" fill="#FFFAF0"/>
+    <ellipse cx="413" cy="222" rx="94" ry="76" fill="#FFFAF0" transform="rotate(-22 413 222)"/>
+  </g>
+</svg>

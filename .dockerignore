@@ -1,0 +1,35 @@
+# The build context is the repository root, because the reviewed Feishu CLI is
+# copied out of resources/. Everything the image does not need is excluded here:
+# without this the context includes node_modules (Electron alone is hundreds of
+# megabytes) and dist/, all of it sent to the daemon before the first line of the
+# Dockerfile runs.
+node_modules/
+dist/
+.git/
+.github/
+
+# Test and development material. A sandbox image that carried the test suite
+# would be carrying fixtures and scripted upstreams into a place that runs real
+# scheduled work.
+test/
+scripts/
+docs/
+*.log
+
+# Every platform build except the one this image is for. The darwin binary is
+# 41 MB of Mach-O that cannot execute in a Linux container at any architecture,
+# so shipping it to the daemon is pure cost.
+resources/lark-cli/darwin-arm64/
+resources/codex/darwin-*/
+resources/lark-cli/*/CHANGELOG.md
+resources/lark-cli/*/README.md
+
+# Local state and anything that could carry a credential into a build context.
+# None of these belong in an image whose entire premise is that it holds nothing
+# worth stealing.
+.env
+*.env
+*.pem
+*.key
+.claude/
+.mydoubao/

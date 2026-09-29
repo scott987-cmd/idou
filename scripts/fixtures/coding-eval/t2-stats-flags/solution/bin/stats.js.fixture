@@ -1,0 +1,24 @@
+#!/usr/bin/env node
+import { summarize } from "../src/stats.js";
+import { formatJson, formatText } from "../src/format.js";
+
+const usage = () => {
+  console.error("usage: stats [--json] [--precision N] <number>...");
+  process.exit(2);
+};
+
+const args = process.argv.slice(2);
+let json = false, precision = 2;
+while (args[0]?.startsWith("--")) {
+  const flag = args.shift();
+  if (flag === "--json") json = true;
+  else if (flag === "--precision") {
+    const value = args.shift();
+    if (!/^\d+$/.test(value ?? "") || Number(value) > 10) usage();
+    precision = Number(value);
+  } else usage();
+}
+const numbers = args.map(Number);
+if (!numbers.length || numbers.some(Number.isNaN)) usage();
+const summary = summarize(numbers);
+console.log(json ? formatJson(summary, precision) : formatText(summary, precision));

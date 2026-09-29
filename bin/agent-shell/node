@@ -1,0 +1,12 @@
+#!/bin/sh
+# The Agent's `node` on a machine that has none. This directory comes last on the
+# Agent's PATH, so a node the person installed always wins; this one only keeps
+# the product's own tools (bin/agent.js, bin/doc-tool.js, run as `node <tool>`)
+# working where Node was never installed, which is where a packaged app is meant
+# to run. It runs the application's own runtime as Node: the desktop's Electron,
+# or the node the terminal client runs on.
+if [ -z "$IDOU_NODE_RUNTIME" ] || [ ! -x "$IDOU_NODE_RUNTIME" ]; then
+  echo "node: command not found" >&2
+  exit 127
+fi
+ELECTRON_RUN_AS_NODE=1 exec "$IDOU_NODE_RUNTIME" "$@"

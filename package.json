@@ -1,0 +1,87 @@
+{
+  "name": "idou",
+  "license": "Apache-2.0",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/desktop/main.js",
+  "bin": {
+    "idou": "./bin/idou.js"
+  },
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "scripts/",
+    "release/",
+    "third_party/",
+    "resources/lark-cli/",
+    "upstreams.lock.json",
+    "README.md",
+    "docs/",
+    ".agents/skills/"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/prepare-node-pty.js",
+    "start": "node scripts/start-app.js",
+    "preflight": "node bin/idou.js preflight",
+    "scopes": "node scripts/print-feishu-scopes.js",
+    "desktop": "electron .",
+    "test:desktop": "node scripts/smoke-desktop.js",
+    "test:document-desktop": "node scripts/smoke-document-desktop.js",
+    "test:cli-bridge-desktop": "node scripts/smoke-cli-bridge-desktop.js",
+    "test:cli-bridge-write-desktop": "node scripts/smoke-cli-bridge-write-desktop.js",
+    "test:agent-feishu-desktop": "node scripts/smoke-agent-feishu-desktop.js",
+    "test:start-app": "node scripts/smoke-start-app.js",
+    "test:acceptance": "node scripts/run-desktop-acceptance.js",
+    "test:wiki-live": "node scripts/smoke-wiki-synthesis.js --live",
+    "server:dev": "node bin/server.js --dev",
+    "bundle:feishu": "node scripts/bundle-feishu.js",
+    "bundle:codex": "node scripts/bundle-codex.js",
+    "release:sign": "node scripts/sign-release.js",
+    "build:sandbox": "node scripts/build-sandbox-image.js",
+    "prepack": "node scripts/verify-bundle.js",
+    "package:mac": "node scripts/package-mac.js",
+    "test:packaged-app": "node scripts/smoke-packaged-app.js",
+    "test:feishu-unread-desktop": "node scripts/smoke-feishu-unread-desktop.js",
+    "test:sandbox-live": "node scripts/smoke-sandbox-live.js",
+    "test:sandbox-image": "node scripts/build-sandbox-image.js",
+    "test:schedules-desktop": "node scripts/smoke-schedules-desktop.js",
+    "test:task-queue-desktop": "node scripts/smoke-task-queue-desktop.js",
+    "test:task-terminal-desktop": "node scripts/smoke-task-terminal-desktop.js",
+    "test:feishu-dock-live": "node scripts/smoke-feishu-dock-live.js",
+    "test:web-identity-desktop": "node scripts/smoke-web-identity-desktop.js",
+    "test:private-deployment-desktop": "node scripts/smoke-private-deployment-desktop.js",
+    "test:sandbox-network": "node scripts/smoke-sandbox-network-live.js",
+    "test:sandbox-supply": "node scripts/smoke-sandbox-supply-live.js",
+    "test:scheduled-run-live": "node scripts/smoke-scheduled-run-live.js",
+    "test:scheduled-task-e2e": "node scripts/smoke-scheduled-task-e2e.js",
+    "check:release": "IDOU_RELEASE_VERIFICATION=strict npm run check",
+    "check": "node scripts/check-release-manifest.js && node node_modules/electron/install.js && node scripts/third-party-notices.js --check && node --check scripts/third-party-notices.js && node --check bin/idou.js && node --check bin/doc-tool.js && node --check bin/server.js && node --check bin/agent-token.js && node --check bin/sandbox/feishu.js && node --check bin/sandbox/run.js && node --check bin/mcp/web-fetch.js && node --check bin/mcp/browser.js && node --check bin/mcp/computer.js && node --check scripts/smoke-model-gateway.js && node --check scripts/eval-coding-agent.js && node --check scripts/smoke-coding-task-desktop.js && node --check scripts/smoke-builtin-connectors-desktop.js && node --check scripts/smoke-web-search-live.js && node --check scripts/smoke-preview-browser-live.js && node --check scripts/smoke-subagent-tools.js && node --check scripts/smoke-codex-tools.js && node --check scripts/smoke-computer-live.js && node --check scripts/smoke-computer-agent-live.js && node --check scripts/smoke-preview-agent-live.js && node --check scripts/smoke-preview-desktop.js && node --check scripts/smoke-question-agent-live.js && node --check scripts/smoke-subagent-desktop.js && node --check scripts/smoke-subagent-agent-live.js && node --check scripts/package-mac.js && node --check scripts/sign-release.js && node --check scripts/smoke-packaged-app.js && node --check scripts/smoke-feishu-unread-desktop.js && node --check scripts/smoke-feishu-dock-live.js && node --check scripts/smoke-schedules-desktop.js && node --check scripts/smoke-scheduled-run-live.js && node --check scripts/smoke-scheduled-task-e2e.js && node --check scripts/smoke-sandbox-live.js && node --check scripts/smoke-sandbox-network-live.js && node --check scripts/build-sandbox-image.js &&node --check scripts/benchmarks/terminal_bench/gateway.js &&node --check scripts/fixtures/coding-eval/index.js &&node --check scripts/smoke-wiki-synthesis.js && node --check scripts/smoke-desktop.js && node --check scripts/smoke-document-desktop.js && node --check scripts/smoke-cli-bridge-write-desktop.js && node --check scripts/smoke-agent-feishu-desktop.js && node --check scripts/fixtures/agent-feishu-desktop-entry.js && node --check bin/agent.js && node --check scripts/start-app.js && node --check scripts/smoke-start-app.js && node --check src/application/deployment.js && node --check scripts/print-feishu-scopes.js && node --check scripts/fixtures/document-desktop-entry.js && node --check scripts/fixtures/cli-bridge-write-desktop-entry.js && node --check src/control-plane/sandbox-egress.js && node --check src/control-plane/egress-tls.js && node --check src/control-plane/scheduled-run.js && node --check src/control-plane/schedule-report-archive.js && node --check src/control-plane/sandbox/job.js && node --check src/control-plane/sandbox/docker-sandbox.js && node --check src/control-plane/schedule-spec.js && node --check src/control-plane/schedule-capability.js && node --check src/control-plane/schedule-store.js && node --check src/control-plane/scheduler.js && node --check src/control-plane/schedule-service.js && node --check src/control-plane/schedule-consent.js && node --check src/control-plane/feishu-bot.js && node --check src/control-plane/unattended-credential.js && node --check src/control-plane/unattended-consent.js && node --check src/control-plane/schedule-push.js && node --check src/control-plane/scheduled-tasks.js && node --check src/desktop/main.js && node --check src/desktop/preload.cjs && node --check src/desktop/renderer/app.js && node --check src/desktop/renderer/skill-center.js && node --check src/desktop/renderer/schedules.js && node --check src/application/schedule-client.js && node --check src/application/schedule-mirror.js && node --check scripts/bundle-codex.js && node --check scripts/smoke-sandbox-supply-live.js && node --check src/control-plane/sandbox/sandbox-image.js && node --check src/providers/runtime-artifacts.js && node --check src/providers/release-manifest.js && node --check src/providers/codex/bundled-codex.js && node --check scripts/smoke-web-identity-desktop.js && node --check scripts/fixtures/web-identity-desktop-entry.js && node --check src/desktop/docked-chat.js && node --check src/application/web-identity.js && node --check scripts/check-release-manifest.js && node --check scripts/verify-server-release.js && node --check scripts/check-test-inventory.js && node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=./scripts/test-inventory-reporter.mjs --test-reporter-destination=${TMPDIR:-/tmp}/idou-test-inventory.json && node scripts/check-test-inventory.js ${TMPDIR:-/tmp}/idou-test-inventory.json",
+    "doctor": "node bin/idou.js doctor",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "electron": "44.2.0",
+    "playwright": "1.63.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@xmldom/xmldom": "0.9.12",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "docx": "^9.7.1",
+    "markdown-it": "15.0.1",
+    "node-pty": "1.1.0",
+    "officeparser": "7.8.0",
+    "pg": "8.23.0",
+    "pptxgenjs": "4.0.1"
+  },
+  "overrides": {
+    "officeparser": {
+      "pdfjs-dist": "6.2.108"
+    }
+  }
+}

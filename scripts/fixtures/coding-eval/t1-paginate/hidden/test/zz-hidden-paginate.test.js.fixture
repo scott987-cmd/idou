@@ -1,0 +1,24 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { paginate } from "../src/paginate.js";
+
+test("hidden: an empty list has no pages", () => {
+  assert.deepEqual(paginate([], 1, 5), { items: [], totalPages: 0 });
+});
+
+test("hidden: a list that divides evenly", () => {
+  assert.deepEqual(paginate([1, 2, 3, 4, 5, 6], 2, 3), { items: [4, 5, 6], totalPages: 2 });
+});
+
+test("hidden: page and pageSize must be integers of at least 1", () => {
+  assert.throws(() => paginate([1, 2], 1.5, 1), RangeError);
+  assert.throws(() => paginate([1, 2], -1, 1), RangeError);
+  assert.throws(() => paginate([1, 2], 1, 0), RangeError);
+  assert.throws(() => paginate([1, 2], 1, 2.5), RangeError);
+});
+
+test("hidden: the input list is left untouched", () => {
+  const items = [1, 2, 3];
+  paginate(items, 1, 2);
+  assert.deepEqual(items, [1, 2, 3]);
+});

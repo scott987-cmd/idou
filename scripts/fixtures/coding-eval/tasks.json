@@ -1,0 +1,40 @@
+[
+  {
+    "id": "t1-paginate",
+    "kind": "bug fix, one file",
+    "prompt": "运行 npm test 有测试失败。请修复 src/paginate.js 的分页逻辑，使它符合函数注释里的约定，并让测试通过。不要修改测试文件。",
+    "lockedTests": ["test/paginate.test.js"]
+  },
+  {
+    "id": "t2-stats-flags",
+    "kind": "feature across files",
+    "prompt": "给 bin/stats.js 这个命令行工具加两个选项，选项写在数字前面：\n1. `--json`：改为输出一行 JSON，字段是 count、sum、mean，其中 mean 是按精度四舍五入后的数字（不是字符串）。\n2. `--precision N`：mean 保留 N 位小数，N 是 0 到 10 的整数，文本输出和 JSON 输出都生效，默认 2。N 不合法时向 stderr 打印用法并以退出码 2 退出。\n两个选项可以同时使用，顺序不限。现有的文本输出格式保持不变。请补上相应测试，并确保 npm test 通过。",
+    "lockedTests": []
+  },
+  {
+    "id": "t3-rename",
+    "kind": "rename across files",
+    "prompt": "把 src/cart.js 里的 calcTotal 重命名为 computeOrderTotal。所有调用点、测试和文档一起改，行为保持不变；旧名字不要再保留，也不要留兼容别名。改完确保 npm test 通过。",
+    "lockedTests": [],
+    "solution": { "rename": ["calcTotal", "computeOrderTotal"] }
+  },
+  {
+    "id": "t4-duration",
+    "kind": "implement from a written specification",
+    "prompt": "实现 src/duration.js 里的 parseDuration，严格按照函数注释里的规则，并让 npm test 通过。不要修改测试文件。",
+    "lockedTests": ["test/duration.test.js"]
+  },
+  {
+    "id": "t5-queue",
+    "kind": "debug an async bug",
+    "prompt": "npm test 里 processAll 的测试失败了。请找出原因并修复 src/queue.js，让它符合注释描述的行为。不要修改测试文件。",
+    "lockedTests": ["test/queue.test.js"]
+  },
+  {
+    "id": "t6-lru-cache",
+    "kind": "implement a class with edge cases",
+    "prompt": "按照 src/lru-cache.js 注释里的规格实现 LruCache 类，并让 npm test 通过。可以补充测试，但不要删改已有的测试。",
+    "lockedTests": [],
+    "preservedTests": ["test/lru-cache.test.js"]
+  }
+]

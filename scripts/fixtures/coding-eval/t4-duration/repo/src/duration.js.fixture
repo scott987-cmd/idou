@@ -1,0 +1,15 @@
+/**
+ * Parses a duration such as "1h30m", "90s", "2h 5m 10s" or "250ms" into milliseconds.
+ *
+ * Rules:
+ * - A duration is one or more parts. A part is an amount followed directly by a unit.
+ * - Units are h, m, s and ms, case-insensitive. Each unit appears at most once, and units
+ *   appear in that order: h before m before s before ms.
+ * - An amount is a non-negative integer written with the digits 0-9 only.
+ * - Whitespace may separate parts and surround the whole string, but may not appear inside a part.
+ * - A string with no parts, or that breaks any rule above, throws a SyntaxError.
+ * - A value that is not a string throws a TypeError.
+ */
+export function parseDuration(text) {
+  throw new Error("not implemented");
+}

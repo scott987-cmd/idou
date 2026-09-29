@@ -1,0 +1,21 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { summarize } from "../src/stats.js";
+import { formatText } from "../src/format.js";
+
+const bin = fileURLToPath(new URL("../bin/stats.js", import.meta.url));
+const run = (...args) => execFileSync(process.execPath, [bin, ...args], { encoding: "utf8" }).trim();
+
+test("summarize", () => {
+  assert.deepEqual(summarize([1, 2, 3]), { count: 3, sum: 6, mean: 2 });
+});
+
+test("text output", () => {
+  assert.equal(run("1", "2", "4"), "count=3 sum=7 mean=2.33");
+});
+
+test("text formatting", () => {
+  assert.equal(formatText({ count: 1, sum: 5, mean: 5 }), "count=1 sum=5 mean=5.00");
+});

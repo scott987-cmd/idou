@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+import { readFileSync } from "node:fs";
+import { calcTotal } from "../src/cart.js";
+
+const items = JSON.parse(readFileSync(process.argv[2], "utf8"));
+for (const item of items) console.log(`${item.name} x${item.quantity}`);
+console.log(`TOTAL ${(calcTotal(items) / 100).toFixed(2)}`);

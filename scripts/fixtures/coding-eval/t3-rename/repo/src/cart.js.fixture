@@ -1,0 +1,8 @@
+/** Sum of price × quantity over the cart, in cents. */
+export function calcTotal(items) {
+  return items.reduce((total, item) => total + item.priceCents * item.quantity, 0);
+}
+
+export function itemCount(items) {
+  return items.reduce((count, item) => count + item.quantity, 0);
+}

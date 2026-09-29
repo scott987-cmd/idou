@@ -1,0 +1,269 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "0.1.0-20260927.241",
+  "createdAt": "2026-09-26T22:28:37.096Z",
+  "keyId": "dc9a5173c44fc9333d3c83893f5cc0d9d79709ad060c2e829842bb6d2792b1dd",
+  "application": {
+    "name": "mydoubao",
+    "version": "0.1.0",
+    "sourceSha256": "b5c0704b9386e7c624315c3972143d2621837b7bab6f7b2d464a470115ae7695",
+    "packageLockSha256": "f9ec43301ac45c17e3867c4404d381e060fb7d7e5159239864494161d14f1373",
+    "adapterContracts": {
+      "codex": "app-server-jsonrpc-v2",
+      "feishu": "feishu-cli-v1"
+    }
+  },
+  "upstreamsSha256": "66e44d21a0efc18ca516c06b2c32868288e38b53cc3b4b2717bbcafa296b694b",
+  "upstreams": {
+    "schemaVersion": 1,
+    "codex": {
+      "distribution": "@openai/codex",
+      "version": "0.157.0",
+      "integrationBoundary": "app-server-jsonrpc-v2",
+      "source": "https://github.com/openai/codex",
+      "inspectedCommit": "00c972ed5d6ff6499317fd41b7f23605b8e6850d",
+      "vendorArtifacts": {
+        "provenance": "Verified 2026-09-26 before pinning 0.157.0, upgraded on its own (lark-cli stayed at 1.0.96). Each of the three platform tarballs (darwin-arm64, linux-arm64, linux-x64) matches the registry sha512 integrity recorded below; `npm audit signatures`, run over all three and the @openai/codex@0.157.0 launcher package, reported verified registry signatures and verified attestations for all four; and each SLSA provenance statement names openai/codex .github/workflows/rust-release.yml at refs/tags/rust-v0.157.0, commit 00c972ed (inspectedCommit, the commit that tag points to), built on GitHub-hosted runners, with that tarball as its subject. The darwin tree installed (into a separate prefix, not the global codex) is file-for-file the signed package, 42 files; the linux trees hold 44 files each. rust-v0.157.0 carries the same LICENSE and NOTICE blobs as rust-v0.155.0 and as third_party/codex. The per-file digests are taken from those verified trees.",
+        "darwin-arm64": {
+          "package": "@openai/codex-darwin-arm64",
+          "target": "aarch64-apple-darwin",
+          "files": {
+            "bin/codex": "ad0be20d04e2ba6146ecdb51d7f8b7b0fe15420a15dc9b0057518d858f1f3714",
+            "bin/codex-code-mode-host": "92672414d06556905c775c8ee8a8840f259055f66708adbf819b57dd613dd388",
+            "codex-package.json": "635aebe966216d8a94a2e6ea6ce6089388ac1d68cfb7e1eb82a73ae86fdefaa7",
+            "codex-path/rg": "87cf97cab3dec2f4219003ff38201a244f8172172a53fd05288c68179c85f805",
+            "codex-resources/voice/NOTICE.md": "40097a1799441051aa0b6645cdc819cceb19be73cdd265eb602aa2b15e0b1f48",
+            "codex-resources/voice/bin/codex-voice-host": "a609601572ef5a02e99bac2a9f9de2a156be425f28b8fb8e523796b9f9a651da",
+            "codex-resources/voice/lib/libffi.8.dylib": "9fcbdd4182cd140a278b10565ae40f0efa44fbdcb6b80557faa41496ca077b06",
+            "codex-resources/voice/lib/libgio-2.0.0.dylib": "c9066d5ddfcb91234004fe68645a37459cd14648659b9b7d5f3c1c592bb61340",
+            "codex-resources/voice/lib/libglib-2.0.0.dylib": "f96656b0fb1354198b807a5b49e97cc7bcc029fe886f8a3f999138809d665db7",
+            "codex-resources/voice/lib/libgmodule-2.0.0.dylib": "75b953985d22bce32190d317edded0991319487026ddd29bacd991c941000bdb",
+            "codex-resources/voice/lib/libgobject-2.0.0.dylib": "0cf327eaae0614ebee73620b417bf982b1c2863b57132919e664f8b590500264",
+            "codex-resources/voice/lib/libgstapp-1.0.0.dylib": "fbac84f4f03bf200430bdfd5413d657ed17f1c9fe7eaae4285fbe131c6b488ea",
+            "codex-resources/voice/lib/libgstaudio-1.0.0.dylib": "d7d9dd9dd0c9c9682f499cf370260a292c1fa756b59041005d7d8294fc030ddf",
+            "codex-resources/voice/lib/libgstbase-1.0.0.dylib": "9e3a3ffbaf21fb1459ecefe93f635ae04cf165934c62e4df9fbe46ca22c678f8",
+            "codex-resources/voice/lib/libgstnet-1.0.0.dylib": "91a40d44f87c6894bd968e2db7a41714f85e67d7fc7644a00b73bce9b4e9ba7c",
+            "codex-resources/voice/lib/libgstpbutils-1.0.0.dylib": "9e4b3a43c35d837c8731ac05fac1c67e80c6077702f949faf69948e604970308",
+            "codex-resources/voice/lib/libgstreamer-1.0.0.dylib": "ea0ab974cf6468c6aaf24d270cf04180e5b27d1793900f2fda26cb051c9d20fd",
+            "codex-resources/voice/lib/libgstrtp-1.0.0.dylib": "cf8c4ac33ea36c542671f763fc113ee6b2e908d7c2b744346602b6b3ee5d19b9",
+            "codex-resources/voice/lib/libgsttag-1.0.0.dylib": "1fd9d9804c6ce51b47e828e79817d5e506763508a39bc4cc4d9d6bbc73c58f6e",
+            "codex-resources/voice/lib/libgstvideo-1.0.0.dylib": "4ada365f141dec9bc01033dff47a0e00b60355743947f4a49f9202bfbbc6299e",
+            "codex-resources/voice/lib/libintl.8.dylib": "b1ad405b7cd85f07c01c1d4e3594062fc80701bb110b876f0b523c8699f41a5d",
+            "codex-resources/voice/lib/libopus.0.dylib": "ce3f940c838a8944b3497720f29624ecc518e5674d79c6e8b83198d0a67c29a6",
+            "codex-resources/voice/lib/libpcre2-8.0.dylib": "83f52a23b7ac25ef3b8d5d07422a3c8469aad7afbc3fca01d731e949981bb59a",
+            "codex-resources/voice/lib/libz.1.dylib": "f8ba03245898bdfb82b48a8fd68d1c1fe7749c443e8acfb2ec2468e25bf23c48",
+            "codex-resources/voice/licenses/LGPL-2.1.txt": "ad2eec519ebd4b5df86ea84dff24ae3bfa2edea846a703b58902dd221ae375db",
+            "codex-resources/voice/licenses/Opus.txt": "01e1167d54a096d123cf6dfbbeb19587278845c6481d2d66d545669846079551",
+            "codex-resources/voice/licenses/PCRE2.md": "197d8a73ffee0d6b09adba2f9c677b5f5aede24edf89258a68e48248d010d811",
+            "codex-resources/voice/licenses/libffi.txt": "17b64dc60f3b6897a60f971e288b973f655c2edcdf08b25f3c3dd5549857881c",
+            "codex-resources/voice/licenses/proxy-libintl.txt": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5",
+            "codex-resources/voice/licenses/sljit.txt": "5f216505c0f6ea3273caec89e766eef93cdeb7bbb0c429f9360116d7c938feeb",
+            "codex-resources/voice/licenses/zlib.txt": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+            "codex-resources/voice/manifest.json": "b5472819e75d7cbb4c26fb4c4f31816774ffe68d713fb5977afbe6c98dd5b597",
+            "codex-resources/voice/plugins/libgstapp.dylib": "dd70823e26305f886737bf68dfc6f92f519a40e21185ec53fac70050be61d939",
+            "codex-resources/voice/plugins/libgstaudioconvert.dylib": "5041462023bed5f2a99cd4ad33a100fcbdeb7180d5ce55451d081aa0e43e6d2e",
+            "codex-resources/voice/plugins/libgstaudioresample.dylib": "3a70dff77e59c1ce62d4f4448649b858e4728a7c273dd81cefbfda3f13b583b2",
+            "codex-resources/voice/plugins/libgstcoreelements.dylib": "80a5f7095012b2e369152f8f146c9058df56e015ab0a3af72b1bc8d2c06bf60f",
+            "codex-resources/voice/plugins/libgstopus.dylib": "442fa3d9ca726b604bd9f29d4314927f1d262d3c4e6f3ea0b90138582de668df",
+            "codex-resources/voice/plugins/libgstrtp.dylib": "3e9dd81f543c8ed24431584be8eae7c816aed217f838f4080579d109a37e45ab",
+            "codex-resources/voice/plugins/libgstrtpmanager.dylib": "698e61784461957daf57267cd66e842bc1f67dae519519785b85e3440325a922",
+            "codex-resources/voice/runtime.json": "5fc40f3a890f4ffa17cccfea72e3483773730c400cf32be195d7b805cdb9693d",
+            "codex-resources/voice/sources.json": "e2f6b124f6277e7c3c4f5c7cc8830c66190f671ad65e972bb2cc9507dbfcb937",
+            "codex-resources/zsh/bin/zsh": "66fd9574dede6815614ef09ce8768f448f276ff3829e009fa5ff16e25423abb7"
+          },
+          "registrySpec": "@openai/codex@0.157.0-darwin-arm64",
+          "integrity": "sha512-mcaLbR+tTizMr7nzxBscNfPpGrdxmsyyDqXnpPPd2419YXorDiLGpF5QmtA29gUUFg9ppjhZjM854R4tXNHzVQ=="
+        },
+        "linux-arm64": {
+          "package": "@openai/codex-linux-arm64",
+          "target": "aarch64-unknown-linux-musl",
+          "files": {
+            "bin/codex": "2e43362b5064a4d40e6a8f9fe00d6438c5447c20f41ed1659cc2e71258efd21f",
+            "bin/codex-code-mode-host": "26b7859408482fe16000f9fd1161c975ccf21f79a2b4aba786e8dfbed2053309",
+            "codex-package.json": "4103109d28850db98d90665f04470dcf3c5378965879891665a5ea63b24121ec",
+            "codex-path/rg": "e36d0eb52e70696bdf1781392722e05a21bb91d3b7b762ef5ec20e5df2ec687b",
+            "codex-resources/bwrap": "c6949b5053988498976467bd9972c5d3695ecaac64a5f2de09af20f579fb7e31",
+            "codex-resources/voice/NOTICE.md": "40097a1799441051aa0b6645cdc819cceb19be73cdd265eb602aa2b15e0b1f48",
+            "codex-resources/voice/bin/codex-voice-host": "343f4994b8c0f853994f8edd153a461dead7796d2a081a01fca006dd40c54774",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstapp.so": "9bf2f2bcdc9babf58876a739888fe77d2ab58e1cac36cb13b1b7461c57259aa0",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstaudioconvert.so": "ccec39d407e12f2cdb59b1657858d6703bada0c3dbd0f725ddf499f2f3ce71d4",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstaudioresample.so": "e69fdef3661349b4e6ff54dfb0d74c26355a0c964c2ce1b50d87d6a0267d0b17",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstcoreelements.so": "8e71cbd092affe90b7070e16820e347778e1fc0e1b4a645d5f6a0f4ed26a6086",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstopus.so": "0352fa9cc2159090a6db8e100debfda5286b81bd6c71b376254dc8188dd33641",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstrtp.so": "e786290962ac3b35f6b37475b3bd62f00c73a1b7a823bc430be6e2256aebc529",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstrtpmanager.so": "978fa25e8bdb5cdbdc2b313e050632cfa8a430d04b73ae10f487e228a82f5418",
+            "codex-resources/voice/lib/libffi.so.8": "51cb79b1866970f577b87dca19bf8e77bb28d3dd3bed27b7ace57780cb86ef49",
+            "codex-resources/voice/lib/libgio-2.0.so.0": "1c6a478eed8df5bedd57284bfcd96a21d086ecb2c339b15e2a498dfa1ed20b66",
+            "codex-resources/voice/lib/libglib-2.0.so.0": "b5f859bd474542f0e25ad891a5c6b3d9d661304bbe2e04dcfdc1792fafa65a95",
+            "codex-resources/voice/lib/libgmodule-2.0.so.0": "a8742a8d9d371fcb005a79a539cb555543f5a09d74d0f904298c91c4cc624143",
+            "codex-resources/voice/lib/libgobject-2.0.so.0": "5a8e223a3784802290a7e184d03ced4222f144a881fc9c989e24e9f42b0a54e6",
+            "codex-resources/voice/lib/libgstallocators-1.0.so.0": "80bfc5a50d08d89fbd60d2ba1ce84e1f8726456d29f9228df2ab80662fed85bf",
+            "codex-resources/voice/lib/libgstapp-1.0.so.0": "7d43fe4d683b6001dedeeeaa6b309069b117fef4b48d3f672d4487b4fc36864c",
+            "codex-resources/voice/lib/libgstaudio-1.0.so.0": "46e516ba77d485ac74a32d17b8ee9966ba12073301c5c8c8ed3189ad046b2bcf",
+            "codex-resources/voice/lib/libgstbase-1.0.so.0": "e4533d1e2abb2f00dbd54217d63460e6a0f86dd3dbb1423237c66144d26fef24",
+            "codex-resources/voice/lib/libgstnet-1.0.so.0": "0296a22c1714e15e1a53a3eda528b79fae4790e9141b0c5fad7dac0c3c94c1f1",
+            "codex-resources/voice/lib/libgstpbutils-1.0.so.0": "6d17b57ae58d83b904e97049b16b29bd4db8c9fb83338ec410a72634d93dfc76",
+            "codex-resources/voice/lib/libgstreamer-1.0.so.0": "e54bb3caea143ae7b7152838cf796fcbda5f4ac6c1da3645bdf45075f8bf0762",
+            "codex-resources/voice/lib/libgstrtp-1.0.so.0": "9908ca113ae6683bf61c0bd326316bd81449547bf8d044b4a8ebbab2b03a501a",
+            "codex-resources/voice/lib/libgsttag-1.0.so.0": "c25e371489bc9c27a7a3d694e112fa1d792ff2a695f54ae75b6d0a8e5563a69b",
+            "codex-resources/voice/lib/libgstvideo-1.0.so.0": "92f7fe95c45c2a4fee32e3950080bcaee85b9923edc8451fbef4f554f9669fa1",
+            "codex-resources/voice/lib/libintl.so.8": "b5c96edabcd6f9a9e444c325b0fd191ad480555cea7cc799970507303d413fa6",
+            "codex-resources/voice/lib/libopus.so.0": "a7bed2c346de089f865a94967c2b3efee39733e3d23d72416b2417837a9b25dd",
+            "codex-resources/voice/lib/libpcre2-8.so.0": "ed12ebb1003748d284f98c4f90f060a80e25f085b0251c8d8ebcc7fa8ba58f35",
+            "codex-resources/voice/lib/libz.so.1": "284a7e1475cccabdda7fb91d9917a95a1abfbe73688033acc7ac27241d97ceca",
+            "codex-resources/voice/licenses/LGPL-2.1.txt": "ad2eec519ebd4b5df86ea84dff24ae3bfa2edea846a703b58902dd221ae375db",
+            "codex-resources/voice/licenses/Opus.txt": "01e1167d54a096d123cf6dfbbeb19587278845c6481d2d66d545669846079551",
+            "codex-resources/voice/licenses/PCRE2.md": "197d8a73ffee0d6b09adba2f9c677b5f5aede24edf89258a68e48248d010d811",
+            "codex-resources/voice/licenses/libffi.txt": "17b64dc60f3b6897a60f971e288b973f655c2edcdf08b25f3c3dd5549857881c",
+            "codex-resources/voice/licenses/proxy-libintl.txt": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5",
+            "codex-resources/voice/licenses/sljit.txt": "5f216505c0f6ea3273caec89e766eef93cdeb7bbb0c429f9360116d7c938feeb",
+            "codex-resources/voice/licenses/zlib.txt": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+            "codex-resources/voice/manifest.json": "2b4e8d935be2dcb3b0fc3ddaf83db8e4b859e4ff68f55706a90265466cc83745",
+            "codex-resources/voice/runtime.json": "f85a6161f1b3502ada69bdd2093e447fced0f05ffc4bcce78a6c7507a2692b15",
+            "codex-resources/voice/sources.json": "e2f6b124f6277e7c3c4f5c7cc8830c66190f671ad65e972bb2cc9507dbfcb937",
+            "codex-resources/zsh/bin/zsh": "7feeacd883e1dc749847936948c378653c80a69ec4a9542f0f126b411882c179"
+          },
+          "registrySpec": "@openai/codex@0.157.0-linux-arm64",
+          "integrity": "sha512-67Y2HL4s+DEKtWr1oFz86iN+wLDRsdm6fuq8rhaxlt8QeIK79aO7Eg82Wfucou4QSisq/SSWYkwa9q7hWi8fLA=="
+        },
+        "linux-x64": {
+          "package": "@openai/codex-linux-x64",
+          "target": "x86_64-unknown-linux-musl",
+          "files": {
+            "bin/codex": "1a822376d4634ac32dddc030e5117c63359f7f8cd4b1b64382c68190287d0258",
+            "bin/codex-code-mode-host": "ae34226adad3fe8acb361a78618e81b5a17638861bb7a689fcccaf8c3ef32aa8",
+            "codex-package.json": "9055377ea0e3f083fb5fbfd01e9802a48e162f5c7ea26c9a8b644f210f68914a",
+            "codex-path/rg": "e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849",
+            "codex-resources/bwrap": "77360cb751ccedc5971391444ac86a8a33c15b04d6b4a6fe45f5d25496e62c4c",
+            "codex-resources/voice/NOTICE.md": "40097a1799441051aa0b6645cdc819cceb19be73cdd265eb602aa2b15e0b1f48",
+            "codex-resources/voice/bin/codex-voice-host": "28794d142cdfa73544688c895ac3c48a40c4b865867d9ac20d5c06314b6863e7",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstapp.so": "1dbc21c674508125803baeaf68159ea1d8147a09eb877cf1ee7055e274ca723a",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstaudioconvert.so": "42c3c67789eadecc293396aa8e874448d1d0e165db9c6357d2b6beafc780a52a",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstaudioresample.so": "4851b7fcc8b8e3635a31e8396368756286b68ebd4e7fcf6f6ae5c230f9e39e91",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstcoreelements.so": "9271b96787367902ee00b8525313d4889d46a108c886e2435c1885867a61ce6b",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstopus.so": "531feb6d1af1c05549386ac5f8091b87e80831534fc97490cab53d10ee7033bc",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstrtp.so": "99c1a0afcdf705e141da8522a6c4f7ceecd431538e36a0d18b24ef394060ecdb",
+            "codex-resources/voice/lib/gstreamer-1.0/libgstrtpmanager.so": "53a9837d06a3ccbe72304db63334d2263a0a0ce6182bed017517414ca610b2e1",
+            "codex-resources/voice/lib/libffi.so.8": "6ef5db59b2e4b1eb63032fa6c8afb1669bc09b073789233c379efda85b1353db",
+            "codex-resources/voice/lib/libgio-2.0.so.0": "b14312e59bc555b8c5a7a37900ca2f1965c646f883cf2ee0f505f84f2cd3ba52",
+            "codex-resources/voice/lib/libglib-2.0.so.0": "5559a9e7d38b67698abbafe1d9fdd13a950a77a427efa72c6272b2b84dd4d555",
+            "codex-resources/voice/lib/libgmodule-2.0.so.0": "2166c87a1b2dc3c109b6c7d1e32e5244d86011608b4d0866a73f9db8c2279636",
+            "codex-resources/voice/lib/libgobject-2.0.so.0": "45178bbe291d639523d475caa58e3b3b1721ead0a038e781bc9b7d8557f2ffc7",
+            "codex-resources/voice/lib/libgstallocators-1.0.so.0": "e19a35b3713d327681a183f0e2344e31028c14f6f25247248fcf87048ff5ffeb",
+            "codex-resources/voice/lib/libgstapp-1.0.so.0": "2e2c28261b5c679614167fb710347c68322b9e2bc3df4b173d52983024cf4c9b",
+            "codex-resources/voice/lib/libgstaudio-1.0.so.0": "32d23c7a0523cab01f44df5ec7ce8866988f233ef16e7a4229e9e010a54e426a",
+            "codex-resources/voice/lib/libgstbase-1.0.so.0": "e282eca1fa7ec04e8850cfd0ccf891a0c66d9c141bb627c2642ba8940d3bad68",
+            "codex-resources/voice/lib/libgstnet-1.0.so.0": "45e96ad706a59e9eee82696858393fbf59ab14dca426bed16570ffd4b82c5eb0",
+            "codex-resources/voice/lib/libgstpbutils-1.0.so.0": "ef508acb2da195cae481e3608a7c666cc4b68bb20b1a8c15585b6b51d9333d83",
+            "codex-resources/voice/lib/libgstreamer-1.0.so.0": "a9cf17b61cfa0c2558845a88c27ba97f535f5ae4649dc26b821fc07c03271edc",
+            "codex-resources/voice/lib/libgstrtp-1.0.so.0": "d98880a029a8ce768797a7088419c53e51eeedd9c44c6c113e582994a1d9f7bc",
+            "codex-resources/voice/lib/libgsttag-1.0.so.0": "52898e87c3a70c4f647be2315690faabb6bc68b263df9572c9fae2956e224b7b",
+            "codex-resources/voice/lib/libgstvideo-1.0.so.0": "7ce2e4370f7acfd0ecdae2fdc969a3f4f48f02cbb1cadfe13fff8b42863aa4b4",
+            "codex-resources/voice/lib/libintl.so.8": "f50f3ab34be7b3392f2db82bd67d50e133b35fa41d352dc3b3a97b70b0ffd960",
+            "codex-resources/voice/lib/libopus.so.0": "c84c5774ba4f2bcaa5d0edc8c85357838500bea21208893522531ed01031df18",
+            "codex-resources/voice/lib/libpcre2-8.so.0": "e39519b242f40686734ed8d0218f68cac24f0e956ec64c8c1b49b9da5cc9788b",
+            "codex-resources/voice/lib/libz.so.1": "6c5d765f42d9368cc4bdbd11f725c1bcf6b14b78322033d3c94f787fc6261f5e",
+            "codex-resources/voice/licenses/LGPL-2.1.txt": "ad2eec519ebd4b5df86ea84dff24ae3bfa2edea846a703b58902dd221ae375db",
+            "codex-resources/voice/licenses/Opus.txt": "01e1167d54a096d123cf6dfbbeb19587278845c6481d2d66d545669846079551",
+            "codex-resources/voice/licenses/PCRE2.md": "197d8a73ffee0d6b09adba2f9c677b5f5aede24edf89258a68e48248d010d811",
+            "codex-resources/voice/licenses/libffi.txt": "17b64dc60f3b6897a60f971e288b973f655c2edcdf08b25f3c3dd5549857881c",
+            "codex-resources/voice/licenses/proxy-libintl.txt": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5",
+            "codex-resources/voice/licenses/sljit.txt": "5f216505c0f6ea3273caec89e766eef93cdeb7bbb0c429f9360116d7c938feeb",
+            "codex-resources/voice/licenses/zlib.txt": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+            "codex-resources/voice/manifest.json": "33842ee2e7ffb66d04c1880f9bcc897d8438323fbb9b38d75ab1797beb9cab49",
+            "codex-resources/voice/runtime.json": "f9faaccf653f1dd730bc1c0f3c57ec7dc1822f6240e2380b6ab264b80b9ba209",
+            "codex-resources/voice/sources.json": "e2f6b124f6277e7c3c4f5c7cc8830c66190f671ad65e972bb2cc9507dbfcb937",
+            "codex-resources/zsh/bin/zsh": "67faaaa89242c4a332e16e508a1977cffc24bf7fca31d4411cdfd101f3831ef3"
+          },
+          "registrySpec": "@openai/codex@0.157.0-linux-x64",
+          "integrity": "sha512-3TEPslRaNmlgJST5xMJJ9ZWXW1hr4RlVEpF0tO4NULNGj4b5naWlHa6PlSRiDpnMz322aJkz0uvyyKqc37rLJQ=="
+        }
+      }
+    },
+    "sandbox": {
+      "repository": "mydoubao/sandbox",
+      "baseImage": "node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5",
+      "baseImageNote": "The multi-platform index digest Docker recorded when node:22-bookworm-slim was pulled for the image that ran the live scheduled tasks. The tag moves; this does not."
+    },
+    "feishu": {
+      "provider": "saas-cli",
+      "binary": "lark-cli",
+      "version": "1.0.96",
+      "inspectedCommit": "cb5a3d704379552dc61e37898e5f74798783190d",
+      "buildTags": [
+        "authsidecar"
+      ],
+      "buildDate": "2026-09-16",
+      "goVersion": "go1.24.3",
+      "integrationBoundary": "feishu-cli-v1",
+      "bundledArtifacts": {
+        "darwin-arm64": {
+          "sha256": "bae5728e18a4e2e2708a1537b8a4acd48de914cb3b436cdf03dea4108436d945"
+        },
+        "linux-arm64": {
+          "sha256": "8d84aa41267b0b6b76e0ac94299f159ccd56e52c69a8fdbaf3e12bce3147371c",
+          "purpose": "scheduled-task sandbox image; a Mach-O build cannot run in a Linux container at any architecture",
+          "builtFromSource": {
+            "reason": "The published releases are built without the authsidecar tag (.goreleaser.yml sets no build tags), and that binary refuses to run at all when LARKSUITE_CLI_AUTH_PROXY is set: 'the sidecar credential-isolation feature is compiled out'. Since the sandbox reaches Feishu only through that sidecar, the published artifact cannot be used here.",
+            "repository": "https://github.com/larksuite/cli",
+            "commit": "cb5a3d704379552dc61e37898e5f74798783190d",
+            "command": "CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildvcs=false -trimpath -tags authsidecar -ldflags '-s -w -X github.com/larksuite/cli/internal/build.Version=1.0.96 -X github.com/larksuite/cli/internal/build.Date=2026-09-16' -o lark-cli .",
+            "goVersion": "go1.24.3",
+            "registryCatalog": "committed at inspectedCommit and embedded in the binary",
+            "registryCatalogManifestSha256": "defd2d26ee092b6c02981b7204e3ce023db4949e8702e90de832b5a34fcd0911",
+            "publishedArchiveForReference": {
+              "url": "https://github.com/larksuite/cli/releases/download/v1.0.96/lark-cli-1.0.96-linux-arm64.tar.gz",
+              "unusable": "no authsidecar"
+            },
+            "reproducible": "Verified 2026-09-18: a second build of this commit with the same Go version, flags and an empty GOCACHE produced identical bytes (sha256 above).",
+            "upstreamSidecarSuites": "Pass with -tags authsidecar at this commit (2026-09-18): extension/credential/sidecar, extension/transport/sidecar, tests/sidecar_e2e, sidecar."
+          }
+        },
+        "linux-x64": {
+          "sha256": "24640ca825f778eff6331bf7b5b9e944137d2ea01c9ca9a7c02b5e68f4642fcc",
+          "purpose": "scheduled-task sandbox image; a Mach-O build cannot run in a Linux container at any architecture",
+          "builtFromSource": {
+            "reason": "The published releases are built without the authsidecar tag (.goreleaser.yml sets no build tags), and that binary refuses to run at all when LARKSUITE_CLI_AUTH_PROXY is set: 'the sidecar credential-isolation feature is compiled out'. Since the sandbox reaches Feishu only through that sidecar, the published artifact cannot be used here.",
+            "repository": "https://github.com/larksuite/cli",
+            "commit": "cb5a3d704379552dc61e37898e5f74798783190d",
+            "command": "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -tags authsidecar -ldflags '-s -w -X github.com/larksuite/cli/internal/build.Version=1.0.96 -X github.com/larksuite/cli/internal/build.Date=2026-09-16' -o lark-cli .",
+            "goVersion": "go1.24.3",
+            "registryCatalog": "committed at inspectedCommit and embedded in the binary",
+            "registryCatalogManifestSha256": "defd2d26ee092b6c02981b7204e3ce023db4949e8702e90de832b5a34fcd0911",
+            "publishedArchiveForReference": {
+              "url": "https://github.com/larksuite/cli/releases/download/v1.0.96/lark-cli-1.0.96-linux-amd64.tar.gz",
+              "unusable": "no authsidecar"
+            },
+            "reproducible": "Verified 2026-09-22: a second build of this commit with the same Go version, flags and an empty GOCACHE produced identical bytes (sha256 above)."
+          }
+        }
+      },
+      "registryCatalog": "committed at inspectedCommit and embedded in the binary",
+      "registryCatalogManifestSha256": "defd2d26ee092b6c02981b7204e3ce023db4949e8702e90de832b5a34fcd0911"
+    }
+  },
+  "licenses": {
+    "codex": {
+      "spdx": "Apache-2.0",
+      "source": "https://github.com/openai/codex/blob/rust-v0.157.0",
+      "licenseFile": "third_party/codex/LICENSE",
+      "licenseSha256": "d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc",
+      "noticeFile": "third_party/codex/NOTICE",
+      "noticeSha256": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915"
+    }
+  },
+  "sandboxImages": {
+    "linux-arm64": {
+      "reference": "mydoubao/sandbox@sha256:8d2c26a217bbdc53f360f2851be59d4751c5a42180d8dfa0e659c766b3bbc646",
+      "id": "sha256:8d2c26a217bbdc53f360f2851be59d4751c5a42180d8dfa0e659c766b3bbc646",
+      "baseImage": "node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5",
+      "classicId": "sha256:8355391c847c1a93942a05247062f60a4182c6d056cfb030518382e12f18bf03"
+    },
+    "linux-x64": {
+      "reference": "mydoubao/sandbox@sha256:8ff60a7358ab019eef7e818a417823dcfa631247ef1ca2a97a9e1a837ae0f21e",
+      "id": "sha256:8ff60a7358ab019eef7e818a417823dcfa631247ef1ca2a97a9e1a837ae0f21e",
+      "baseImage": "node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5",
+      "classicId": "sha256:5337292df4c045f838046138114b5f27aaaaae0e51413e29981cbb21c6426752"
+    }
+  }
+}

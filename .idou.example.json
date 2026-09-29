@@ -1,0 +1,35 @@
+{
+  "codex": {},
+  "feishu": {
+    "provider": "saas-cli",
+    "profile": null,
+    "wikiOrigin": null
+  },
+  "controlPlane": {
+    "baseUrl": "https://agent.example.internal",
+    "authProvider": "feishu",
+    "sessionFile": null
+  },
+  "knowledge": {
+    "dataDir": ".idou/knowledge",
+    "driveFolderToken": null,
+    "maxBytes": 10737418240,
+    "reserveBytes": 1073741824
+  },
+  "media": {
+    "driveFolderToken": null,
+    "allowedAddressRanges": []
+  },
+  "skillCenter": {
+    "publicKeyFile": null
+  },
+  "browser": {
+    "allowedLocalPorts": [
+      3000,
+      4173,
+      5173,
+      8000,
+      8080
+    ]
+  }
+}

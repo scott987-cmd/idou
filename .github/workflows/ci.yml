@@ -1,0 +1,97 @@
+# npm run check on macOS (Apple silicon, where the desktop ships) and Linux
+# (x86_64, where the server and its scheduled-task sandbox run), with the same
+# pinned upstreams a release is built from: the bundled Feishu CLI is compiled
+# from its reviewed commit and has to reproduce the digest in
+# upstreams.lock.json, and Codex is the version the lock names.
+# No test here reaches a real Feishu tenant or a paid model.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: npm run check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      # The Feishu CLI must be built by exactly the Go the lock names; never let
+      # the go command fetch another toolchain.
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Read the pinned upstreams
+        id: pins
+        run: |
+          node -e '
+            const lock = require("./upstreams.lock.json");
+            require("node:fs").appendFileSync(process.env.GITHUB_OUTPUT, [
+              `go=${lock.feishu.goVersion.replace(/^go/, "")}`,
+              `lark_commit=${lock.feishu.inspectedCommit}`,
+              `codex=${lock.codex.version}`,
+            ].join("\n") + "\n");
+          '
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ steps.pins.outputs.go }}
+          cache: false
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the bundled Feishu CLI from its reviewed commit
+        env:
+          LARK_COMMIT: ${{ steps.pins.outputs.lark_commit }}
+        run: |
+          git clone --quiet --filter=blob:none https://github.com/larksuite/cli "$RUNNER_TEMP/larksuite-cli"
+          git -C "$RUNNER_TEMP/larksuite-cli" checkout --quiet "$LARK_COMMIT"
+          npm run bundle:feishu -- "$RUNNER_TEMP/larksuite-cli"
+
+      - name: Install the pinned Codex
+        env:
+          CODEX_VERSION: ${{ steps.pins.outputs.codex }}
+        run: |
+          npm install --global --no-audit --no-fund "@openai/codex@$CODEX_VERSION"
+          codex --version
+
+      - name: PostgreSQL for the shared-database tests (macOS)
+        if: runner.os == 'macOS'
+        run: brew install postgresql@16
+
+      - name: Let Electron and Codex use their Linux sandboxes
+        if: runner.os == 'Linux'
+        run: |
+          # Ubuntu 24.04 keeps unprivileged user namespaces from unconfined
+          # programs, and both Chromium's sandbox and Codex's use them.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          command -v xvfb-run || { sudo apt-get update -q && sudo apt-get install -yq xvfb; }
+
+      - name: npm run check
+        if: runner.os == 'macOS'
+        run: npm run check
+
+      - name: npm run check (on a virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum npm run check

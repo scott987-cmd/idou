@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>小游戏</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<main class="wrap">
+  <header class="bar">
+    <h1 id="title">贪吃蛇</h1>
+    <div class="score">
+      <p><span class="label">得分</span><b id="score">0</b></p>
+      <p><span class="label">最高</span><b id="best">0</b></p>
+    </div>
+  </header>
+
+  <div class="stage">
+    <canvas id="board" width="480" height="480" aria-label="游戏画面" role="img"></canvas>
+    <div class="curtain" id="curtain">
+      <p id="message">按空格或点「开始」</p>
+      <button id="start" type="button" class="primary">开始</button>
+    </div>
+  </div>
+
+  <div class="pad" aria-label="方向键">
+    <button type="button" data-dir="up" aria-label="上">↑</button>
+    <button type="button" data-dir="left" aria-label="左">←</button>
+    <button type="button" data-dir="down" aria-label="下">↓</button>
+    <button type="button" data-dir="right" aria-label="右">→</button>
+  </div>
+
+  <p class="hint">方向键或 WASD 控制，空格暂停。手机上用下面的方向键。</p>
+  <footer class="foot">这是个骨架：<code>game.js</code> 里就是全部逻辑，把它换成你自己的游戏就行。</footer>
+</main>
+<script src="game.js"></script>
+</body>
+</html>

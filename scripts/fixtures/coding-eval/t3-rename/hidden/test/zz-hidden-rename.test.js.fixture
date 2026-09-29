@@ -1,0 +1,42 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import os from "node:os";
+import path from "node:path";
+import * as cart from "../src/cart.js";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+// Spelled in two pieces so that this file is not itself a mention.
+const oldName = ["calc", "Total"].join("");
+
+test("hidden: the new name is exported and computes the same total", () => {
+  assert.equal(typeof cart.computeOrderTotal, "function");
+  assert.equal(cart.computeOrderTotal([{ priceCents: 250, quantity: 4 }]), 1000);
+});
+
+test("hidden: the old name is no longer exported", () => {
+  assert.equal(cart[oldName], undefined);
+});
+
+test("hidden: the receipt still prints the total", () => {
+  const file = path.join(mkdtempSync(path.join(os.tmpdir(), "receipt-")), "items.json");
+  writeFileSync(file, JSON.stringify([{ name: "pen", priceCents: 150, quantity: 2 }, { name: "book", priceCents: 1200, quantity: 1 }]));
+  const output = execFileSync(process.execPath, [path.join(root, "bin", "receipt.js"), file], { encoding: "utf8" }).trim().split("\n");
+  assert.equal(output.at(-1), "TOTAL 15.00");
+});
+
+test("hidden: no source, test or document mentions the old name", () => {
+  const offenders = [];
+  const visit = directory => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name === ".git" || entry.name === "node_modules") continue;
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(full);
+      else if (readFileSync(full, "utf8").includes(oldName)) offenders.push(path.relative(root, full));
+    }
+  };
+  visit(root);
+  assert.deepEqual(offenders, []);
+});

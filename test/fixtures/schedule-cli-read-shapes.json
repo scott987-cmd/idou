@@ -1,0 +1,459 @@
+{
+  "provenance": {
+    "purpose": "K1a：定时任务可用的飞书读取命令，内置 lark-cli 实际发出的 OpenAPI 请求序列",
+    "recordedAt": "2026-09-18T13:07:54.085Z",
+    "cliVersion": "1.0.96",
+    "binarySha256": "bae5728e18a4e2e2708a1537b8a4acd48de914cb3b436cdf03dea4108436d945",
+    "method": "node scripts/record-cli-read-shapes.js（loopback 假 sidecar 录制；无真实飞书调用、无凭据）",
+    "sidecarEnvironment": "与 bin/sandbox/run.js 相同（LARKSUITE_CLI_AUTH_PROXY 等，见 cli-sidecar.js baseEnvironment）",
+    "resources": {
+      "origin": "https://exampletenant.feishu.cn",
+      "docx": "njuc0MhsdBNLy3Kx7zGzgTDHA60",
+      "sheet": "hp86Fs23V4sf0zG0R8ozi2qLABy",
+      "sheetSub": "20RQ2y",
+      "base": "pcSmy3eVqx8ktCFRKt4zxEQ7AVy",
+      "baseTable": "tbl3AMwwOsi0Z7SH",
+      "wikiDoc": "wy5iJauAY5jVJu7VDoLzjTYnAas",
+      "wikiSheet": "mxZCJEbv55HIYn7auDwztUjUAS2",
+      "wikiBase": "ptMCJHTRi5pKJD7BhATzzhjgASS",
+      "chat": "oc_0123456789abcdef0123456789abcdef",
+      "note": "虚构的资源：录制只经本机回环，录下的是 CLI 为每种链接构造的请求"
+    }
+  },
+  "cases": [
+    {
+      "name": "docs +fetch（docx 直链）",
+      "command": "lark-cli docs +fetch --doc https://exampletenant.feishu.cn/docx/njuc0MhsdBNLy3Kx7zGzgTDHA60 --as user --doc-format xml --detail simple --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "POST",
+          "path": "/open-apis/docs_ai/v1/documents/njuc0MhsdBNLy3Kx7zGzgTDHA60/fetch",
+          "query": {},
+          "body": {
+            "export_option": {
+              "export_block_id": false,
+              "export_cite_extra_data": false,
+              "export_style_attrs": false
+            },
+            "extra_param": "{\"enable_user_cite_reference_map\":true,\"include_comments\":true,\"return_html5_block_data\":true}",
+            "format": "xml"
+          }
+        }
+      ]
+    },
+    {
+      "name": "docs +fetch（Wiki 文档节点链接）",
+      "command": "lark-cli docs +fetch --doc https://exampletenant.feishu.cn/wiki/wy5iJauAY5jVJu7VDoLzjTYnAas --as user --doc-format xml --detail simple --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "POST",
+          "path": "/open-apis/docs_ai/v1/documents/wy5iJauAY5jVJu7VDoLzjTYnAas/fetch",
+          "query": {},
+          "body": {
+            "export_option": {
+              "export_block_id": false,
+              "export_cite_extra_data": false,
+              "export_style_attrs": false
+            },
+            "extra_param": "{\"enable_user_cite_reference_map\":true,\"include_comments\":true,\"return_html5_block_data\":true}",
+            "format": "xml"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sheets +workbook-info（表格直链）",
+      "command": "lark-cli sheets +workbook-info --url https://exampletenant.feishu.cn/sheets/hp86Fs23V4sf0zG0R8ozi2qLABy --as user --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "POST",
+          "path": "/open-apis/sheet_ai/v2/spreadsheets/hp86Fs23V4sf0zG0R8ozi2qLABy/tools/invoke_read",
+          "query": {},
+          "body": {
+            "input": "{\"excel_id\":\"hp86Fs23V4sf0zG0R8ozi2qLABy\"}",
+            "tool_name": "get_workbook_structure"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sheets +workbook-info（Wiki 表格节点链接）",
+      "command": "lark-cli sheets +workbook-info --url https://exampletenant.feishu.cn/wiki/mxZCJEbv55HIYn7auDwztUjUAS2 --as user --format json",
+      "exitCode": 3,
+      "cliOk": null,
+      "cliError": "{\n  \"ok\": false,\n  \"identity\": \"user\",\n  \"error\": {\n    \"type\": \"authorization\",\n    \"subtype\": \"app_scope_not_applied\",\n    \"code\": 99991672,\n    \"message\": \"access denied: app cli_119f64c614af8232 has not applied for the required scope(s)\",\n    \"hint\": \"the app developer must apply for the require",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/open-apis/wiki/v2/spaces/node_by_token",
+          "query": {
+            "token": "mxZCJEbv55HIYn7auDwztUjUAS2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sheets +cells-get（直链，带 --sheet-id）",
+      "command": "lark-cli sheets +cells-get --url https://exampletenant.feishu.cn/sheets/hp86Fs23V4sf0zG0R8ozi2qLABy --sheet-id 20RQ2y --range A1:C10 --as user --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "POST",
+          "path": "/open-apis/sheet_ai/v2/spreadsheets/hp86Fs23V4sf0zG0R8ozi2qLABy/tools/invoke_read",
+          "query": {},
+          "body": {
+            "input": "{\"cell_limit\":1000000000,\"excel_id\":\"hp86Fs23V4sf0zG0R8ozi2qLABy\",\"max_chars\":500000,\"ranges\":[\"A1:C10\"],\"sheet_id\":\"20RQ2y\"}",
+            "tool_name": "get_cell_ranges"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sheets +cells-get（直链，不给工作表定位）",
+      "command": "lark-cli sheets +cells-get --url https://exampletenant.feishu.cn/sheets/hp86Fs23V4sf0zG0R8ozi2qLABy --range A1:C10 --as user --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "POST",
+          "path": "/open-apis/sheet_ai/v2/spreadsheets/hp86Fs23V4sf0zG0R8ozi2qLABy/tools/invoke_read",
+          "query": {},
+          "body": {
+            "input": "{\"excel_id\":\"hp86Fs23V4sf0zG0R8ozi2qLABy\"}",
+            "tool_name": "get_workbook_structure"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/open-apis/sheet_ai/v2/spreadsheets/hp86Fs23V4sf0zG0R8ozi2qLABy/tools/invoke_read",
+          "query": {},
+          "body": {
+            "input": "{\"cell_limit\":1000000000,\"excel_id\":\"hp86Fs23V4sf0zG0R8ozi2qLABy\",\"max_chars\":500000,\"ranges\":[\"A1:C10\"],\"sheet_name\":\"Sheet1\"}",
+            "tool_name": "get_cell_ranges"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sheets +cells-get（Wiki 节点链接，带 --sheet-id）",
+      "command": "lark-cli sheets +cells-get --url https://exampletenant.feishu.cn/wiki/mxZCJEbv55HIYn7auDwztUjUAS2 --sheet-id 20RQ2y --range A1:C10 --as user --format json",
+      "exitCode": 3,
+      "cliOk": null,
+      "cliError": "{\n  \"ok\": false,\n  \"identity\": \"user\",\n  \"error\": {\n    \"type\": \"authorization\",\n    \"subtype\": \"app_scope_not_applied\",\n    \"code\": 99991672,\n    \"message\": \"access denied: app cli_119f64c614af8232 has not applied for the required scope(s)\",\n    \"hint\": \"the app developer must apply for the require",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/open-apis/wiki/v2/spaces/node_by_token",
+          "query": {
+            "token": "mxZCJEbv55HIYn7auDwztUjUAS2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wiki +node-get（Wiki 文档节点链接）",
+      "command": "lark-cli wiki +node-get --node-token https://exampletenant.feishu.cn/wiki/wy5iJauAY5jVJu7VDoLzjTYnAas --as user --format json",
+      "exitCode": 3,
+      "cliOk": null,
+      "cliError": "{\n  \"ok\": false,\n  \"identity\": \"user\",\n  \"error\": {\n    \"type\": \"authorization\",\n    \"subtype\": \"app_scope_not_applied\",\n    \"code\": 99991672,\n    \"message\": \"access denied: app cli_119f64c614af8232 has not applied for the required scope(s)\",\n    \"hint\": \"the app developer must apply for the require",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/open-apis/wiki/v2/spaces/node_by_token",
+          "query": {
+            "token": "wy5iJauAY5jVJu7VDoLzjTYnAas"
+          }
+        }
+      ]
+    },
+    {
+      "name": "base +url-resolve（Wiki 多维表格节点链接）",
+      "command": "lark-cli base +url-resolve --url https://exampletenant.feishu.cn/wiki/ptMCJHTRi5pKJD7BhATzzhjgASS --as user --format json",
+      "exitCode": 3,
+      "cliOk": null,
+      "cliError": "{\n  \"ok\": false,\n  \"identity\": \"user\",\n  \"error\": {\n    \"type\": \"authorization\",\n    \"subtype\": \"app_scope_not_applied\",\n    \"code\": 99991672,\n    \"message\": \"access denied: app cli_119f64c614af8232 has not applied for the required scope(s)\",\n    \"hint\": \"the app developer must apply for the require",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/open-apis/wiki/v2/spaces/node_by_token",
+          "query": {
+            "token": "ptMCJHTRi5pKJD7BhATzzhjgASS"
+          }
+        }
+      ]
+    },
+    {
+      "name": "base +url-resolve（多维表格直链）",
+      "command": "lark-cli base +url-resolve --url https://exampletenant.feishu.cn/base/pcSmy3eVqx8ktCFRKt4zxEQ7AVy --as user --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        }
+      ]
+    },
+    {
+      "name": "base +base-get",
+      "command": "lark-cli base +base-get --base-token pcSmy3eVqx8ktCFRKt4zxEQ7AVy --as user --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/open-apis/base/v3/bases/pcSmy3eVqx8ktCFRKt4zxEQ7AVy",
+          "query": {}
+        }
+      ]
+    },
+    {
+      "name": "base +table-list",
+      "command": "lark-cli base +table-list --base-token pcSmy3eVqx8ktCFRKt4zxEQ7AVy --as user --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/open-apis/base/v3/bases/pcSmy3eVqx8ktCFRKt4zxEQ7AVy/tables",
+          "query": {
+            "limit": "300",
+            "offset": "0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "base +field-list",
+      "command": "lark-cli base +field-list --base-token pcSmy3eVqx8ktCFRKt4zxEQ7AVy --table-id tbl3AMwwOsi0Z7SH --as user --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/open-apis/base/v3/bases/pcSmy3eVqx8ktCFRKt4zxEQ7AVy/tables/tbl3AMwwOsi0Z7SH/fields",
+          "query": {
+            "limit": "300",
+            "offset": "0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "base +record-list",
+      "command": "lark-cli base +record-list --base-token pcSmy3eVqx8ktCFRKt4zxEQ7AVy --table-id tbl3AMwwOsi0Z7SH --as user --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/open-apis/base/v3/bases/pcSmy3eVqx8ktCFRKt4zxEQ7AVy/tables/tbl3AMwwOsi0Z7SH/records",
+          "query": {
+            "limit": "100",
+            "offset": "0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "base +record-get",
+      "command": "lark-cli base +record-get --base-token pcSmy3eVqx8ktCFRKt4zxEQ7AVy --table-id tbl3AMwwOsi0Z7SH --record-id recFake000001 --as user --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "POST",
+          "path": "/open-apis/base/v3/bases/pcSmy3eVqx8ktCFRKt4zxEQ7AVy/tables/tbl3AMwwOsi0Z7SH/records/batch_get",
+          "query": {},
+          "body": {
+            "record_id_list": [
+              "recFake000001"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "base +record-search",
+      "command": "lark-cli base +record-search --base-token pcSmy3eVqx8ktCFRKt4zxEQ7AVy --table-id tbl3AMwwOsi0Z7SH --keyword 测试 --search-field 名称 --as user --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "POST",
+          "path": "/open-apis/base/v3/bases/pcSmy3eVqx8ktCFRKt4zxEQ7AVy/tables/tbl3AMwwOsi0Z7SH/records/search",
+          "query": {},
+          "body": {
+            "keyword": "测试",
+            "limit": 10,
+            "offset": 0,
+            "search_fields": [
+              "名称"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "im +chat-messages-list（默认）",
+      "command": "lark-cli im +chat-messages-list --chat-id oc_0123456789abcdef0123456789abcdef --as user --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/open-apis/im/v1/messages",
+          "query": {
+            "card_msg_content_type": "raw_card_content",
+            "container_id": "oc_0123456789abcdef0123456789abcdef",
+            "container_id_type": "chat",
+            "only_thread_root_messages": "true",
+            "page_size": "50",
+            "sort_type": "ByCreateTimeDesc",
+            "with_sender_name": "true"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/open-apis/im/v1/messages/reactions/batch_query",
+          "query": {},
+          "body": {
+            "queries": [
+              {
+                "message_id": "om_recorder00000000000000000001"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "im +chat-messages-list --no-reactions",
+      "command": "lark-cli im +chat-messages-list --chat-id oc_0123456789abcdef0123456789abcdef --no-reactions --as user --format json",
+      "exitCode": 0,
+      "cliOk": true,
+      "cliError": null,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/open-apis/authen/v1/user_info",
+          "query": {}
+        },
+        {
+          "method": "GET",
+          "path": "/open-apis/im/v1/messages",
+          "query": {
+            "card_msg_content_type": "raw_card_content",
+            "container_id": "oc_0123456789abcdef0123456789abcdef",
+            "container_id_type": "chat",
+            "only_thread_root_messages": "true",
+            "page_size": "50",
+            "sort_type": "ByCreateTimeDesc",
+            "with_sender_name": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

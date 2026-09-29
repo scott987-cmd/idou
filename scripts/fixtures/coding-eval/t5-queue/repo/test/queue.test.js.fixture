@@ -1,0 +1,19 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { processAll } from "../src/queue.js";
+
+const delay = (ms, value) => new Promise(resolve => setTimeout(resolve, ms, value));
+
+test("results come back in task order", async () => {
+  assert.deepEqual(await processAll([30, 10, 20], ms => delay(ms, ms * 2)), [60, 20, 40]);
+});
+
+test("processing stops at the first failure", async () => {
+  const started = [];
+  await assert.rejects(processAll([1, 2, 3], async task => {
+    started.push(task);
+    if (task === 2) throw new Error("boom");
+    return task;
+  }), /boom/);
+  assert.deepEqual(started, [1, 2]);
+});

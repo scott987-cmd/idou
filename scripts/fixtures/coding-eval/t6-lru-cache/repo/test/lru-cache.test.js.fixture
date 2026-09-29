@@ -1,0 +1,38 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { LruCache } from "../src/lru-cache.js";
+
+const clock = () => {
+  let time = 0;
+  const now = () => time;
+  now.advance = ms => { time += ms; };
+  return now;
+};
+
+test("stores and returns values", () => {
+  const cache = new LruCache({ maxEntries: 2 });
+  cache.set("a", 1);
+  assert.equal(cache.get("a"), 1);
+  assert.equal(cache.get("b"), undefined);
+});
+
+test("evicts the least recently used entry", () => {
+  const cache = new LruCache({ maxEntries: 2 });
+  cache.set("a", 1);
+  cache.set("b", 2);
+  cache.get("a");
+  cache.set("c", 3);
+  assert.equal(cache.get("b"), undefined);
+  assert.equal(cache.get("a"), 1);
+  assert.equal(cache.get("c"), 3);
+});
+
+test("entries expire after ttlMs", () => {
+  const now = clock();
+  const cache = new LruCache({ maxEntries: 5, ttlMs: 100, now });
+  cache.set("a", 1);
+  now.advance(99);
+  assert.equal(cache.get("a"), 1);
+  now.advance(1);
+  assert.equal(cache.get("a"), undefined);
+});

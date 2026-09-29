@@ -1,0 +1,40 @@
+node_modules/
+.mydoubao.json
+.mydoubao/
+coverage/
+dist/
+resources/lark-cli/
+resources/codex/
+# An upgrade's staging and rollback folders hold binaries; they are never committed.
+resources/.upgrade-previous/
+resources/.upgrade-rejected-*
+resources/.upgrade-accepted-*
+*.log
+
+# Deployment files hold the Feishu application secret.
+*.deployment.env
+mydoubao.env
+.mydoubao.env
+
+# Personal Claude Code permission rules.
+.claude/settings.local.json
+.eval-tmp/
+
+# Written into a packaged build only (scripts/package-mac.js); the desktop reads it at start.
+/deployment.json
+
+# Python bytecode
+__pycache__/
+*.pyc
+.idou.json
+idou.env
+.idou.env
+.idou/
+
+# What acceptance runs write (docs/evidence/README.md): screenshots and records
+# from a real tenant. Only the README is part of the repository.
+/docs/evidence/*
+!/docs/evidence/README.md
+
+# macOS Finder metadata.
+.DS_Store

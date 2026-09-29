@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+import { summarize } from "../src/stats.js";
+import { formatText } from "../src/format.js";
+
+const numbers = process.argv.slice(2).map(Number);
+if (!numbers.length || numbers.some(Number.isNaN)) {
+  console.error("usage: stats <number>...");
+  process.exit(2);
+}
+console.log(formatText(summarize(numbers)));

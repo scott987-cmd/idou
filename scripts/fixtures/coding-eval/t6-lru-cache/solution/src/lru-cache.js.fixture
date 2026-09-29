@@ -1,0 +1,62 @@
+/**
+ * A least-recently-used cache whose entries can expire. (Specification as in the task's own comment.)
+ * A Map keeps insertion order, so re-inserting an entry makes it the most recently used.
+ */
+export class LruCache {
+  #entries = new Map();
+  #maxEntries;
+  #ttlMs;
+  #now;
+
+  constructor({ maxEntries, ttlMs = Infinity, now = Date.now } = {}) {
+    if (!Number.isInteger(maxEntries) || maxEntries < 1) throw new RangeError("maxEntries must be an integer of at least 1");
+    this.#maxEntries = maxEntries;
+    this.#ttlMs = ttlMs;
+    this.#now = now;
+  }
+
+  #expired(entry) {
+    return this.#now() - entry.storedAt >= this.#ttlMs;
+  }
+
+  get(key) {
+    const entry = this.#entries.get(key);
+    if (!entry) return undefined;
+    this.#entries.delete(key);
+    if (this.#expired(entry)) return undefined;
+    this.#entries.set(key, entry);
+    return entry.value;
+  }
+
+  set(key, value) {
+    this.#entries.delete(key);
+    this.#entries.set(key, { value, storedAt: this.#now() });
+    while (this.#entries.size > this.#maxEntries) this.#entries.delete(this.#entries.keys().next().value);
+    return this;
+  }
+
+  has(key) {
+    const entry = this.#entries.get(key);
+    return Boolean(entry) && !this.#expired(entry);
+  }
+
+  delete(key) {
+    return this.#entries.delete(key);
+  }
+
+  get size() {
+    return this.#entries.size;
+  }
+
+  prune() {
+    let removed = 0;
+    for (const [key, entry] of this.#entries) {
+      if (this.#expired(entry)) { this.#entries.delete(key); removed += 1; }
+    }
+    return removed;
+  }
+
+  keys() {
+    return [...this.#entries].filter(([, entry]) => !this.#expired(entry)).map(([key]) => key);
+  }
+}

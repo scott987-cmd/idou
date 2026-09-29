@@ -1,0 +1,23 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { calcTotal, itemCount } from "../src/cart.js";
+import { checkout } from "../src/checkout.js";
+import { dailyReport } from "../src/report.js";
+
+const cart = [{ name: "pen", priceCents: 150, quantity: 2 }, { name: "book", priceCents: 1200, quantity: 1 }];
+
+test("total", () => {
+  assert.equal(calcTotal(cart), 1500);
+});
+
+test("item count", () => {
+  assert.equal(itemCount(cart), 3);
+});
+
+test("checkout applies a coupon", () => {
+  assert.deepEqual(checkout(cart, { couponCents: 200 }), { subtotal: 1500, total: 1300 });
+});
+
+test("daily report", () => {
+  assert.equal(dailyReport([{ items: cart }, { items: [cart[0]] }]), "orders=2 units=5 revenueCents=1800");
+});

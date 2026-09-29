@@ -1,0 +1,26 @@
+const UNITS = [["h", 3_600_000], ["m", 60_000], ["s", 1_000], ["ms", 1]];
+
+/**
+ * Parses a duration such as "1h30m", "90s", "2h 5m 10s" or "250ms" into milliseconds.
+ * (Rules as in the task's own comment.)
+ */
+export function parseDuration(text) {
+  if (typeof text !== "string") throw new TypeError("A duration must be a string");
+  const invalid = () => new SyntaxError(`Invalid duration: ${JSON.stringify(text)}`);
+  let total = 0, next = 0, parts = 0;
+  for (const chunk of text.trim().split(/\s+/).filter(Boolean)) {
+    const part = /(\d+)(ms|h|m|s)/iy;
+    let index = 0;
+    while (index < chunk.length) {
+      part.lastIndex = index;
+      const match = part.exec(chunk);
+      if (!match) throw invalid();
+      const position = UNITS.findIndex(([unit]) => unit === match[2].toLowerCase());
+      if (position < next) throw invalid();
+      total += Number(match[1]) * UNITS[position][1];
+      next = position + 1; parts += 1; index = part.lastIndex;
+    }
+  }
+  if (!parts) throw invalid();
+  return total;
+}

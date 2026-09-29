@@ -1,0 +1,16 @@
+# Applies idou-egress-firewall at boot, before the services that use the
+# sandbox network start. Installed as
+# /etc/systemd/system/idou-egress-firewall.service.
+[Unit]
+Description=i豆 sandbox network: the host answers it on the egress port only
+After=docker.service
+Before=idou-control-plane.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/idou-egress-firewall apply
+ExecStop=/usr/local/sbin/idou-egress-firewall remove
+
+[Install]
+WantedBy=multi-user.target

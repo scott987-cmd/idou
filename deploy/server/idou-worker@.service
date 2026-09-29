@@ -1,0 +1,38 @@
+# A worker of the execution pool: `bin/server.js --role worker`
+# (docs/scaling-plan.md step 3). It takes the scheduled runs the coordinator
+# queues in PostgreSQL and runs them in this machine's gVisor sandbox, through
+# the coordinator's egress proxy on the sandbox network.
+# Instance N reads /etc/idou-worker/worker-N.env after its worker.env:
+# its IDOU_WORKER_NAME and IDOU_METRICS_PORT (9467, ...), and how many
+# runs it takes at once (IDOU_SCHEDULE_MAX_CONCURRENT; the coordinator's
+# own value is what all workers take together).
+# Installed as /etc/systemd/system/idou-worker@.service; enabled as
+# idou-worker@1.
+#
+# Its own account, not the control plane's (docs/server-deployment.md §11):
+# the only one in the docker group, with a directory of its own,
+# /etc/idou-worker -- the run queue's key, a database role that reaches the
+# queue, and the sandbox's settings. It cannot enter /etc/idou, where the
+# service keeps its keys, and never holds the sealing key, the Feishu
+# application secret or a model key; `--feishu` refuses to start with any.
+[Unit]
+Description=i豆 run worker %i
+After=network-online.target docker.service postgresql.service idou-egress-firewall.service
+Wants=network-online.target docker.service postgresql.service idou-egress-firewall.service
+
+[Service]
+Type=simple
+User=idou_worker
+Group=idou_worker
+SupplementaryGroups=docker
+Environment=HOME=/var/lib/idou-worker
+WorkingDirectory=/opt/idou/app
+ExecStart=/bin/bash -c "set -a; . /etc/idou-worker/worker.env; . /etc/idou-worker/worker-%i.env; set +a; exec /usr/local/bin/node bin/server.js --feishu --role worker"
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+UMask=0077
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

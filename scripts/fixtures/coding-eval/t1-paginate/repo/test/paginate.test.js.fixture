@@ -1,0 +1,21 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { paginate } from "../src/paginate.js";
+
+const numbers = Array.from({ length: 10 }, (_, index) => index + 1);
+
+test("first page", () => {
+  assert.deepEqual(paginate(numbers, 1, 3), { items: [1, 2, 3], totalPages: 4 });
+});
+
+test("last, partial page", () => {
+  assert.deepEqual(paginate(numbers, 4, 3), { items: [10], totalPages: 4 });
+});
+
+test("a page past the end is empty", () => {
+  assert.deepEqual(paginate(numbers, 5, 3).items, []);
+});
+
+test("page must be at least 1", () => {
+  assert.throws(() => paginate(numbers, 0, 3), RangeError);
+});

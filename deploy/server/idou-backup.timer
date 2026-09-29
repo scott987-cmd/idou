@@ -1,0 +1,11 @@
+# Installed as /etc/systemd/system/idou-backup.timer; enabled with
+# `systemctl enable --now idou-backup.timer`.
+[Unit]
+Description=Daily i豆 control plane data backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

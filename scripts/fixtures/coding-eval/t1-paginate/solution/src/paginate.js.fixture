@@ -1,0 +1,18 @@
+/**
+ * Returns one page of `items`.
+ *
+ * - `page` is 1-based and must be an integer of at least 1; anything else throws a RangeError.
+ * - `pageSize` must be an integer of at least 1; anything else throws a RangeError.
+ * - `totalPages` is the number of pages needed to show every item (0 for an empty list).
+ * - A page past the end has an empty `items` array.
+ * - The input list is never modified.
+ */
+export function paginate(items, page, pageSize) {
+  if (!Number.isInteger(page) || page < 1) throw new RangeError("page must be an integer of at least 1");
+  if (!Number.isInteger(pageSize) || pageSize < 1) throw new RangeError("pageSize must be an integer of at least 1");
+  const start = (page - 1) * pageSize;
+  return {
+    items: items.slice(start, start + pageSize),
+    totalPages: Math.ceil(items.length / pageSize),
+  };
+}

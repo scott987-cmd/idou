@@ -1,0 +1,18 @@
+i豆 (idou)
+Copyright 2026 The idou Authors
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+i豆 is an independent project. It is not affiliated with, endorsed by or
+sponsored by ByteDance, Feishu / Lark, Doubao or OpenAI. Feishu, Lark and
+Doubao are trademarks of their respective owners, named here only to say what
+this software works with or has been compared against.
+
+This software includes or is built on third-party components:
+
+- OpenAI Codex (Apache-2.0): third_party/codex/LICENSE and third_party/codex/NOTICE.
+- lark-cli by Lark Technologies (MIT): its LICENSE ships beside the binary.
+- Electron and Chromium (MIT, and the licenses in LICENSES.chromium.html):
+  shipped in the application bundle.
+- The npm packages listed, with their licenses, in THIRD_PARTY_NOTICES.md.
+  jszip is offered under MIT or GPL-3.0-or-later; i豆 uses it under MIT.

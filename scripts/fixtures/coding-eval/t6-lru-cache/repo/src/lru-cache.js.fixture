@@ -1,0 +1,21 @@
+/**
+ * A least-recently-used cache whose entries can expire.
+ *
+ *   new LruCache({ maxEntries, ttlMs = Infinity, now = Date.now })
+ *
+ * - `maxEntries` must be an integer of at least 1; otherwise the constructor throws a RangeError.
+ * - An entry expires once `now() - (the time it was last set) >= ttlMs`. Reading an entry does not
+ *   extend its life.
+ * - `get(key)` returns the value, or `undefined` when the key is missing or expired. A hit makes the
+ *   entry the most recently used; an expired entry found by `get` is removed.
+ * - `set(key, value)` stores the value (replacing an existing one), makes it the most recently used
+ *   and restarts its expiry. If the cache then holds more than `maxEntries` entries, the least
+ *   recently used entry is removed. Returns the cache.
+ * - `has(key)` says whether an unexpired entry exists, without changing recency or removing anything.
+ * - `delete(key)` removes the entry and returns whether there was one.
+ * - `size` is the number of entries held, including expired ones not yet removed.
+ * - `prune()` removes every expired entry and returns how many it removed.
+ * - `keys()` returns the keys of unexpired entries from least to most recently used, without
+ *   removing anything.
+ */
+export class LruCache {}

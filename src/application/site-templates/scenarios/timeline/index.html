@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>时间线</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<main class="wrap">
+  <header class="head">
+    <div class="head-text">
+      <p class="eyebrow" id="eyebrow">时间线</p>
+      <h1 id="title">正在载入…</h1>
+    </div>
+    <p class="stamp" id="stamp"></p>
+  </header>
+
+  <section class="panel">
+    <div class="panel-head">
+      <label class="search">
+        <span class="sr-only">在时间线里搜索</span>
+        <input id="q" type="search" placeholder="搜索任意一列…" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="count" id="count"></p>
+    </div>
+    <div class="facet" id="facet" role="group" aria-label="按分类筛选" hidden></div>
+  </section>
+
+  <ol class="timeline" id="line" aria-live="polite"></ol>
+  <p class="empty" id="empty" hidden>没有匹配的记录。</p>
+  <footer class="foot" id="foot"></footer>
+</main>
+
+<!-- 数据来自飞书表格，由产品写入 data/。不要手改这两行。 -->
+<script src="data/table-data.js"></script>
+<script src="data/table.js"></script>
+<script src="site.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const bin = fileURLToPath(new URL("../bin/stats.js", import.meta.url));
+const run = (...args) => execFileSync(process.execPath, [bin, ...args], { encoding: "utf8" }).trim();
+
+test("hidden: --json prints one JSON line with a rounded numeric mean", () => {
+  assert.deepEqual(JSON.parse(run("--json", "1", "2", "4")), { count: 3, sum: 7, mean: 2.33 });
+});
+
+test("hidden: --precision applies to the text output", () => {
+  assert.equal(run("--precision", "3", "1", "2", "4"), "count=3 sum=7 mean=2.333");
+  assert.equal(run("--precision", "0", "1", "2"), "count=2 sum=3 mean=2");
+});
+
+test("hidden: --precision applies to the JSON output, in either order", () => {
+  assert.deepEqual(JSON.parse(run("--json", "--precision", "1", "1", "2", "4")), { count: 3, sum: 7, mean: 2.3 });
+  assert.deepEqual(JSON.parse(run("--precision", "1", "--json", "1", "2", "4")), { count: 3, sum: 7, mean: 2.3 });
+});
+
+test("hidden: the plain text output is unchanged", () => {
+  assert.equal(run("1", "2", "4"), "count=3 sum=7 mean=2.33");
+});
+
+test("hidden: an invalid precision prints usage and exits with 2", () => {
+  for (const value of ["abc", "11", "-1", "1.5"]) {
+    const result = spawnSync(process.execPath, [bin, "--precision", value, "1", "2"], { encoding: "utf8" });
+    assert.equal(result.status, 2, `--precision ${value}`);
+    assert.ok(result.stderr.trim().length > 0, `--precision ${value} explains itself`);
+  }
+});

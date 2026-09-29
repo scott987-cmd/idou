@@ -1,0 +1,10 @@
+/**
+ * Runs `worker` on each task one at a time, in order, and resolves with the
+ * results in the same order. If a worker throws or rejects, processing stops
+ * and the returned promise rejects with that error; later tasks are not started.
+ */
+export async function processAll(tasks, worker) {
+  const results = [];
+  for (const task of tasks) results.push(await worker(task));
+  return results;
+}

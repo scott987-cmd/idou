@@ -1,0 +1,9 @@
+# The release manifest binds the bytes of src/, bin/ and the package files
+# (src/providers/release-manifest.js). A checkout that rewrote line endings --
+# Windows with core.autocrlf -- would change those bytes and no longer match
+# any signed release.
+* text=auto eol=lf
+*.png binary
+*.icns binary
+*.mp4 binary
+*.pem binary

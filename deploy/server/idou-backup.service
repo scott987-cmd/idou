@@ -1,0 +1,13 @@
+# One backup of the control plane's data directory (bin/backup.js,
+# docs/server-deployment.md §8), run daily by idou-backup.timer. Installed as
+# /etc/systemd/system/idou-backup.service.
+[Unit]
+Description=i豆 control plane data backup
+After=idou-control-plane.service
+
+[Service]
+Type=oneshot
+User=idou
+Group=idou
+UMask=0077
+ExecStart=/usr/local/bin/node --no-warnings /opt/idou/app/bin/backup.js --data /home/idou/.idou --to /home/idou/backups --keep 14

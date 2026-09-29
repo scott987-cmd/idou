@@ -1,0 +1,7 @@
+export function formatText(summary, precision = 2) {
+  return `count=${summary.count} sum=${summary.sum} mean=${summary.mean.toFixed(precision)}`;
+}
+
+export function formatJson(summary, precision = 2) {
+  return JSON.stringify({ count: summary.count, sum: summary.sum, mean: Number(summary.mean.toFixed(precision)) });
+}
