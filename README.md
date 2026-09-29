@@ -4,7 +4,7 @@
 
 [![观看 2 分钟介绍](media/poster.jpg)](media/idou-promo.mp4)
 
-- 宣传页：本仓库的 `index.html`（开启 GitHub Pages 后即可在线访问）
+- 宣传页：`gh-pages` 分支的 `index.html`，在线地址 <https://scott987-cmd.github.io/idou/>
 - 2 分钟介绍视频：`media/idou-promo.mp4`（1080p）
 
 ## 能做什么
@@ -44,4 +44,4 @@
 
 ## 开源
 
-i豆 的源代码将来会在这里开源。
+i豆 的源代码以 Apache-2.0 许可公开在本仓库的 `main` 分支：<https://github.com/scott987-cmd/idou>。宣传页放在 `gh-pages` 分支，由 GitHub Pages 发布。
