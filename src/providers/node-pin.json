@@ -1,0 +1,14 @@
+{
+  "note": "The Node a packaged desktop app carries and runs its own scripts on (node-runtime.js). Pinned here rather than in upstreams.lock.json: that lock's digest is bound into every sandbox image, and this Node is no part of the sandbox, which has its own. Being under src/, this file is covered by the signed release through its source digest.",
+  "version": "22.23.2",
+  "source": "https://nodejs.org/dist/v22.23.2/",
+  "provenance": "Verified 2026-09-30: SHASUMS256.txt for v22.23.2 carries a good signature by the Node.js release key CC68F5A3106FF448322E48ED27F5E38D5B0A215F, checked with gpgv against the active keyring of github.com/nodejs/release-keys; node-v22.23.2-darwin-arm64.tar.gz matches its line there; bin/node inside it is signed by the Node.js Foundation (Team ID HX7739G8FX). Only bin/node and LICENSE are shipped.",
+  "darwin-arm64": {
+    "archive": "node-v22.23.2-darwin-arm64.tar.gz",
+    "archiveSha256": "61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed585c6",
+    "files": {
+      "LICENSE": "c738ae413cf561f174e34f6961f8ca458aae2369a73640dda6234c629b98bcc4",
+      "bin/node": "18e387c90ab8a8400183e8bdd396376e1e875b91b4c874b894dcade7b35bf572"
+    }
+  }
+}

@@ -2,10 +2,11 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { normalizeMcpConnection } from "./mcp-connections.js";
+import { nodeRuntime } from "../providers/node-runtime.js";
 
 // The app-shipped MCP capabilities the coding agent can use — the "hands" a
 // coding task gets beyond the shell. Each entry is a single stdio server the app
-// spawns (via `process.execPath <script>`); enabling one in 技能中心 makes its
+// spawns on the application's Node (node-runtime.js); enabling one in 技能中心 makes its
 // tools ride along on every coding task, and its calls are still gated by the
 // MCP approval card -- once per call, or once per grant for the turn, by the
 // task's permission (mcp-approval-policy.js). Unlike a user-imported connection these are
@@ -69,7 +70,7 @@ export function builtinCatalog() {
 // address its SSRF guard will let the agent open, and it is passed here rather
 // than as a tool argument so the model can never name a localhost target itself.
 // Run through the same validator as a user connection so the shape stays exact.
-export function builtinConnectionRow(key, { execPath = process.execPath, previewBase } = {}) {
+export function builtinConnectionRow(key, { execPath = nodeRuntime().command, previewBase } = {}) {
   const entry = CATALOG.find((candidate) => candidate.key === key);
   if (!entry) return null;
   const script = fileURLToPath(new URL(entry.module, import.meta.url));
@@ -78,7 +79,7 @@ export function builtinConnectionRow(key, { execPath = process.execPath, preview
 }
 
 export class BuiltinConnectors {
-  constructor({ file, execPath = process.execPath } = {}) {
+  constructor({ file, execPath = nodeRuntime().command } = {}) {
     this.file = file; this.execPath = execPath; this.enabled = new Set();
   }
   async load() {

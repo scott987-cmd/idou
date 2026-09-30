@@ -5,6 +5,7 @@ import os from "node:os";
 import { readClientSession } from "../../control-plane/client-session.js";
 import { DEFAULT_CHAT_MODEL, isChatModel } from "./chat-models.js";
 import { dataHome } from "../../install-names.js";
+import { nodeRuntime } from "../node-runtime.js";
 
 export function clientEnvironment(source = process.env) {
   // Do not inherit provider keys, cloud credentials, NODE_OPTIONS or unrelated
@@ -20,8 +21,9 @@ export function clientEnvironment(source = process.env) {
 export async function codexRuntimeHome(config, sourceEnv = process.env) {
   const runtimeHome = path.resolve(config.codex.dataDir || path.join(dataHome(), "codex"));
   await mkdir(runtimeHome, { recursive: true, mode: 0o700 });
-  return { home: runtimeHome, env: { ...clientEnvironment(sourceEnv), CODEX_HOME: runtimeHome,
-    ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}) } };
+  // What Codex runs of the application's -- the token helper below -- runs on
+  // the application's Node, and inherits what that Node needs from here.
+  return { home: runtimeHome, env: { ...clientEnvironment(sourceEnv), CODEX_HOME: runtimeHome, ...nodeRuntime().env } };
 }
 
 // The name Codex knows the product's gateway by. It was "mydoubao" before the
@@ -44,7 +46,7 @@ export async function gatewayRuntimeConfig(config, sourceEnv = process.env, { mo
     [`model_providers.${MODEL_PROVIDER}`]: {
       name: "i豆 model gateway", base_url: `${serverUrl}/v1`, wire_api: "responses",
       request_max_retries: 0, stream_max_retries: 0,
-      auth: { command: process.execPath, args: [fileURLToPath(new URL("../../../bin/agent-token.js", import.meta.url)), sessionFile, serverUrl], timeout_ms: 5000, refresh_interval_ms: 60_000 },
+      auth: { command: nodeRuntime().command, args: [fileURLToPath(new URL("../../../bin/agent-token.js", import.meta.url)), sessionFile, serverUrl], timeout_ms: 5000, refresh_interval_ms: 60_000 },
     },
     "analytics.enabled": false, "feedback.enabled": false,
     // Subagents are on. Codex offers them as one `collaboration` namespace of six
@@ -76,8 +78,7 @@ export async function gatewayRuntimeConfig(config, sourceEnv = process.env, { mo
     "shell_environment_policy.inherit": "none", "shell_environment_policy.set": clientEnvironment(sourceEnv),
     allow_login_shell: false,
   };
-  return { model, overrides, env: { ...clientEnvironment(sourceEnv), CODEX_HOME: runtimeHome,
-    ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}) } };
+  return { model, overrides, env: { ...clientEnvironment(sourceEnv), CODEX_HOME: runtimeHome, ...nodeRuntime().env } };
 }
 
 // Values only, never keys/secrets; TOML inline tables preserve nested config.

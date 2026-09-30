@@ -14,5 +14,8 @@ This software includes or is built on third-party components:
 - lark-cli by Lark Technologies (MIT): its LICENSE ships beside the binary.
 - Electron and Chromium (MIT, and the licenses in LICENSES.chromium.html):
   shipped in the application bundle.
+- Node.js (MIT, and the licenses of what it bundles, all in its LICENSE):
+  the official build, shipped in the application bundle with that LICENSE
+  beside it (Resources/node).
 - The npm packages listed, with their licenses, in THIRD_PARTY_NOTICES.md.
   jszip is offered under MIT or GPL-3.0-or-later; i豆 uses it under MIT.

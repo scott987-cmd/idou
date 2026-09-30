@@ -34,22 +34,30 @@ test("MCP adapter forces per-call prompts and validates actual runtime tools wit
   for (const status of ["starting", "failed", "authenticationRequired"]) await assert.rejects(inspectTaskMcp({ request: async () => ({ data: [{ name: "demo", runtimeStatus: status, tools: {} }] }) }, "thread", [fixture()]), /未连接/);
 });
 
-// Packaged, the application's runtime is i豆's own Electron binary: given a
-// script it starts the application again unless told to act as Node, and Codex
-// passes an MCP server none of its environment. 2026-09-23: every built-in
-// connector failed its handshake in the packaged app ("connection closed").
-test("a connector run on the application's own Electron runtime is told to act as Node, and only that one", async () => {
+// A built-in connector runs on the application's Node (node-runtime.js), and
+// Codex passes an MCP server none of its environment: what that Node needs is
+// said with the server. In development under Electron that is the Electron
+// binary told to act as Node -- 2026-09-23, when the packaged app still ran
+// Electron as Node, every built-in connector failed its handshake without it
+// ("connection closed"). A packaged app runs them on the Node it carries,
+// which needs nothing; neither does plain Node.
+test("a connector run on the application's Node is given what that Node needs, and only that one", async () => {
   const { builtinConnectionRow } = await import("../src/application/builtin-connectors.js");
-  const app = "/Applications/i豆.app/Contents/MacOS/MyDouBao";
-  const packaged = { runtime: app, electron: true };
+  const electron = "/Users/someone/idou/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron";
+  const development = { command: electron, env: { ELECTRON_RUN_AS_NODE: "1" } };
   for (const key of ["web-fetch", "browser", "computer"]) {
-    const row = builtinConnectionRow(key, { execPath: app });
-    assert.deepEqual(mcpOverrides([row], "/tmp", {}, packaged)[row.id].env, { ELECTRON_RUN_AS_NODE: "1" }, key);
+    const row = builtinConnectionRow(key, { execPath: electron });
+    assert.deepEqual(mcpOverrides([row], "/tmp", {}, development)[row.id].env, { ELECTRON_RUN_AS_NODE: "1" }, key);
   }
   // A person's own server gets nothing it did not ask for.
   const own = { id: "own", title: "Own", transport: "stdio", command: "/usr/local/bin/own-mcp", args: [], enabledTools: ["echo"] };
-  assert.equal(mcpOverrides([own], "/tmp", {}, packaged).own.env, undefined);
+  assert.equal(mcpOverrides([own], "/tmp", {}, development).own.env, undefined);
+  // Packaged: the Node the application carries, told nothing.
+  const bundled = "/Applications/i豆.app/Contents/Resources/node/bin/node";
+  const packaged = builtinConnectionRow("browser", { execPath: bundled });
+  assert.equal(packaged.command, bundled);
+  assert.equal(mcpOverrides([packaged], "/tmp", {}, { command: bundled, env: {} })[packaged.id].env, undefined);
   // Under plain Node the runtime is Node already.
-  const row = builtinConnectionRow("browser", { execPath: app });
-  assert.equal(mcpOverrides([row], "/tmp", {}, { runtime: app, electron: false })[row.id].env, undefined);
+  const row = builtinConnectionRow("browser", { execPath: process.execPath });
+  assert.equal(mcpOverrides([row], "/tmp", {}, { command: process.execPath, env: {} })[row.id].env, undefined);
 });

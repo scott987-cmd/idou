@@ -5,6 +5,7 @@ coverage/
 dist/
 resources/lark-cli/
 resources/codex/
+resources/node/
 # An upgrade's staging and rollback folders hold binaries; they are never committed.
 resources/.upgrade-previous/
 resources/.upgrade-rejected-*

@@ -3,6 +3,7 @@ import { open, mkdir, readFile, writeFile, rename, unlink } from "node:fs/promis
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { validateServerUrl } from "../control-plane/client-session.js";
+import { nodeRuntime } from "../providers/node-runtime.js";
 
 const ID = /^[a-z][a-z0-9_-]{0,39}$/;
 const text = (value, max) => typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f]/.test(value);
@@ -69,25 +70,25 @@ export class McpConnections {
   }
 }
 
-// A built-in connector runs its bundled script on the application's own
-// runtime (builtin-connectors.js). Packaged, that runtime is i豆's Electron
-// binary, which ignores a script argument and starts the application again --
-// a second instance that quits at once -- unless it is told to act as Node.
-// Codex hands an MCP server none of its own environment (env_vars: []), so it
-// has to be said here. 2026-09-23: in the packaged app every built-in connector
-// failed its handshake ("connection closed"), and a connector being required,
-// every coding task failed to start while one was switched on. A development
-// Electron runs the script as its main process instead, which is why nothing
-// before the packaged app ever saw it.
-function runtimeEnv(command, { runtime = process.execPath, electron = Boolean(process.versions.electron) } = {}) {
-  return electron && command === runtime ? { env: { ELECTRON_RUN_AS_NODE: "1" } } : {};
+// A built-in connector runs its bundled script on the application's Node
+// (builtin-connectors.js, node-runtime.js). In development under Electron that
+// is the Electron binary, which ignores a script argument and starts the
+// application again -- a second instance that quits at once -- unless it is
+// told to act as Node; Codex hands an MCP server none of its own environment
+// (env_vars: []), so what that Node needs is said here. 2026-09-23: in the
+// packaged app, which then still ran Electron as Node, every built-in
+// connector failed its handshake ("connection closed"), and a connector being
+// required, every coding task failed to start while one was switched on. A
+// packaged app now runs them on the Node it carries, which needs nothing.
+function runtimeEnv(command, node) {
+  return command === node.command && Object.keys(node.env).length ? { env: { ...node.env } } : {};
 }
-export function mcpOverrides(connections = [], cwd, brokerLeases = {}, runtime = {}) {
+export function mcpOverrides(connections = [], cwd, brokerLeases = {}, node = nodeRuntime()) {
   return Object.fromEntries(connections.map((input) => {
     const row = normalizeMcpConnection(input);
     const lease = brokerLeases[row.id];
     if (row.transport === "enterprise" && (!lease || lease.connectionId !== row.id || lease.policyDigest !== row.policyDigest || lease.envName !== "IDOU_MCP_BROKER_TOKEN")) throw new Error("企业 MCP 短期授权尚未核验");
-    return [row.id, { ...(row.transport === "stdio" ? { command: row.command, args: row.args, cwd, env_vars: [], ...runtimeEnv(row.command, runtime) } : row.transport === "enterprise" ? { url: `${validateServerUrl(lease.origin)}/v1/mcp/${row.id}`, bearer_token_env_var: lease.envName } : { url: row.url }),
+    return [row.id, { ...(row.transport === "stdio" ? { command: row.command, args: row.args, cwd, env_vars: [], ...runtimeEnv(row.command, node) } : row.transport === "enterprise" ? { url: `${validateServerUrl(lease.origin)}/v1/mcp/${row.id}`, bearer_token_env_var: lease.envName } : { url: row.url }),
       enabled: true, required: true, enabled_tools: row.enabledTools, default_tools_approval_mode: "prompt", startup_timeout_sec: 15, tool_timeout_sec: 60 }];
   }));
 }

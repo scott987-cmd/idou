@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveFeishuRuntime } from "../src/providers/feishu/bundled-runtime.js";
 import { verifyTree } from "../src/providers/runtime-artifacts.js";
+import { NODE_PIN } from "../src/providers/node-runtime.js";
 import { readReleaseManifest, verifyReleaseLicenses } from "../src/providers/release-manifest.js";
 import { validateServerUrl } from "../src/control-plane/client-session.js";
 import { rememberedServerFile } from "../src/desktop/remembered-server.js";
@@ -22,12 +23,22 @@ const run = promisify(execFile);
 // generic com.github.Electron that every Electron development build shares.
 //
 // Nothing is downloaded. It reuses the Electron.app already in node_modules, the
-// reviewed lark-cli in resources/ (checked against upstreams.lock.json first), and
+// reviewed lark-cli in resources/ (checked against upstreams.lock.json first),
 // the Codex from the local @openai/codex install -- refused unless every one of
 // its files matches the digests the lock records, which a matching version
-// string alone does not show -- laid out the way its npm package lays it out.
-// Both are checked again once they are inside the bundle, because what was
-// verified and what was shipped are only the same if someone looks.
+// string alone does not show -- laid out the way its npm package lays it out,
+// and the pinned Node in resources/node (scripts/bundle-node.js, checked against
+// src/providers/node-pin.json). Each is checked again once it is inside the
+// bundle, because what was verified and what was shipped are only the same if
+// someone looks.
+//
+// The Electron it is built on gives up three of its switches (fuses) before it
+// is signed: RunAsNode, with which the signed application runs any script it is
+// handed as Node -- and with it the application's identity, its Keychain item
+// and the privacy permissions macOS granted it -- and NODE_OPTIONS and
+// --inspect, which reach the same through the environment and the command line.
+// What the application itself runs as Node it runs on the Node it carries
+// (src/providers/node-runtime.js).
 // No browser is bundled: the browser connector uses Playwright's Chromium where
 // this machine has one, and the system Chrome otherwise.
 //
@@ -115,8 +126,20 @@ async function verifyTerminalRuntime(root, { repairHelper = false } = {}) {
   return { ...TERMINAL_PACKAGES, nativeSha256: createHash("sha256").update(await readFile(native)).digest("hex") };
 }
 
+// The Node the app carries, as scripts/bundle-node.js placed it.
+async function nodeRuntimeFiles() {
+  const artifact = NODE_PIN["darwin-arm64"];
+  const source = path.join(ROOT, "resources", "node", "darwin-arm64");
+  try { await verifyTree(source, artifact.files); }
+  catch (error) { throw new Error(`${source} is not the pinned Node ${NODE_PIN.version} (${error.message}): node scripts/bundle-node.js darwin-arm64 <the unpacked official archive>`); }
+  return { source, version: NODE_PIN.version, files: artifact.files };
+}
+const FUSES_OFF = ["RunAsNode", "EnableNodeOptionsEnvironmentVariable", "EnableNodeCliInspectArguments"];
+
 // Checked before anything is built, so a bad input never leaves half an app behind.
 const codex = await codexVendor();
+const node = await nodeRuntimeFiles();
+const { flipFuses, getCurrentFuseWire, FuseVersion, FuseV1Options, FuseState } = await import("@electron/fuses");
 // A release is packaged only as it was signed, checkout or not.
 const release = await readReleaseManifest(ROOT, { strict: true });
 await verifyReleaseLicenses(release, ROOT);
@@ -137,6 +160,8 @@ await mkdir(path.dirname(APP), { recursive: true });
 // executable's name, and one still called Electron reports app.isPackaged false.
 await run("/usr/bin/ditto", [path.join(ROOT, "node_modules", "electron", "dist", "Electron.app"), APP]);
 await rename(path.join(APP, "Contents", "MacOS", "Electron"), path.join(APP, "Contents", "MacOS", EXECUTABLE));
+// Written into the framework binary, so before the signature seals it.
+await flipFuses(APP, { version: FuseVersion.V1, resetAdHocDarwinSignature: false, ...Object.fromEntries(FUSES_OFF.map((name) => [FuseV1Options[name], false])) });
 const plist = path.join(APP, "Contents", "Info.plist");
 for (const [key, value] of [["CFBundleExecutable", EXECUTABLE], ["CFBundleIdentifier", APP_ID], ["CFBundleName", "i豆"], ["CFBundleDisplayName", "i豆"],
   ["CFBundleShortVersionString", pkg.version], ["CFBundleVersion", pkg.version],
@@ -176,8 +201,10 @@ if (packagedServer) {
 // layout. Then both are checked where they landed.
 await run("/usr/bin/ditto", [path.join(ROOT, "resources", "lark-cli", "darwin-arm64"), path.join(RESOURCES, "lark-cli", "darwin-arm64")]);
 await run("/usr/bin/ditto", [codex.vendor, path.join(RESOURCES, "codex")]);
+await run("/usr/bin/ditto", [node.source, path.join(RESOURCES, "node")]);
 const shipped = await resolveFeishuRuntime({}, { resourcesRoot: RESOURCES, platform: "darwin", arch: "arm64", packaged: true });
 await verifyTree(path.join(RESOURCES, "codex"), codex.files);
+await verifyTree(path.join(RESOURCES, "node"), node.files);
 const shippedRelease = await readReleaseManifest(appDir, { strict: true });
 await verifyReleaseLicenses(shippedRelease, appDir);
 const shippedTerminalRuntime = await verifyTerminalRuntime(appDir);
@@ -186,6 +213,7 @@ if (shippedTerminalRuntime.nativeSha256 !== terminalRuntime.nativeSha256) throw 
 // What went in is recorded inside the bundle before the signature seals it.
 await writeFile(MARKER, `${JSON.stringify({ identifier: APP_ID, executable: EXECUTABLE, version: pkg.version, electron: pkg.devDependencies.electron,
   codex: codex.version, codexFiles: codex.files, larkCli: shipped.version, larkCliSha256: lock.feishu.bundledArtifacts["darwin-arm64"].sha256,
+  node: node.version, nodeFiles: node.files, fusesOff: FUSES_OFF,
   releaseId: shippedRelease.releaseId, releaseKeyId: shippedRelease.keyId, upstreamsSha256: shippedRelease.upstreamsSha256,
   terminalRuntime: shippedTerminalRuntime, nodePackages: packages.length, serverUrl: packagedServer }, null, 2)}\n`);
 try {
@@ -194,9 +222,15 @@ try {
   throw new Error(`Signing failed${error.killed ? " (timed out -- was a keychain prompt left unanswered?)" : ""}: ${String(error.stderr || error.message).trim().split("\n").at(-1)}`);
 }
 await run("/usr/bin/codesign", ["--verify", "--deep", "--strict", APP]);
+// Read back from the signed bundle: the switches are off, and signing did not
+// touch the Node, which is resources to the app's signature, not nested code.
+const wire = await getCurrentFuseWire(APP);
+const stillOn = FUSES_OFF.filter((name) => wire[FuseV1Options[name]] !== FuseState.DISABLE);
+if (stillOn.length) throw new Error(`Electron fuses still on after signing: ${stillOn.join(", ")}`);
+await verifyTree(path.join(RESOURCES, "node"), node.files);
 const described = await run("/usr/bin/codesign", ["-d", "-r-", APP]);
 const requirement = (`${described.stdout}${described.stderr}`.match(/designated => (.+)/)?.[1] ?? "").trim();
 const size = (await run("/usr/bin/du", ["-sm", APP])).stdout.trim().split(/\s+/)[0];
 console.log(JSON.stringify({ built: path.relative(ROOT, APP), identifier: APP_ID, executable: EXECUTABLE, signedWith: identity === "-" ? "ad hoc" : identity,
-  designatedRequirement: requirement, releaseId: shippedRelease.releaseId, codex: codex.version, larkCli: lock.feishu.version,
+  designatedRequirement: requirement, releaseId: shippedRelease.releaseId, codex: codex.version, larkCli: lock.feishu.version, node: node.version, fusesOff: FUSES_OFF,
   nodePackages: packages.length, sizeMB: Number(size) }, null, 2));

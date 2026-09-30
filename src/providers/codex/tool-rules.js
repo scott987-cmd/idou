@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { nodeRuntime } from "../node-runtime.js";
 
 // In a mode whose commands have no network (modes.js: 标准, and the read-only
 // ones), the application's own tools still have to reach the application: the
@@ -31,8 +32,9 @@ const BARE = /^\/[\p{L}\p{N}_./+-]+$/u;
 export const bareCommandPath = (value) => typeof value === "string" && BARE.test(value) && !value.split("/").includes("..");
 const quoted = (value) => `'${String(value).replaceAll("'", `'\\''`)}'`;
 
-// bin/agent.js on the application's own runtime, named by one path: `node` is
-// found on PATH, and the application's Electron runs scripts only when told to.
+// bin/agent.js on the application's Node (node-runtime.js), named by one path:
+// `node` is found on PATH, and a development Electron runs scripts only when
+// told to.
 export function agentToolScript({ runtime, script, runAsNode }) {
   return `#!/bin/sh\n# Written by i豆 for its Agent; replaced every time a task starts.\n${runAsNode ? "ELECTRON_RUN_AS_NODE=1 " : ""}exec ${quoted(runtime)} ${quoted(script)} "$@"\n`;
 }
@@ -56,7 +58,7 @@ async function replace(file, text, mode) {
 // the Agent runs each: `larkCli` and `agent` are the exact commands, or null
 // for a tool whose path cannot carry a rule (it is then run as before, and in a
 // mode without network the person is asked).
-export async function installToolRules({ codexHome, directory, larkCli, agentScript, runtime = process.execPath, runAsNode = Boolean(process.versions.electron) }) {
+export async function installToolRules({ codexHome, directory, larkCli, agentScript, runtime = nodeRuntime().command, runAsNode = Boolean(nodeRuntime().env.ELECTRON_RUN_AS_NODE) }) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const agent = path.join(directory, AGENT_TOOL_NAME);
   await replace(agent, agentToolScript({ runtime, script: agentScript, runAsNode }), 0o700);
@@ -70,7 +72,7 @@ export async function installToolRules({ codexHome, directory, larkCli, agentScr
 // out of the sandbox, what they run, and where the rules are. A working folder
 // that holds any of them, or lies inside one, would let a task rewrite a tool
 // and then run it outside.
-export function ownedPaths({ codexHome, directory, larkCli, agentScript, runtime = process.execPath, applicationRoot }) {
+export function ownedPaths({ codexHome, directory, larkCli, agentScript, runtime = nodeRuntime().command, applicationRoot }) {
   return [codexHome, directory, larkCli, agentScript, runtime, applicationRoot].filter(Boolean).map((entry) => path.resolve(entry));
 }
 const within = (parent, child) => { const relative = path.relative(parent, child); return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative)); };

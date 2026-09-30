@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import readline from "node:readline";
 import { tomlValue } from "./gateway-config.js";
 import { resolveCodexRuntime } from "./bundled-codex.js";
+import { verifyBundledNode } from "../node-runtime.js";
 
 export class CodexAppServerClient extends EventEmitter {
   constructor({ binary = "codex", cwd = process.cwd(), env = process.env, configOverrides = {}, requestTimeoutMs = 30_000 } = {}) {
@@ -21,8 +22,10 @@ export class CodexAppServerClient extends EventEmitter {
     if (this.child) return;
     const overrides = Object.entries(this.configOverrides).flatMap(([key, value]) => ["-c", `${key}=${tomlValue(value)}`]);
     // Asked here, at the one place a session's Codex is started, so no path
-    // into this class can launch a binary a packaged app has not verified.
+    // into this class can launch a binary a packaged app has not verified --
+    // Codex, or the Node it runs the application's scripts on.
     const { binary } = await resolveCodexRuntime(this.binary);
+    await verifyBundledNode();
     if (this.child) return;
     this.child = spawn(binary, ["app-server", "--stdio", ...overrides], {
       cwd: this.cwd,

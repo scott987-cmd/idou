@@ -40,6 +40,7 @@
     "server:dev": "node bin/server.js --dev",
     "bundle:feishu": "node scripts/bundle-feishu.js",
     "bundle:codex": "node scripts/bundle-codex.js",
+    "bundle:node": "node scripts/bundle-node.js",
     "release:sign": "node scripts/sign-release.js",
     "build:sandbox": "node scripts/build-sandbox-image.js",
     "prepack": "node scripts/verify-bundle.js",
@@ -64,6 +65,7 @@
     "test": "node --test"
   },
   "devDependencies": {
+    "@electron/fuses": "2.1.3",
     "electron": "44.2.0",
     "playwright": "1.63.0"
   },
