@@ -95,8 +95,13 @@ function reportedFound(row, owner, body) {
 }
 const usageOf = (policy, charged) => ({ maxBytes: policy.maxBytes, chargedBytes: charged, remainingBytes: Math.max(0, policy.maxBytes - charged) });
 const snapshotOf = (policy, charged) => ({ policyDigest: policy.policyDigest, providerId: policy.providerId, driveTenantKey: policy.driveTenantKey, folderToken: policy.folderToken, ...usageOf(policy, charged) });
-// The whole ledger holds no more than this many reservations.
-const LEDGER_CAPACITY = 100000;
+// The whole ledger holds no more than this many reservations: a bound on its
+// size, not on anyone's use. It was 100000 when every report a scheduled task
+// overwrote stayed counted, and at 600 runs a day that filled it in about five
+// months (the long-running review, 2026-09-29); an overwritten or vanished
+// report now gives its row back (release below), so a task holds as many rows
+// as reports it keeps.
+export const LEDGER_CAPACITY = 1000000;
 // The columns a reservation is moved with (bin/migrate-data.js), either way.
 const COLUMNS = ["tenant", "id", "owner", "input_hash", "policy_hash", "bytes", "state", "file_token", "created_at"];
 
@@ -124,7 +129,9 @@ class DriveLedgerRules {
 }
 
 // Metadata only. All counted states retain their bytes; clients have no release
-// endpoint. BEGIN IMMEDIATE serializes reservations across local DB connections.
+// endpoint -- only this server's own report archive gives a reservation back,
+// when it has overwritten the file in place or found it deleted or changed
+// (release). BEGIN IMMEDIATE serializes reservations across local DB connections.
 export class DriveBudget extends DriveLedgerRules {
   constructor({ databaseFile, policies, feishu }) {
     super({ policies, feishu });
@@ -205,6 +212,17 @@ export class DriveBudget extends DriveLedgerRules {
       return { id: body.id, state: "reported", ...this.usage(request.policy) };
     });
   }
+  // A reported upload of this identity's whose bytes are no longer the ones it
+  // reserved: a scheduled task's report overwritten in place by a later one, or
+  // found deleted or changed. Only ever called in this process, by the report
+  // archive; no route reaches it. True when a row went.
+  release(identity, id) {
+    if (!uuid(id)) return false;
+    return this.db.prepare("DELETE FROM drive_reservations WHERE tenant = ? AND id = ? AND owner = ? AND state = 'reported'")
+      .run(this.policy(identity).key, id, this.owner(identity)).changes > 0;
+  }
+  // How many rows the ledger holds, against LEDGER_CAPACITY (health-monitor.js).
+  size() { return Number(this.db.prepare("SELECT COUNT(*) AS count FROM drive_reservations").get().count); }
   close() { this.db.close(); }
   assertReported(identity, body) {
     const { policy, owner } = reportedRequest(this, identity, body);
@@ -317,6 +335,12 @@ export class PostgresDriveBudget extends DriveLedgerRules {
     const { policy, owner } = reportedRequest(this, identity, body);
     return reportedFound(await this.#row(this.#read(), policy, body.id), owner, body);
   }
+  async release(identity, id) {
+    if (!uuid(id)) return false;
+    return (await this.pool.query("DELETE FROM idou_drive_reservations WHERE tenant = $1 AND id = $2 AND owner = $3 AND state = 'reported'",
+      [this.policy(identity).key, id, this.owner(identity)])).rowCount > 0;
+  }
+  async size() { return Number((await this.pool.query("SELECT count(*) AS count FROM idou_drive_reservations")).rows[0].count); }
   async rows() {
     return (await this.pool.query(`SELECT ${COLUMNS.join(", ")} FROM idou_drive_reservations ORDER BY tenant, id`)).rows.map(plain);
   }

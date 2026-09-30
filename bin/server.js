@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { createModelGateway } from "../src/control-plane/model-gateway.js";
-import { loadCapacity, loadMetricsPort, loadScheduleExecution, loadWorkerName, loadDataStore, loadCoordinatorLease, loadEgressRemote, loadEgressUpstream, loadChatModelConfigs, loadMediaKey, loadVideoKey, loadFeishuLoginConfig, loadFeishuProvider, loadSitesConfig, loadUnattendedScheduleConfig, loadScheduleNotifyConfig, loadRunDetailRetention, loadSchedulePromptRetention, loadSandboxMode, loadSandboxImage, loadSandboxRuntime, loadSandboxGateway, loadSandboxUser, loadSandboxNetwork, withheldFromWorker } from "../src/control-plane/server-config.js";
+import { loadCapacity, loadMetricsPort, loadScheduleExecution, loadWorkerName, loadDataStore, loadCoordinatorLease, loadEgressRemote, loadEgressUpstream, loadChatModelConfigs, loadMediaKey, loadVideoKey, loadFeishuLoginConfig, loadFeishuProvider, loadSitesConfig, loadUnattendedScheduleConfig, loadScheduleNotifyConfig, loadAdminAlerts, loadRunDetailRetention, loadSchedulePromptRetention, loadSandboxMode, loadSandboxImage, loadSandboxRuntime, loadSandboxGateway, loadSandboxUser, loadSandboxNetwork, withheldFromWorker } from "../src/control-plane/server-config.js";
 import { FeishuOAuthProvider } from "../src/control-plane/feishu-oauth-provider.js";
 import { FeishuBot } from "../src/control-plane/feishu-bot.js";
 import { FeishuLoginService } from "../src/control-plane/feishu-login.js";
@@ -103,6 +103,14 @@ async function main() {
   const skills = loginConfig ? await EnterpriseSkillCatalog.fromConfig({ origin: loginConfig.origin, sessions, state: durable }) : null;
   const mcp = loginConfig ? await McpBroker.fromConfig({ origin: loginConfig.origin, sessions, feishu, capacity: capacity.mcp }) : null;
   const { chat, chatModels, health, visibility, usage, policyBot, groups } = await modelParts({ mode, loginConfig, feishu, shared, dataStore, log });
+  // The server's own checks (health-monitor.js), and, when the operator asked,
+  // who is told about them. Asked here so a setting that cannot work stops the
+  // start rather than an alert that never arrives.
+  const alerts = loadAdminAlerts();
+  if (alerts && !policyBot) throw new Error("IDOU_ADMIN_ALERTS=1 需要飞书应用（FEISHU_APP_ID、FEISHU_APP_SECRET）：告警由应用机器人发出。");
+  const { EventTally, HealthMonitor, alertAdministrators, coordinatorChecks } = await import("../src/control-plane/health-monitor.js");
+  const tally = new EventTally();
+  let monitor = null;
   const modelChoice = new ModelChoiceService({ sessions, models: chatModels, health, visibility, allowDevelopment: mode === "--dev",
     preferences: durable ? await PostgresModelPreferences.open({ state: durable })
       : await ModelPreferences.open({ file: mode === "--dev" ? null : path.join(dataHome(), "model-preferences.json") }) });
@@ -221,7 +229,7 @@ async function main() {
             allowlist: sitesConfig.allow?.rules ?? null,
             unattended: process.env.IDOU_SCHEDULE_UNATTENDED === "1", sandboxMode: loadSandboxMode() },
           models: chat.models.map((entry, index) => ({ id: entry.model, provider: entry.provider, isDefault: index === 0 })),
-          health, sites: registry.list(), directory: await adminDirectory.status(), audit: adminAudit.recent(60), visibility,
+          health, sites: registry.list(), directory: await adminDirectory.status(), audit: adminAudit.recent(60), visibility, checks: monitor?.status() ?? null,
           usage: { days: 30, people: await usage.perPerson({ days: 30, limit: 50 }), models: await usage.perModel({ days: 30 }) },
         }),
         page: (state, visitor) => adminPage(state, { who: visitor.userId }),
@@ -361,6 +369,8 @@ async function main() {
       liveSession: (tenantId, userId) => consent.live(tenantId, userId),
       // A run goes to its owner's model, resolved as their conversations are.
       modelFor: (tenantId, userId) => modelChoice.effective({ tenantId, userId }),
+      // How runs end, pushes land and tasks are suspended, counted for the checks below.
+      observe: (kind, detail) => tally.record(kind, detail),
       log: message => process.stderr.write(`idou-server: ${message}\n`) });
     process.stdout.write(`Scheduled tasks: on. Sandbox egress listening on ${scheduled.egressAddress}:${scheduled.egressPort} (TLS, ${scheduled.certificate.hostname}).\n`);
     if (durable) process.stdout.write("Scheduled tasks: tasks and their runs are kept in the shared database (IDOU_DATA_STORE=postgres).\n");
@@ -375,13 +385,30 @@ async function main() {
   const mediaRoutes = !mediaEnabled ? "image and video generation off"
     : `images ${mediaKey ? "on MiniMax" : "unavailable"}, video ${video ? "on Qwen" : mediaKey ? "on MiniMax" : "unavailable"}`;
   process.stdout.write(`Chat models offered: ${chat.models.map((entry) => entry.model).join(", ")} (default ${chat.default.model}); ${mediaRoutes}.\n`);
+  // Now, and every five minutes: what an operator needs to hear about
+  // (health-monitor.js). Nobody is told of anything before its second look.
+  const { LEDGER_CAPACITY } = await import("../src/control-plane/drive-budget.js");
+  const { AdminDirectory } = await import("../src/control-plane/admin-directory.js");
+  monitor = new HealthMonitor({
+    checks: coordinatorChecks({ dataDirectory: dataHome(), origins: [loginConfig?.origin, sitesConfig?.origin, sitesConfig?.console?.origin],
+      scheduled, tally, ledger: drive?.ledger ?? null, capacity: LEDGER_CAPACITY, database: shared?.pool ?? null,
+      models: health, defaultModel: chat.default.model }),
+    notify: alerts ? alertAdministrators({ bot: policyBot, log: (line) => process.stderr.write(`${line}\n`),
+      directory: new AdminDirectory({ users: alerts.users, chatId: alerts.chatId,
+        readChatMembers: groups ? (chatId) => groups.members(chatId).then((members) => [...members]) : null,
+        log: (message) => process.stderr.write(`${JSON.stringify({ component: "health", event: "admin-directory", message })}\n`) }) }) : null,
+    log: (line) => process.stderr.write(`${line}\n`) });
+  const checkSafely = () => { void monitor.sweep().catch((error) => log({ component: "health", event: "sweep-failed", message: String(error?.message ?? error).slice(0, 200) })); };
+  checkSafely();
+  const checking = setInterval(checkSafely, 5 * 60_000); checking.unref();
+  process.stdout.write(`Health checks: ${monitor.checks.length}, every 5 minutes${alerts ? "; alerts go to the administrators through the bot (IDOU_ADMIN_ALERTS=1)" : ""}.\n`);
   // Counts and limits for an operator, on 127.0.0.1 only (metrics.js).
   let metrics = null;
   if (metricsPort) {
     const { collectMetrics, startMetricsListener } = await import("../src/control-plane/metrics.js");
     const { readReleaseManifest } = await import("../src/providers/release-manifest.js");
     const release = await readReleaseManifest().then((manifest) => manifest.releaseId, () => "unknown");
-    metrics = await startMetricsListener({ port: metricsPort, collect: (loop) => collectMetrics({ release, role: "coordinator", startedAt, sessions, gateway: server, cliProxy, scheduler: scheduled?.scheduler ?? null, sourceAccess, renewal: provider?.renewal ?? null, loop }) });
+    metrics = await startMetricsListener({ port: metricsPort, health: monitor, collect: (loop) => collectMetrics({ release, role: "coordinator", startedAt, sessions, gateway: server, cliProxy, scheduler: scheduled?.scheduler ?? null, sourceAccess, renewal: provider?.renewal ?? null, health: monitor, loop }) });
     process.stdout.write(`Metrics: http://127.0.0.1:${metricsPort}/metrics (this machine only).\n`);
   }
   // Everything this process started, closed in one place for both modes. One
@@ -401,6 +428,7 @@ async function main() {
       process.exit(0);
     }, SHUTDOWN_GRACE_MS);
     deadline.unref();
+    clearInterval(checking);
     await scheduled?.close().catch(() => {});
     publisherKeys?.close(); cliProxy?.close(); sourceAccess?.close(); login?.close(); void mcp?.close(); void media?.close(); appRuntime?.close();
     for (const listener of [server, siteServer, adminServer, metrics]) { listener?.close(); listener?.closeAllConnections(); }

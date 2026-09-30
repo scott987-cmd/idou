@@ -103,6 +103,18 @@ export class AdminDirectory {
     return held.members.has(userId) ? { admin: true, reason: "chat-member" } : { admin: false, reason: "not-in-chat" };
   }
 
+  // Who the server's alerts go to (health-monitor.js): the administrators named
+  // in the file, and the group's members when the group can be read -- only the
+  // file's when it cannot, as everywhere here.
+  async recipients() {
+    const ids = new Set(this.users);
+    if (this.chatId && typeof this.readChatMembers === "function") {
+      const held = await this.#members();
+      if (!held.failed) for (const id of held.members) ids.add(id);
+    }
+    return [...ids];
+  }
+
   // What the console shows about itself: how many, from where, and whether the
   // group is answering. Never the ids -- a page that lists every administrator
   // is a page worth stealing.

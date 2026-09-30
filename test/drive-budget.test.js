@@ -247,6 +247,36 @@ for (const kind of ["sqlite", "postgres"]) {
   });
 }
 
+// Found in the long-running review (2026-09-29): every report a scheduled task
+// overwrote in place stayed counted, so a tenant's budget -- and the whole
+// ledger -- only ever filled. The report archive, in this process, now gives
+// back the reservation of a report it overwrote or found gone; a client still
+// has no way to.
+for (const kind of ["sqlite", "postgres"]) test(`${kind}: a report the server no longer keeps gives back its bytes, and nothing else does`, { timeout: 60_000 }, async (t) => {
+  const f = await ledgers(t, kind);
+  const reported = async (who, bytes) => {
+    const input = await requestOf(f.ledger, randomUUID(), bytes);
+    await f.ledger.reserve(who, input);
+    await f.ledger.change(who, { id: input.id, policyDigest: input.policyDigest }, true);
+    await f.ledger.change(who, { id: input.id, fileToken: "SyntheticFile123" }, false);
+    return input;
+  };
+  const kept = await reported(identity, 30), superseded = await reported(identity, 30);
+  assert.equal((await f.ledger.snapshot(identity)).chargedBytes, 60);
+  assert.equal(await f.ledger.release({ ...identity, userId: "bob" }, superseded.id), false, "only as the one it was charged to");
+  assert.equal(await f.ledger.release(identity, "not-a-reservation"), false);
+  assert.equal(await f.ledger.release(identity, superseded.id), true);
+  assert.equal((await f.ledger.snapshot(identity)).chargedBytes, 30, "its bytes are free again");
+  assert.equal(await f.ledger.release(identity, superseded.id), false, "once");
+  // One sent and never heard back from stays counted: its bytes may be there.
+  const unknown = await requestOf(f.ledger, randomUUID(), 20);
+  await f.ledger.reserve(identity, unknown);
+  await f.ledger.change(identity, { id: unknown.id, policyDigest: unknown.policyDigest }, true);
+  assert.equal(await f.ledger.release(identity, unknown.id), false);
+  assert.equal((await f.ledger.snapshot(identity)).chargedBytes, 50);
+  assert.equal((await (await f.make()).reservation(identity, kept)).state, "reported", "and the one still kept is untouched");
+});
+
 // What BEGIN IMMEDIATE did across processes, the ledger's own lock does across
 // coordinators: eight asking at once for 20 of a 100-byte budget, five get it.
 test("postgres: reservations from separate coordinators at once never exceed the tenant's budget", { timeout: 60_000 }, async (t) => {

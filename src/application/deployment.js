@@ -37,6 +37,8 @@ export const DEPLOYMENT_KEYS = Object.freeze([
   // 服务端管理台: who may open it. A group whose members are administrators, and
   // a short list in this file as the way back in when that group cannot be read.
   "IDOU_ADMIN_CHAT", "IDOU_ADMIN_USERS", "IDOU_ADMIN_URL", "IDOU_ADMIN_PORT",
+  // 服务端告警: the server's own checks, sent to those administrators by the bot.
+  "IDOU_ADMIN_ALERTS",
   // 模型可见性: which models each person is offered, and what somebody no rule
   // names gets. Unset means every model, which is what every deployment does today.
   "IDOU_MODEL_POLICY_FILE", "IDOU_MODEL_DEFAULT_VISIBLE",

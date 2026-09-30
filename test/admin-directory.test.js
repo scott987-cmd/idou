@@ -74,3 +74,15 @@ test("the status says how many and from where, never who", async () => {
   // A page listing every administrator is a page worth stealing.
   assert.equal(JSON.stringify(status).includes(TWO), false);
 });
+
+// Who the server's alerts go to (health-monitor.js): the file's administrators
+// and the group's members, and only the file's while the group cannot be read.
+test("the alerts go to the file's administrators and the group's members, and only the file's when the group is unreadable", async () => {
+  let failing = false;
+  const directory = new AdminDirectory({ users: [ONE], chatId: CHAT, readChatMembers: async () => { if (failing) throw new Error("bot removed"); return [ONE, TWO]; }, now: () => 0 });
+  assert.deepEqual((await directory.recipients()).sort(), [ONE, TWO]);
+  failing = true;
+  const later = new AdminDirectory({ users: [ONE], chatId: CHAT, readChatMembers: async () => { throw new Error("bot removed"); } });
+  assert.deepEqual(await later.recipients(), [ONE]);
+  assert.deepEqual(await new AdminDirectory({ users: [TWO] }).recipients(), [TWO], "no group: the file alone");
+});

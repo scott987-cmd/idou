@@ -176,7 +176,7 @@ export class Scheduler {
             }
             await this.#record(claim, "skipped", verdict?.reason ?? "登录已过期，定时任务已暂停，下次登录后自动恢复");
             await this.store.suspend(claim.schedule.tenant, claim.schedule.id);
-            this.onEvent({ kind: "suspended", key, runId: claim.runId });
+            this.onEvent({ kind: "suspended", key, runId: claim.runId, schedule: claim.schedule, reason: verdict?.reason ?? null });
             continue;
           }
           // What authorize returned about the owner travels with the claim: the
@@ -199,9 +199,9 @@ export class Scheduler {
   // What became of a run, written until it is: the database may be restarting
   // just then. A run whose result still cannot be written stays open, and the
   // next start records it as interrupted rather than leaving it running.
-  async #record(claim, outcome, detail, artifact = null) {
+  async #record(claim, outcome, detail, artifact = null, undelivered = 0) {
     for (let attempt = 0; ; attempt += 1) {
-      try { await this.store.finish(claim.schedule.tenant, claim.runId, outcome, detail, artifact); return true; }
+      try { await this.store.finish(claim.schedule.tenant, claim.runId, outcome, detail, artifact, undelivered); return true; }
       catch (error) {
         // Not held past a shutdown: the next start records the run as interrupted.
         if (attempt >= this.recordRetryMs.length || this.closed) {
@@ -266,8 +266,8 @@ export class Scheduler {
     const key = keyOf(claim.schedule);
     const controller = new AbortController();
     this.controllers.set(key, controller);
-    const done = async (outcome, detail, artifact = null) => {
-      await this.#record(claim, outcome, detail, artifact);
+    const done = async (outcome, detail, artifact = null, undelivered = 0) => {
+      await this.#record(claim, outcome, detail, artifact, undelivered);
       this.onEvent({ kind: outcome, key, runId: claim.runId });
       this.#tell(claim, outcome, detail);
     };
@@ -283,11 +283,11 @@ export class Scheduler {
         if (!result?.report) return { outcome: "completed", detail: noted(result?.detail ?? null), artifact: null };
         if (typeof this.postprocess !== "function") throw new Error("报告未保存：服务端没有配置飞书云盘归档");
         const saved = await this.postprocess({ ...claim, report: result.report, signal: controller.signal });
-        return { outcome: "completed", detail: noted(saved?.detail ?? "报告已保存到飞书云盘。"), artifact: saved?.artifact ?? null };
+        return { outcome: "completed", detail: noted(saved?.detail ?? "报告已保存到飞书云盘。"), artifact: saved?.artifact ?? null, undelivered: saved?.undelivered ?? 0 };
       })
       .catch((error) => ({ outcome: "failed", detail: String(error?.message ?? error), artifact: error?.artifact ?? null }));
     const pending = outcome
-      .then((result) => done(result.outcome, result.detail, result.artifact))
+      .then((result) => done(result.outcome, result.detail, result.artifact, result.undelivered))
       // The slot is free before the clock is set again; the run is over once
       // that is done, so whoever waits for it waits for both.
       .finally(() => { this.running.delete(key); this.controllers.delete(key); return this.#arm(); });

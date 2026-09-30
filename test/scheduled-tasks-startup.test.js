@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { connect, createServer } from "node:net";
+import { connect as connectTls } from "node:tls";
 import os from "node:os";
 import path from "node:path";
 import { startScheduledTasks } from "../src/control-plane/scheduled-tasks.js";
@@ -55,4 +56,37 @@ test("unset, a development machine listens everywhere and reaches the host throu
 test("an address this machine does not have stops the start, naming the setting", async (t) => {
   await assert.rejects(start(t, { egressPort: await freePort(), gatewayAddress: "192.0.2.1" }),
     /无法监听 192\.0\.2\.1:\d+：这台机器上没有这个地址。IDOU_SANDBOX_GATEWAY/);
+});
+
+// What a handshake with the egress proxy is shown: the certificate it serves now.
+async function served(port) {
+  return new Promise((resolve, reject) => {
+    const socket = connectTls({ host: "127.0.0.1", port, servername: EGRESS_HOSTNAME, rejectUnauthorized: false }, () => {
+      const peer = socket.getPeerCertificate(); socket.destroy();
+      resolve({ serial: peer.serialNumber, validTo: Date.parse(peer.valid_to) });
+    });
+    socket.once("error", reject);
+  });
+}
+
+// The egress certificate lasts 90 days and was looked at only when the server
+// started: one not restarted in the last 14 days of it would have gone on
+// serving it until every run failed at once. Now it is renewed while the server
+// runs, and the listener serves the new one without a restart.
+test("the egress certificate is renewed while the server runs, and served without a restart", async (t) => {
+  let clock = Date.now();
+  const port = await freePort();
+  const tasks = await start(t, { egressPort: port, gatewayAddress: "127.0.0.1", now: () => clock });
+  const first = await served(port);
+  assert.equal(first.validTo, tasks.egressCertificate().validTo);
+  const ca = tasks.egressCertificate().ca;
+
+  assert.equal(await tasks.renewEgressCertificate(), false, "a fresh certificate is left as it is");
+  clock += 80 * 86400_000; // inside its last 14 days
+  assert.equal(await tasks.renewEgressCertificate(), true);
+  const second = await served(port);
+  assert.notEqual(second.serial, first.serial, "the listener serves the new certificate, with no restart");
+  assert.equal(second.validTo, tasks.egressCertificate().validTo);
+  assert.equal(tasks.egressCertificate().ca, ca, "under the same CA, which the containers already trust");
+  assert.equal(tasks.runner.ca, ca);
 });

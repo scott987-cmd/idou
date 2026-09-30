@@ -37,6 +37,12 @@ test("a run is named by how it ran and how it ended", () => {
   assert.equal(runLabel(run({ kind: "catch-up" })).text, "补跑完成");
   assert.equal(runLabel(run({ kind: "catch-up", outcome: "failed" })).text, "补跑失败");
   assert.equal(runLabel(run({ outcome: "skipped" })).text, "已跳过");
+  // Done, but its result missed a place it was meant for: not a plain success.
+  assert.deepEqual(runLabel(run({ undelivered: 1 })), { text: "未全部送达", tone: "failed" });
+  assert.equal(runLabel(run({ kind: "manual", undelivered: 2 })).text, "测试运行未全部送达");
+  assert.equal(runLabel(run({ kind: "catch-up", undelivered: 1 })).text, "补跑未全部送达");
+  assert.equal(runLabel(run({ outcome: "failed", undelivered: 1 })).text, "失败", "a failure is a failure first");
+  assert.equal(runLabel(run({ undelivered: 0 })).text, "成功");
 });
 
 test("runs fall under 今天, 昨天, or their month and day", () => {

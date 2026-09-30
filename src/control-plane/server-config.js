@@ -331,6 +331,20 @@ export function loadScheduleNotifyConfig(env = process.env) {
   return { bot: true };
 }
 
+// Whether the server's own checks (health-monitor.js) are sent to its
+// administrators through the bot. Off unless asked for, like the results'
+// bot (above): a message as the application is a decision, not a default.
+// Who they go to is who administers the deployment, named the same two ways.
+export function loadAdminAlerts(env = process.env) {
+  if (env.IDOU_ADMIN_ALERTS === undefined || env.IDOU_ADMIN_ALERTS === "") return null;
+  if (env.IDOU_ADMIN_ALERTS !== "1") throw new Error("IDOU_ADMIN_ALERTS 只能不设或设为 1");
+  let admins;
+  try { admins = { users: adminUsers(env.IDOU_ADMIN_USERS), chatId: adminChat(env.IDOU_ADMIN_CHAT) }; }
+  catch (error) { throw new Error(`管理员配置无效：${error.message}`); }
+  if (!admins.users.length && !admins.chatId) throw new Error("IDOU_ADMIN_ALERTS=1 需要知道发给谁：设 IDOU_ADMIN_USERS 或 IDOU_ADMIN_CHAT");
+  return admins;
+}
+
 // Whether scheduled tasks may run while nobody is signed in. Off unless asked
 // for, and every prerequisite is named rather than silently required: without
 // one of them the feature is not merely degraded, it cannot obtain a credential

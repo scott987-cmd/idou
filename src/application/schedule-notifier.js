@@ -31,6 +31,9 @@ export function scheduleNotice(run) {
   const title = OUTCOMES[run.outcome] ?? "定时任务已结束";
   const name = firstLine(run.title, 40) || "定时任务";
   let body;
+  // Its result missed a place it was meant for: said first, since it is the
+  // part that wants doing something about.
+  if (run.outcome === "completed" && run.undelivered > 0) return { title: "定时任务已完成，但没有全部送达", body: `「${name}」有 ${run.undelivered} 处没有送到，请看运行记录。`, runId: run.id };
   if (run.outcome === "completed") body = run.artifact ? `「${name}」已完成，报告已保存到飞书云盘。` : `「${name}」已完成。`;
   else body = `「${name}」：${firstLine(run.detail, 80) || "请看运行记录"}`;
   return { title, body, runId: run.id };

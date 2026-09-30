@@ -11,3 +11,8 @@ User=idou
 Group=idou
 UMask=0077
 ExecStart=/usr/local/bin/node --no-warnings /opt/idou/app/bin/backup.js --data /home/idou/.idou --to /home/idou/backups --keep 14
+# A sealed copy to take elsewhere, and the program that takes it (§8):
+#   ... --seal /etc/idou/backup-public.pem --ship /usr/local/bin/idou-backup-ship
+# With the data in PostgreSQL (§10), its dump and the key its rows are sealed with:
+#   ... --postgres "$IDOU_DATABASE_URL" --also /etc/idou/state.key
+# (the database address from the deployment file: EnvironmentFile=/etc/idou/idou.env)

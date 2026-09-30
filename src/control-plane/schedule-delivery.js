@@ -90,28 +90,35 @@ export class ScheduleDelivery {
     return who;
   }
 
-  // One line per place, for the run's record; none where the task names none.
+  // One line per place, for the run's record, none where the task names none;
+  // and how many places it did not reach -- not written, or not known to be --
+  // so the run is not shown as a plain success (runLabel on the desktop).
   async deliver({ schedule, parentToken, runId, report, signal }) {
     try { return await this.#deliver({ schedule, parentToken, runId, report, signal }); }
-    catch (error) { return [`结果没有写到任务指定的地方：${said(error)}`]; }
+    catch (error) { return { lines: [`结果没有写到任务指定的地方：${said(error)}`], missed: 1 }; }
   }
 
   async #deliver({ schedule, parentToken, runId, report, signal }) {
     const fresh = await this.store.get({ tenantId: schedule.tenant, userId: schedule.owner }, schedule.id);
     const places = fresh && fresh.owner === schedule.owner && Array.isArray(fresh.deliveries) ? fresh.deliveries : [];
-    if (!places.length) return [];
+    if (!places.length) return { lines: [], missed: 0 };
     const documents = places.filter((place) => place.kind === "document");
     const chats = places.filter((place) => place.kind === "chat");
     const who = this.#identity(parentToken, schedule);
-    if (!who) return places.map((place) => `${place.kind === "document" ? `没有追加到文档《${place.label}》` : `没有发到「${place.label}」`}：这次运行的身份没有获准写入飞书`);
+    if (!who) {
+      return { lines: places.map((place) => `${place.kind === "document" ? `没有追加到文档《${place.label}》` : `没有发到「${place.label}」`}：这次运行的身份没有获准写入飞书`),
+        missed: places.length };
+    }
 
     const title = `${fresh.title ?? ""}`.replace(UNSAFE, "").replace(/\s+/g, " ").trim() || "未命名";
     const at = deliveryStamp(this.now(), fresh.spec?.timeZone);
     const text = (Buffer.isBuffer(report) ? report.toString("utf8") : `${report ?? ""}`).replace(/\r\n?/g, "\n").replace(UNSAFE, "").trim() || "任务已完成，没有输出。";
     const lines = [], appended = [];
+    let missed = 0;
+    const miss = (line) => { lines.push(line); missed += 1; };
 
     if (documents.length && (who.cliDocumentWrites !== true || !this.sourceAccess.cliWriteActions?.includes(DOCUMENT_APPEND))) {
-      for (const place of documents) lines.push(`没有追加到文档《${place.label}》：这个服务端或你的登录没有开启飞书文档写入`);
+      for (const place of documents) miss(`没有追加到文档《${place.label}》：这个服务端或你的登录没有开启飞书文档写入`);
     } else if (documents.length) {
       const sidecar = await this.createSidecar({ appId: who.appId,
         getSession: async () => ({ token: parentToken, expiresAt: who.expiresAt, serverUrl: this.controlPlaneOrigin, identity: who }) }).start();
@@ -128,7 +135,7 @@ export class ScheduleDelivery {
           } catch (error) {
             // Sent and never heard back from: it may be there. Said so, and not
             // sent again.
-            lines.push(dispatched
+            miss(dispatched
               ? `追加到文档《${place.label}》的结果不确定，请打开文档核查；系统不会重试（${said(error)}）`
               : `没有追加到文档《${place.label}》：${said(error)}`);
           }
@@ -138,14 +145,15 @@ export class ScheduleDelivery {
 
     for (const place of chats) {
       if (who.cliMessageWrites !== true || !this.sourceAccess.cliWriteActions?.includes(MESSAGE_SEND)) {
-        lines.push(`没有发到「${place.label}」：这个服务端或你的登录没有开启飞书发消息`);
+        miss(`没有发到「${place.label}」：这个服务端或你的登录没有开启飞书发消息`);
         continue;
       }
-      if (signal?.aborted) { lines.push(`没有发到「${place.label}」：任务已取消`); continue; }
+      if (signal?.aborted) { miss(`没有发到「${place.label}」：任务已取消`); continue; }
       const answer = await this.push.sendToChat({ schedule, parentToken, chatId: place.id, runId,
         text: chatEntry({ title, at, report: text, appended }), key: deliveryKey(runId, place.id) });
-      lines.push(answer.sent ? `已发到「${place.label}」` : `没有发到「${place.label}」：${pushRefusal(answer.reason)}`);
+      if (answer.sent) lines.push(`已发到「${place.label}」`);
+      else miss(`没有发到「${place.label}」：${pushRefusal(answer.reason)}`);
     }
-    return lines;
+    return { lines, missed };
   }
 }

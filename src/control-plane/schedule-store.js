@@ -33,10 +33,11 @@ export const SCHEDULE_LIMITS = Object.freeze({
 // never written into the SQL. A set-aside run shows only under 已归档.
 export const RUN_FILTERS = Object.freeze({
   "": "r.shelved_at IS NULL",
-  completed: "r.shelved_at IS NULL AND r.outcome = 'completed'",
+  completed: "r.shelved_at IS NULL AND r.outcome = 'completed' AND COALESCE(r.undelivered, 0) = 0",
   // Everything that did not do the work: a skipped run (its authorization had
-  // lapsed) wants the person's attention as much as a failed one.
-  failed: "r.shelved_at IS NULL AND r.outcome IN ('failed','skipped')",
+  // lapsed) wants the person's attention as much as a failed one -- and so
+  // does one whose result did not reach every place it was meant for.
+  failed: "r.shelved_at IS NULL AND (r.outcome IN ('failed','skipped') OR r.undelivered > 0)",
   running: "r.finished_at IS NULL",
   shelved: "r.shelved_at IS NOT NULL",
 });
@@ -56,6 +57,33 @@ const OWN_FINISHED_RUN = "tenant = ? AND id = ? AND finished_at IS NOT NULL AND 
 // this it is a 补跑 (G16).
 export const CATCH_UP_AFTER_MS = 5 * 60_000;
 
+// How many places a run's result missed, as stored: none is NULL, as it is on
+// every run from before this was counted.
+export const undeliveredCount = (value) => (Number.isSafeInteger(value) && value > 0 ? value : null);
+
+// Which of one task's runs, given newest first, 运行记录 no longer keeps
+// (pruneRuns): one past the task's newest `keep` that finished before `before`,
+// unless its report is still kept in Drive -- the rotation counts and
+// overwrites those, so the row goes when its file does; and, the task deleted,
+// any that finished before `orphanBefore` (G11). Never a run still going.
+export function expiredRuns(runs, { orphan, keep, before, orphanBefore }) {
+  return runs.filter((run, position) => run.finished_at !== null && (
+    (orphan && run.finished_at < orphanBefore)
+    || (position >= keep && run.finished_at < before && !run.artifact_file_token)));
+}
+
+// A run whose report was overwritten or lost gives back the Drive reservation
+// that report was charged (drive-budget.js) when that happens; one from before
+// .264, or whose giving back failed, still holds it. Given back again before the
+// row goes -- once it is gone nothing finds it -- which for the rest finds
+// nothing to give. False when that failed: the row waits for the next day.
+export async function releaseBeforeRemoving(run, { tenant, owner }, release) {
+  if (run.artifact_state !== "verified" || run.artifact_file_token) return true;
+  const whose = run.owner ?? owner;
+  if (!whose) return true;
+  try { await release({ tenant, owner: whose, runId: run.id }); return true; } catch { return false; }
+}
+
 // 有效期的开始日期 (G17): the first time the rule gives, but not before the day
 // the task starts. Every next time is computed through this. Read since .36,
 // set since .37 -- so .37 rolls back to a build that keeps to what it wrote.
@@ -67,7 +95,7 @@ export const SCHEDULE_COLUMNS = Object.freeze(["tenant", "id", "owner", "family"
   "suspended_at", "created_at", "updated_at", "cancellation_revision", "capability", "capability_digest", "capability_revision", "memory", "start_at", "deliveries"]);
 export const RUN_COLUMNS = Object.freeze(["tenant", "schedule_id", "id", "due_at", "started_at", "finished_at", "outcome", "detail",
   "artifact_state", "artifact_provider", "artifact_file_token", "artifact_url", "artifact_name", "artifact_bytes", "artifact_sha256", "archived_at",
-  "shelved_at", "kind", "owner", "schedule_title"]);
+  "shelved_at", "kind", "owner", "schedule_title", "undelivered"]);
 
 const MODES = new Set(["cowork", "coding"]);
 export const SCHEDULE_STATES = new Set(["active", "paused"]);
@@ -229,6 +257,13 @@ export class ScheduleStore {
         try { this.db.exec(`ALTER TABLE schedule_runs ADD COLUMN ${name} ${type}`); }
         catch (error) { if (!/duplicate column name/i.test(error?.message ?? "")) throw error; }
       }
+      // 运行记录 is read by person (recentRuns): without this it walked every run
+      // in the tenant, a scan that grew with each run anyone had. And the text
+      // pruned after runDetailDays is found by when it finished, as in the
+      // shared database. Indexes only, so a build from before them opens this
+      // file unaffected (SQLite keeps them up to date on its writes too).
+      this.db.exec(`CREATE INDEX IF NOT EXISTS schedule_runs_by_owner ON schedule_runs(tenant, owner, started_at DESC);
+        CREATE INDEX IF NOT EXISTS schedule_runs_detail ON schedule_runs(finished_at) WHERE detail IS NOT NULL;`);
       this.db.exec(`UPDATE schedule_runs SET
         owner = (SELECT s.owner FROM schedules s WHERE s.tenant = schedule_runs.tenant AND s.id = schedule_runs.schedule_id),
         schedule_title = COALESCE(schedule_title, (SELECT s.title FROM schedules s WHERE s.tenant = schedule_runs.tenant AND s.id = schedule_runs.schedule_id))
@@ -249,6 +284,13 @@ export class ScheduleStore {
       // same way: a build from before this never selects it, never writes it.
       if (!new Set(this.db.prepare("PRAGMA table_info(schedules)").all().map((row) => row.name)).has("deliveries")) {
         try { this.db.exec("ALTER TABLE schedules ADD COLUMN deliveries TEXT"); }
+        catch (error) { if (!/duplicate column name/i.test(error?.message ?? "")) throw error; }
+      }
+      // How many places a finished run's result did not reach (finish,
+      // markUndelivered), added the same way: a build from before this never
+      // writes it, and shows such a run as the success it showed before.
+      if (!new Set(this.db.prepare("PRAGMA table_info(schedule_runs)").all().map((row) => row.name)).has("undelivered")) {
+        try { this.db.exec("ALTER TABLE schedule_runs ADD COLUMN undelivered INTEGER"); }
         catch (error) { if (!/duplicate column name/i.test(error?.message ?? "")) throw error; }
       }
       // A manually corrupted authorization must not stay on the scheduler. The
@@ -314,6 +356,10 @@ export class ScheduleStore {
     try {
       for (const row of schedules) schedule.run(...SCHEDULE_COLUMNS.map((name) => row[name] ?? null));
       for (const row of runs) run.run(...RUN_COLUMNS.map((name) => row[name] ?? null));
+      // A run loaded without its owner is its task's, as when the store opens:
+      // 运行记录 finds a person's runs by their own owner (recentRuns).
+      this.db.exec(`UPDATE schedule_runs SET owner = (SELECT s.owner FROM schedules s WHERE s.tenant = schedule_runs.tenant AND s.id = schedule_runs.schedule_id)
+        WHERE owner IS NULL AND EXISTS (SELECT 1 FROM schedules s WHERE s.tenant = schedule_runs.tenant AND s.id = schedule_runs.schedule_id)`);
       this.db.exec("COMMIT");
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
   }
@@ -496,6 +542,16 @@ export class ScheduleStore {
     return rows.length;
   }
 
+  // Everyone with a task that will run -- not paused, not suspended, granted its
+  // resources -- a page at a time, in (tenant, owner) order after `after`: whom
+  // the unattended-authorization reminders ask about (schedule-reminders.js).
+  owners({ after = null, limit = 500 } = {}) {
+    const [tenant, owner] = after ? [after.tenantId, after.userId] : ["", ""];
+    return this.db.prepare(`SELECT DISTINCT tenant, owner FROM schedules
+      WHERE state = 'active' AND suspended_at IS NULL AND capability IS NOT NULL AND (tenant, owner) > (?, ?)
+      ORDER BY tenant, owner LIMIT ?`).all(tenant, owner, limit).map((row) => ({ tenantId: row.tenant, userId: row.owner }));
+  }
+
   // Everything due now, across tenants: the scheduler is server-wide, and each
   // row carries the tenant it belongs to so nothing crosses over.
   // `limit`: the scheduler asks for no more than it could start -- after a
@@ -575,14 +631,22 @@ export class ScheduleStore {
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
   }
 
-  finish(tenant, runId, outcome, detail = null, artifact = null) {
+  finish(tenant, runId, outcome, detail = null, artifact = null, undelivered = 0) {
     if (!["completed", "failed", "skipped"].includes(outcome)) throw new Error("未知的执行结果");
     checkRunArtifact(artifact);
     this.db.prepare(`UPDATE schedule_runs SET finished_at = ?, outcome = ?, detail = ?,
-      artifact_state=?, artifact_provider=?, artifact_file_token=?, artifact_url=?, artifact_name=?, artifact_bytes=?, artifact_sha256=?, archived_at=?
+      artifact_state=?, artifact_provider=?, artifact_file_token=?, artifact_url=?, artifact_name=?, artifact_bytes=?, artifact_sha256=?, archived_at=?, undelivered=?
       WHERE tenant = ? AND id = ?`).run(this.now(), outcome, detail === null ? null : String(detail).slice(0, 2000),
       artifact?.state ?? null, artifact?.providerId ?? null, artifact?.fileToken ?? null, artifact?.url ?? null,
-      artifact?.name ?? null, artifact?.bytes ?? null, artifact?.sha256 ?? null, artifact?.archivedAt ?? null, tenant, runId);
+      artifact?.name ?? null, artifact?.bytes ?? null, artifact?.sha256 ?? null, artifact?.archivedAt ?? null, undeliveredCount(undelivered), tenant, runId);
+  }
+
+  // A finished run's result that did not reach its owner (scheduled-tasks.js):
+  // said on the run, and counted with the places it missed.
+  markUndelivered(tenant, runId, line) {
+    this.db.prepare(`UPDATE schedule_runs SET undelivered = COALESCE(undelivered, 0) + 1,
+      detail = substr(COALESCE(detail || char(10), '') || ?, 1, 2000) WHERE tenant = ? AND id = ? AND finished_at IS NOT NULL`)
+      .run(String(line).slice(0, 400), tenant, runId);
   }
 
   #run(row, title = undefined) {
@@ -591,7 +655,7 @@ export class ScheduleStore {
       bytes: row.artifact_bytes, sha256: row.artifact_sha256, archivedAt: row.archived_at } : null;
     return { id: row.id, ...(title !== undefined ? { scheduleId: row.schedule_id, title } : {}),
       dueAt: row.due_at, startedAt: row.started_at, finishedAt: row.finished_at,
-      outcome: row.outcome, detail: row.detail, artifact, shelvedAt: row.shelved_at ?? null, kind: row.kind ?? "scheduled",
+      outcome: row.outcome, detail: row.detail, artifact, shelvedAt: row.shelved_at ?? null, kind: row.kind ?? "scheduled", undelivered: row.undelivered ?? 0,
       ...(row.task_deleted !== undefined ? { taskDeleted: row.task_deleted === 1 } : {}) };
   }
 
@@ -653,13 +717,19 @@ export class ScheduleStore {
   //
   // `scheduleId` narrows it to one task's own history -- the 运行历史 beside
   // its detail page (G12) -- with the same filters.
+  //
+  // Whose a run is, by its own owner alone: every run is written with one, and
+  // one from a build before that is given its task's when the store opens. So
+  // the person's index is walked newest first and stops at the limit. Asked
+  // with the task's owner as a fallback (MY_RUN), the planner had no index to
+  // use -- this file is never analyzed -- and read every run in the tenant.
   recentRuns(who, limit = 50, filter = "", scheduleId = null) {
     if (typeof filter !== "string" || !Object.hasOwn(RUN_FILTERS, filter)) throw new Error("运行记录的筛选条件无效");
     const one = scheduleId === null ? "" : "AND r.schedule_id = ?";
     const rows = this.db.prepare(`SELECT r.*, COALESCE(s.title, r.schedule_title) AS task_title, s.id IS NULL AS task_deleted
       FROM schedule_runs r LEFT JOIN schedules s ON s.tenant = r.tenant AND s.id = r.schedule_id
-      WHERE r.tenant = ? AND ${MY_RUN} AND ${RUN_FILTERS[filter]} ${one} ORDER BY r.started_at DESC LIMIT ?`)
-      .all(who.tenantId, who.userId, who.userId, ...(scheduleId === null ? [] : [scheduleId]), Math.min(Math.max(1, Number(limit) || 50), SCHEDULE_LIMITS.maxRuns));
+      WHERE r.tenant = ? AND r.owner = ? AND ${RUN_FILTERS[filter]} ${one} ORDER BY r.started_at DESC LIMIT ?`)
+      .all(who.tenantId, who.userId, ...(scheduleId === null ? [] : [scheduleId]), Math.min(Math.max(1, Number(limit) || 50), SCHEDULE_LIMITS.maxRuns));
     return rows.map((row) => this.#run(row, row.task_title ?? null));
   }
 
@@ -700,6 +770,18 @@ export class ScheduleStore {
   // what was archived and when, and stops naming the file and its link, so
   // nothing reads it back or counts it as kept. No new state value, so an older
   // build reads these rows as it always read receipts without a file.
+  // Reports this task no longer keeps -- overwritten in place by a later run,
+  // or found deleted or changed -- a page at a time, with whose they were: the
+  // Drive reservations they held are given back (drive-budget.js release).
+  supersededReports({ after = null, limit = 500 } = {}) {
+    const [tenant, id] = after ? [after.tenant, after.runId] : ["", ""];
+    return this.db.prepare(`SELECT r.tenant, r.id, COALESCE(s.owner, r.owner) AS owner FROM schedule_runs r
+      LEFT JOIN schedules s ON s.tenant = r.tenant AND s.id = r.schedule_id
+      WHERE r.artifact_state = 'verified' AND r.artifact_file_token IS NULL AND (r.tenant, r.id) > (?, ?)
+      ORDER BY r.tenant, r.id LIMIT ?`).all(tenant, id, limit)
+      .filter((row) => row.owner).map((row) => ({ tenant: row.tenant, runId: row.id, owner: row.owner }));
+  }
+
   supersedeReport(tenant, runId) {
     this.db.prepare(`UPDATE schedule_runs SET artifact_file_token = NULL, artifact_url = NULL
       WHERE tenant = ? AND id = ? AND artifact_state = 'verified'`).run(tenant, runId);
@@ -714,13 +796,44 @@ export class ScheduleStore {
     return row ? this.#run(row, row.task_title ?? null) : null;
   }
 
-  // Runs whose task is gone, kept a while (G11) and then let go, so the table
-  // does not only grow. Runs of tasks that still exist are not touched here.
-  pruneOrphanRuns(olderThanMs) {
-    if (!Number.isSafeInteger(olderThanMs) || olderThanMs <= 0) return 0;
-    return Number(this.db.prepare(`DELETE FROM schedule_runs WHERE finished_at IS NOT NULL AND finished_at < ?
-      AND NOT EXISTS (SELECT 1 FROM schedules s WHERE s.tenant = schedule_runs.tenant AND s.id = schedule_runs.schedule_id)`)
-      .run(this.now() - olderThanMs).changes);
+  // What 运行记录 keeps of each task (expiredRuns): its newest `keep` runs and
+  // any that finished within `olderThanMs`; a deleted task's, for
+  // `orphanOlderThanMs` (G11). The rest goes, a task at a time, each row's
+  // Drive reservation given back first (releaseBeforeRemoving). Before, a task's
+  // runs stayed as long as the task did -- an hourly one wrote 8760 rows a year
+  // -- and only a deleted task's ever went. How many runs went.
+  async pruneRuns({ keep, olderThanMs, orphanOlderThanMs, release = async () => false, pageSize = 500 }) {
+    if (!Number.isSafeInteger(keep) || keep < 1 || ![olderThanMs, orphanOlderThanMs].every((ms) => Number.isSafeInteger(ms) && ms > 0)) return 0;
+    const rules = { keep, before: this.now() - olderThanMs, orphanBefore: this.now() - orphanOlderThanMs };
+    const tasks = this.db.prepare(`SELECT g.tenant, g.schedule_id, s.owner, s.id IS NULL AS orphan
+      FROM (SELECT DISTINCT tenant, schedule_id FROM schedule_runs WHERE (tenant, schedule_id) > (?, ?) ORDER BY tenant, schedule_id LIMIT ?) g
+      LEFT JOIN schedules s ON s.tenant = g.tenant AND s.id = g.schedule_id ORDER BY g.tenant, g.schedule_id`);
+    const runsOf = this.db.prepare(`SELECT id, owner, finished_at, artifact_state, artifact_file_token FROM schedule_runs
+      WHERE tenant = ? AND schedule_id = ? ORDER BY started_at DESC, id DESC`);
+    const remove = this.db.prepare("DELETE FROM schedule_runs WHERE tenant = ? AND id = ? AND finished_at IS NOT NULL");
+    let removed = 0;
+    for (let after = ["", ""]; ;) {
+      const page = tasks.all(...after, pageSize);
+      for (const task of page) {
+        const going = [];
+        for (const run of expiredRuns(runsOf.all(task.tenant, task.schedule_id), { ...rules, orphan: task.orphan === 1 })) {
+          if (await releaseBeforeRemoving(run, task, release)) going.push(run.id);
+        }
+        if (!going.length) continue;
+        // One transaction a task: every delete its own commit would be a sync to
+        // disk each (synchronous=FULL), and a first prune has a year of them.
+        this.db.exec("BEGIN IMMEDIATE");
+        try {
+          let changes = 0;
+          for (const id of going) changes += Number(remove.run(task.tenant, id).changes);
+          this.db.exec("COMMIT");
+          removed += changes;
+        } catch (error) { this.db.exec("ROLLBACK"); throw error; }
+      }
+      if (page.length < pageSize) break;
+      after = [page.at(-1).tenant, page.at(-1).schedule_id];
+    }
+    return removed;
   }
 
   // 归档 and 取消归档: out of 运行记录 into 已归档, and back. Setting aside twice

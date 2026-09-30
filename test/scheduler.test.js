@@ -56,6 +56,22 @@ test("a report is persisted only as its verified Drive receipt", async t => {
   assert.deepEqual(run.artifact, artifact);
 });
 
+// The places a run's result did not reach (afterRun) are recorded with it, so
+// the run reads 未全部送达 rather than a plain success.
+test("the places a result did not reach are recorded with the run", async t => {
+  const artifact = { state: "verified", providerId: "saas-cli", fileToken: "FileFixture123",
+    url: "https://fixture.feishu.cn/file/FileFixture123", name: "mydoubao-11111111-1111-4111-8111-111111111111.schedule.md",
+    bytes: 25, sha256: "a".repeat(64), archivedAt: 1_000 };
+  const { store, scheduler, clock } = await harness(t, {
+    execute: async () => ({ detail: "ok", report: Buffer.from("r") }),
+    postprocess: async () => ({ detail: "报告已保存到飞书云盘。\n没有发到「产品群」：飞书拒绝", artifact, undelivered: 1 }),
+  });
+  const schedule = store.create(WHO, daily()); clock.at = schedule.nextAt;
+  await scheduler.tick(); await Promise.all([...scheduler.running.values()]);
+  const [run] = store.runs(WHO, schedule.id);
+  assert.deepEqual([run.outcome, run.undelivered], ["completed", 1]);
+});
+
 test("an ambiguous archive receipt is recorded and the run cannot claim completion", async t => {
   const artifact = { state: "unknown", providerId: "saas-cli", fileToken: null, url: null,
     name: "mydoubao-11111111-1111-4111-8111-111111111111.schedule.md", bytes: 6,

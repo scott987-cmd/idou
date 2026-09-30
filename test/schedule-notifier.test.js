@@ -110,4 +110,6 @@ test("what a notice says: the name and how it ended, never the report", () => {
   assert.equal(scheduleNotice(run("r3", 1, { outcome: "failed", detail: "" })).body, "「每日 AI 早报」：请看运行记录");
   assert.equal(scheduleNotice(run("r4", 1, { title: null })).body, "「定时任务」已完成。");
   assert.match(scheduleNotice(run("r5", 1, { outcome: "failed", detail: "x".repeat(200) })).body, /x{80}…$/);
+  assert.deepEqual(scheduleNotice(run("r6", 1, { artifact: { state: "verified" }, undelivered: 2 })),
+    { title: "定时任务已完成，但没有全部送达", body: "「每日 AI 早报」有 2 处没有送到，请看运行记录。", runId: "r6" });
 });

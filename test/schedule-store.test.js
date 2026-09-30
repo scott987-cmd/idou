@@ -850,6 +850,12 @@ for (const kind of KINDS) test(`${kind}: a task keeps its verified reports that 
   assert.equal((await raw.receipt(unsure.runId)).artifact_file_token, "FileUnsure00001",
     "an unverified receipt is never touched");
   assert.equal((await opened.previousReport(WHO.tenantId, task.id)).fileToken, "FileKeptThree03", "the report read back is still the newest");
+  // Whose Drive reservations to give back (scheduled-tasks.js): the superseded
+  // report, with its owner, and not the unverified one -- even once the task is gone.
+  assert.deepEqual(await opened.supersededReports(), [{ tenant: WHO.tenantId, runId: archived[0], owner: WHO.userId }]);
+  await opened.remove(WHO, task.id);
+  assert.deepEqual(await opened.supersededReports(), [{ tenant: WHO.tenantId, runId: archived[0], owner: WHO.userId }]);
+  assert.deepEqual(await opened.supersededReports({ after: { tenant: WHO.tenantId, runId: archived[0] } }), []);
 });
 
 // G16: a run says what kind it was, the way WorkBuddy's history does -- 测试运行
@@ -913,9 +919,10 @@ for (const kind of KINDS) test(`${kind}: deleting a task keeps its runs, named, 
   assert.equal((await opened.shelveRun(WHO, old.runId, true)).shelvedAt, clock.at, "it can still be set aside");
   assert.equal(await opened.deleteRun(COLLEAGUE, old.runId), false);
 
-  // Aged out: a deleted task's run after 90 days; a live task's run never.
+  // Aged out: a deleted task's run after 90 days; a live task's while it is
+  // among the newest its task keeps.
   clock.at += 91 * 86_400_000;
-  assert.equal(await opened.pruneOrphanRuns(90 * 86_400_000), 1);
+  assert.equal(await opened.pruneRuns({ keep: SCHEDULE_LIMITS.maxRuns, olderThanMs: 30 * 86_400_000, orphanOlderThanMs: 90 * 86_400_000 }), 1);
   assert.deepEqual(await opened.recentRuns(WHO, 50, "shelved"), []);
   assert.deepEqual((await opened.recentRuns(WHO)).map((run) => run.id), [stays.runId], "a live task's history is not pruned here");
 
@@ -933,6 +940,53 @@ for (const kind of KINDS) test(`${kind}: deleting a task keeps its runs, named, 
   reopened.remove(WHO, kept.id);
   assert.deepEqual(reopened.recentRuns(WHO).map((run) => [run.id, run.title, run.taskDeleted]),
     [[later.runId, "留着的任务", true], [stays.runId, "留着的任务", true]]);
+});
+
+// Found in the long-running review (2026-09-29): a live task's runs were never
+// let go -- an hourly task wrote 8760 rows a year, each staying as long as the
+// task did. 运行记录 keeps a task's newest runs and its recent ones; past both,
+// a run goes, except one still going or one whose report is still kept in
+// Drive, and a report's Drive reservation is given back before its row goes.
+for (const kind of KINDS) test(`${kind}: a task keeps its newest and its recent runs, and a run past both goes once its reservation is given back`, async (t) => {
+  const { opened, clock } = await store(t, { kind });
+  const DAY = 86_400_000;
+  const task = await opened.create(WHO, daily()), quiet = await opened.create(WHO, daily());
+  const artifact = (runId, fileToken) => ({ state: "verified", providerId: "saas-cli", fileToken, url: `https://x.feishu.cn/file/${fileToken}`,
+    name: `idou-${runId}.schedule.md`, bytes: 10, sha256: "e".repeat(64), archivedAt: clock.at });
+  const run = async (schedule, report = null, { finish = true } = {}) => {
+    const claimed = await opened.claimNow(schedule, clock.at);
+    if (finish) await opened.finish(WHO.tenantId, claimed.runId, "completed", null, report ? artifact(claimed.runId, report) : null);
+    clock.at += DAY;
+    return claimed.runId;
+  };
+  const stillKept = await run(task, "FileStillKept01");
+  const overwritten = await run(task, "FileOverwrite02");
+  await opened.supersedeReport(WHO.tenantId, overwritten);
+  const plain = await run(task);
+  const going = await run(task, null, { finish: false });
+  const aged = await run(quiet);
+  clock.at += 30 * DAY;
+  const recent = await run(task), newer = await run(task), newest = await run(task);
+
+  const released = [];
+  let refuse = true;
+  const release = async (row) => { if (refuse) throw new Error("ledger away"); released.push(row); return true; };
+  const rules = { keep: 2, olderThanMs: 30 * DAY, orphanOlderThanMs: 90 * DAY, release };
+  const left = async () => (await opened.recentRuns(WHO, 200)).map((row) => row.id).concat((await opened.recentRuns(WHO, 200, "running")).map((row) => row.id));
+
+  assert.equal(await opened.pruneRuns(rules), 1, "only the run with nothing to give back goes while the ledger is away");
+  assert.equal((await left()).includes(plain), false);
+  assert.equal((await left()).includes(overwritten), true, "a row whose reservation could not be given back waits");
+  refuse = false;
+  assert.equal(await opened.pruneRuns(rules), 1);
+  assert.deepEqual(released, [{ tenant: WHO.tenantId, owner: WHO.userId, runId: overwritten }], "given back as its owner, and only the overwritten report's");
+  assert.deepEqual(new Set(await left()), new Set([newest, newer, recent, stillKept, going, aged]),
+    "the newest two, one within the window, a report still kept, a run still going, and a quieter task's only run");
+  assert.equal(await opened.pruneRuns(rules), 0, "nothing more to do");
+
+  for (const bad of [{ keep: 0 }, { keep: 1.5 }, { olderThanMs: 0 }, { orphanOlderThanMs: -1 }, { olderThanMs: "30" }]) {
+    assert.equal(await opened.pruneRuns({ ...rules, ...bad }), 0, `refused: ${JSON.stringify(bad)}`);
+  }
 });
 
 // G17: a start date is kept to wherever a next time is worked out. Read since
@@ -1067,6 +1121,36 @@ test("every task and run moves from the file to the database and back unchanged"
   assert.equal(await shared.opened.nextDueAt(), opened.nextDueAt());
 });
 
+// 运行记录 is read by person. Found in the long-running review (2026-09-29): the
+// file store had no index by owner, and asked with the task's owner as a
+// fallback the planner could not have used one -- every view of a person's
+// runs read every run in the tenant (12 ms at 100000 runs, and growing).
+test("sqlite: a person's runs are read through their own index, newest first, not by reading the tenant's", async (t) => {
+  const { opened } = await store(t);
+  const statements = [], prepare = opened.db.prepare.bind(opened.db);
+  opened.db.prepare = (sql) => { statements.push(sql); return prepare(sql); };
+  try { opened.recentRuns(WHO); opened.recentRuns(WHO, 50, "failed"); } finally { opened.db.prepare = prepare; }
+  assert.equal(statements.length, 2);
+  for (const sql of statements) {
+    const plan = opened.db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all().map((row) => row.detail).join(" | ");
+    assert.match(plan, /SEARCH r USING INDEX schedule_runs_by_owner \(tenant=\? AND owner=\?\)/, plan);
+    assert.doesNotMatch(plan, /TEMP B-TREE/, `in order, stopping at the limit: ${plan}`);
+  }
+});
+
+// Which is sound only while every run names its owner: written with one, given
+// its task's when the file store opens, and when rows are loaded into either.
+for (const kind of KINDS) test(`${kind}: a run loaded without its owner is its task's owner's`, async (t) => {
+  const { opened, clock } = await store(t, { kind });
+  const task = await opened.create(WHO, daily());
+  const run = await opened.claimNow(task, clock.at);
+  await opened.finish(WHO.tenantId, run.runId, "completed");
+  const { schedules, runs } = await opened.rows();
+  const other = await store(t, { kind, clock });
+  await other.opened.load({ schedules, runs: runs.map((row) => ({ ...row, owner: null })) });
+  assert.deepEqual((await other.opened.recentRuns(WHO)).map((row) => row.id), [run.runId]);
+});
+
 // 结果还写到 (schedule-deliveries.js): where each result also goes, kept beside
 // the task rather than inside its read grant, which an older build validates key
 // by key and would pause the task over.
@@ -1126,4 +1210,56 @@ test("where results go is a column the build before it never sees, and a store f
       assert.equal(again.db.prepare("PRAGMA user_version").get().user_version, 7);
     } finally { again.close(); }
   }
+});
+
+// Whom the unattended-authorization reminders ask about (schedule-reminders.js):
+// everyone with a task that will run -- once each however many they have, a
+// page at a time -- and nobody whose tasks are all paused or suspended.
+for (const kind of KINDS) test(`${kind}: the owners of tasks that will run are listed once each, a page at a time`, async (t) => {
+  const { opened } = await store(t, { kind });
+  const people = ["person-a", "person-c", "person-d", "person-e"].map((userId, index) => ({ tenantId: "tenant-a", userId, familyId: `login-${index}` }));
+  for (const who of people) { await opened.create(who, daily()); await opened.create(who, daily()); }
+  await opened.create(OTHER, daily());
+  const [, paused, suspended] = [people[0], people[2], people[3]];
+  for (const row of await opened.list(paused, { mine: true })) await opened.setState(paused, row.id, "paused");
+  for (const row of await opened.list(suspended, { mine: true })) await opened.suspend(suspended.tenantId, row.id);
+  const everyone = [];
+  for (let after = null; ;) {
+    const page = await opened.owners({ after, limit: 1 });
+    everyone.push(...page);
+    if (page.length < 1) break;
+    after = page.at(-1);
+  }
+  assert.deepEqual(everyone, [{ tenantId: "tenant-a", userId: "person-a" }, { tenantId: "tenant-a", userId: "person-c" }, { tenantId: "tenant-b", userId: "person-b" }]);
+});
+
+// Found in the long-running review (2026-09-29): a run whose result did not
+// reach a place it was meant for -- a document, a chat, its owner -- read as a
+// plain success. How many it missed is kept with the run, and puts it under
+// 失败 rather than 成功; a push that fails after the run is recorded adds one.
+for (const kind of KINDS) test(`${kind}: a run whose result missed a place is counted, found under 失败, and a missed push adds to it`, async (t) => {
+  const { opened, clock } = await store(t, { kind });
+  const task = await opened.create(WHO, daily());
+  const next = async () => { clock.at += 1000; return (await opened.claimNow(task, clock.at)).runId; };
+  const plain = await next();
+  await opened.finish(WHO.tenantId, plain, "completed", "报告已保存到飞书云盘。");
+  const partly = await next();
+  await opened.finish(WHO.tenantId, partly, "completed", "报告已保存到飞书云盘。\n没有发到「产品群」：飞书拒绝", null, 1);
+  const unpushed = await next();
+  await opened.finish(WHO.tenantId, unpushed, "completed", "报告已保存到飞书云盘。");
+  await opened.markUndelivered(WHO.tenantId, unpushed, "结果没有推送给你：机器人没有发出（400 code=99991672）");
+
+  const ids = async (filter) => (await opened.recentRuns(WHO, 50, filter)).map((run) => run.id);
+  assert.deepEqual(await ids("completed"), [plain]);
+  assert.deepEqual(await ids("failed"), [unpushed, partly]);
+  const read = await opened.getRun(WHO, unpushed);
+  assert.deepEqual([read.undelivered, read.detail], [1, "报告已保存到飞书云盘。\n结果没有推送给你：机器人没有发出（400 code=99991672）"]);
+  assert.equal((await opened.getRun(WHO, partly)).undelivered, 1);
+  assert.equal((await opened.getRun(WHO, plain)).undelivered, 0);
+  await opened.markUndelivered(WHO.tenantId, partly, "结果没有推送给你：机器人没有发出（timeout）");
+  assert.equal((await opened.getRun(WHO, partly)).undelivered, 2, "counted again");
+
+  const going = await next();
+  await opened.markUndelivered(WHO.tenantId, going, "不该记上");
+  assert.deepEqual([(await opened.getRun(WHO, going)).undelivered, (await opened.getRun(WHO, going)).detail], [0, null], "a run still going is not marked");
 });

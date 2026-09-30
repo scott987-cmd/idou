@@ -18,7 +18,7 @@
 import { randomUUID } from "node:crypto";
 import { describeSchedule, knownRule, nextOccurrence, FREQUENCIES } from "./schedule-spec.js";
 import { makeDenyAllScheduleCapability, renewScheduleCapability, validateScheduleCapability } from "./schedule-capability.js";
-import { CATCH_UP_AFTER_MS, RUN_COLUMNS, RUN_FILTERS, SCHEDULE_COLUMNS, SCHEDULE_LIMITS, SCHEDULE_STATES, checkRunArtifact, firstOccurrence, scheduleDefinition } from "./schedule-store.js";
+import { CATCH_UP_AFTER_MS, RUN_COLUMNS, RUN_FILTERS, SCHEDULE_COLUMNS, SCHEDULE_LIMITS, SCHEDULE_STATES, checkRunArtifact, expiredRuns, firstOccurrence, releaseBeforeRemoving, scheduleDefinition, undeliveredCount } from "./schedule-store.js";
 import { openValue, sealValue } from "./state-store.js";
 import { scheduleDeliveries } from "./schedule-deliveries.js";
 import { namedDatabase } from "./database-names.js";
@@ -45,6 +45,9 @@ const SCHEMA = `
     artifact_state text CHECK (artifact_state IN ('verified','unknown')), artifact_provider text, artifact_file_token text,
     artifact_url text, artifact_name text, artifact_bytes bigint, artifact_sha256 text, archived_at bigint, shelved_at bigint,
     PRIMARY KEY (tenant, id));
+  -- How many places a finished run's result did not reach, added in place like
+  -- deliveries above: a build from before this never writes it.
+  ALTER TABLE idou_schedule_runs ADD COLUMN IF NOT EXISTS undelivered integer;
   CREATE INDEX IF NOT EXISTS idou_schedule_runs_by_schedule ON idou_schedule_runs (tenant, schedule_id, started_at DESC);
   CREATE INDEX IF NOT EXISTS idou_schedule_runs_by_owner ON idou_schedule_runs (tenant, owner, started_at DESC);
   CREATE INDEX IF NOT EXISTS idou_schedule_runs_detail ON idou_schedule_runs (finished_at) WHERE detail IS NOT NULL;`;
@@ -159,7 +162,7 @@ export class PostgresScheduleStore {
       bytes: num(row.artifact_bytes), sha256: row.artifact_sha256, archivedAt: num(row.archived_at) } : null;
     return { id: row.id, ...(title !== undefined ? { scheduleId: row.schedule_id, title } : {}),
       dueAt: num(row.due_at), startedAt: num(row.started_at), finishedAt: num(row.finished_at),
-      outcome: row.outcome, detail: this.#open(DETAIL, row.tenant, row.id, row.detail), artifact, shelvedAt: num(row.shelved_at), kind: row.kind ?? "scheduled",
+      outcome: row.outcome, detail: this.#open(DETAIL, row.tenant, row.id, row.detail), artifact, shelvedAt: num(row.shelved_at), kind: row.kind ?? "scheduled", undelivered: row.undelivered ?? 0,
       ...(row.task_deleted !== undefined ? { taskDeleted: row.task_deleted === true } : {}) };
   }
   // The task's name for a run: the task's own while it exists, else the copy
@@ -293,6 +296,15 @@ export class PostgresScheduleStore {
     });
   }
 
+  // Everyone with a task that will run, a page at a time (schedule-store.js).
+  async owners({ after = null, limit = 500 } = {}) {
+    const [tenant, owner] = after ? [after.tenantId, after.userId] : ["", ""];
+    const { rows } = await this.#query(`SELECT DISTINCT tenant, owner FROM idou_schedules
+      WHERE state = 'active' AND suspended_at IS NULL AND capability IS NOT NULL AND (tenant, owner) > ($1, $2)
+      ORDER BY tenant, owner LIMIT $3`, [tenant, owner, limit]);
+    return rows.map((row) => ({ tenantId: row.tenant, userId: row.owner }));
+  }
+
   // `limit`: the scheduler asks for no more than it could start.
   async due(at = this.now(), limit = null) {
     const { rows } = await this.#query(`SELECT * FROM idou_schedules WHERE ${DUE} AND next_at <= $1 AND (end_at IS NULL OR end_at > $1) AND ${KNOWN_RULE}
@@ -349,15 +361,28 @@ export class PostgresScheduleStore {
     });
   }
 
-  async finish(tenant, runId, outcome, detail = null, artifact = null) {
+  async finish(tenant, runId, outcome, detail = null, artifact = null, undelivered = 0) {
     if (!["completed", "failed", "skipped"].includes(outcome)) throw new Error("未知的执行结果");
     checkRunArtifact(artifact);
     await this.pool.query(`UPDATE idou_schedule_runs SET finished_at = $1, outcome = $2, detail = $3,
-      artifact_state = $4, artifact_provider = $5, artifact_file_token = $6, artifact_url = $7, artifact_name = $8, artifact_bytes = $9, artifact_sha256 = $10, archived_at = $11
-      WHERE tenant = $12 AND id = $13`,
+      artifact_state = $4, artifact_provider = $5, artifact_file_token = $6, artifact_url = $7, artifact_name = $8, artifact_bytes = $9, artifact_sha256 = $10, archived_at = $11,
+      undelivered = $14 WHERE tenant = $12 AND id = $13`,
     [this.now(), outcome, detail === null ? null : this.#seal(DETAIL, tenant, runId, String(detail).slice(0, 2000)),
       artifact?.state ?? null, artifact?.providerId ?? null, artifact?.fileToken ?? null, artifact?.url ?? null,
-      artifact?.name ?? null, artifact?.bytes ?? null, artifact?.sha256 ?? null, artifact?.archivedAt ?? null, tenant, runId]);
+      artifact?.name ?? null, artifact?.bytes ?? null, artifact?.sha256 ?? null, artifact?.archivedAt ?? null, tenant, runId, undeliveredCount(undelivered)]);
+  }
+
+  // The words are sealed as the run's, so they are opened, added to and sealed
+  // again, with the row held meanwhile.
+  async markUndelivered(tenant, runId, line) {
+    await this.#transaction(async (query) => {
+      const row = (await query("SELECT detail FROM idou_schedule_runs WHERE tenant = $1 AND id = $2 AND finished_at IS NOT NULL FOR UPDATE", [tenant, runId])).rows[0];
+      if (!row) return;
+      const before = this.#open(DETAIL, tenant, runId, row.detail);
+      const detail = `${before === null ? "" : `${before}\n`}${String(line).slice(0, 400)}`.slice(0, 2000);
+      await query("UPDATE idou_schedule_runs SET undelivered = COALESCE(undelivered, 0) + 1, detail = $1 WHERE tenant = $2 AND id = $3",
+        [this.#seal(DETAIL, tenant, runId, detail), tenant, runId]);
+    });
   }
 
   async runs(who, scheduleId, limit = 20) {
@@ -398,7 +423,7 @@ export class PostgresScheduleStore {
     const one = scheduleId === null ? "" : "AND r.schedule_id = $4";
     const { rows } = await this.pool.query(`SELECT r.*, s.title AS task_title, s.id IS NULL AS task_deleted
       FROM idou_schedule_runs r LEFT JOIN idou_schedules s ON s.tenant = r.tenant AND s.id = r.schedule_id
-      WHERE r.tenant = $1 AND (r.owner = $2 OR (r.owner IS NULL AND s.owner = $2)) AND ${RUN_FILTERS[filter]} ${one} ORDER BY r.started_at DESC, r.id LIMIT $3`,
+      WHERE r.tenant = $1 AND r.owner = $2 AND ${RUN_FILTERS[filter]} ${one} ORDER BY r.started_at DESC, r.id LIMIT $3`,
     [who.tenantId, who.userId, Math.min(Math.max(1, Number(limit) || 50), SCHEDULE_LIMITS.maxRuns), ...(scheduleId === null ? [] : [scheduleId])]);
     return rows.map((row) => this.#run(row, this.#taskTitle(row)));
   }
@@ -426,6 +451,15 @@ export class PostgresScheduleStore {
       bytes: num(row.artifact_bytes), sha256: row.artifact_sha256, archivedAt: num(row.archived_at) }));
   }
 
+  async supersededReports({ after = null, limit = 500 } = {}) {
+    const [tenant, id] = after ? [after.tenant, after.runId] : ["", ""];
+    const { rows } = await this.pool.query(`SELECT r.tenant, r.id, COALESCE(s.owner, r.owner) AS owner FROM idou_schedule_runs r
+      LEFT JOIN idou_schedules s ON s.tenant = r.tenant AND s.id = r.schedule_id
+      WHERE r.artifact_state = 'verified' AND r.artifact_file_token IS NULL AND (r.tenant, r.id) > ($1, $2)
+      ORDER BY r.tenant, r.id LIMIT $3`, [tenant, id, limit]);
+    return rows.filter((row) => row.owner).map((row) => ({ tenant: row.tenant, runId: row.id, owner: row.owner }));
+  }
+
   async supersedeReport(tenant, runId) {
     await this.pool.query("UPDATE idou_schedule_runs SET artifact_file_token = NULL, artifact_url = NULL WHERE tenant = $1 AND id = $2 AND artifact_state = 'verified'", [tenant, runId]);
   }
@@ -437,10 +471,30 @@ export class PostgresScheduleStore {
     return row ? this.#run(row, this.#taskTitle(row)) : null;
   }
 
-  async pruneOrphanRuns(olderThanMs) {
-    if (!Number.isSafeInteger(olderThanMs) || olderThanMs <= 0) return 0;
-    return (await this.pool.query(`DELETE FROM idou_schedule_runs r WHERE finished_at IS NOT NULL AND finished_at < $1
-      AND NOT EXISTS (SELECT 1 FROM idou_schedules s WHERE s.tenant = r.tenant AND s.id = r.schedule_id)`, [this.now() - olderThanMs])).rowCount;
+  async pruneRuns({ keep, olderThanMs, orphanOlderThanMs, release = async () => false, pageSize = 500 }) {
+    if (!Number.isSafeInteger(keep) || keep < 1 || ![olderThanMs, orphanOlderThanMs].every((ms) => Number.isSafeInteger(ms) && ms > 0)) return 0;
+    const rules = { keep, before: this.now() - olderThanMs, orphanBefore: this.now() - orphanOlderThanMs };
+    let removed = 0;
+    for (let after = ["", ""]; ;) {
+      const { rows: page } = await this.pool.query(`SELECT g.tenant, g.schedule_id, s.owner, s.id IS NULL AS orphan
+        FROM (SELECT DISTINCT tenant, schedule_id FROM idou_schedule_runs WHERE (tenant, schedule_id) > ($1, $2) ORDER BY tenant, schedule_id LIMIT $3) g
+        LEFT JOIN idou_schedules s ON s.tenant = g.tenant AND s.id = g.schedule_id ORDER BY g.tenant, g.schedule_id`, [...after, pageSize]);
+      for (const task of page) {
+        const { rows } = await this.pool.query(`SELECT id, owner, finished_at, artifact_state, artifact_file_token FROM idou_schedule_runs
+          WHERE tenant = $1 AND schedule_id = $2 ORDER BY started_at DESC, id DESC`, [task.tenant, task.schedule_id]);
+        const going = [];
+        for (const run of expiredRuns(rows.map((row) => ({ ...row, finished_at: num(row.finished_at) })), { ...rules, orphan: task.orphan === true })) {
+          if (await releaseBeforeRemoving(run, task, release)) going.push(run.id);
+        }
+        if (going.length) {
+          removed += (await this.pool.query("DELETE FROM idou_schedule_runs WHERE tenant = $1 AND id = ANY($2::text[]) AND finished_at IS NOT NULL",
+            [task.tenant, going])).rowCount;
+        }
+      }
+      if (page.length < pageSize) break;
+      after = [page.at(-1).tenant, page.at(-1).schedule_id];
+    }
+    return removed;
   }
 
   async shelveRun(who, runId, shelved) {
@@ -518,6 +572,10 @@ export class PostgresScheduleStore {
           return value;
         }));
       }
+      // A run that came without its owner is its task's, as the file store
+      // does when it opens: 运行记录 finds a person's runs by their own owner.
+      await query(`UPDATE idou_schedule_runs r SET owner = s.owner FROM idou_schedules s
+        WHERE r.owner IS NULL AND s.tenant = r.tenant AND s.id = r.schedule_id`);
     });
   }
 }

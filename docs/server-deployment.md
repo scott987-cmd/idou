@@ -170,14 +170,59 @@ IDOU_SANDBOX_GATEWAY=172.30.0.1           # 出口代理只监听这个地址
 
 **监控**。`IDOU_METRICS_PORT`（协调副本 9464，模型副本 9465/9466，执行节点 9467）：`127.0.0.1:<端口>/metrics`，Prometheus 文本格式，报各项上限和当前占用、因容量被拒的次数、会话数、事件循环延迟、内存和发布号。只监听本机，不经过 nginx，内容只有计数和上限。
 
+**自检与告警**（`.264` 起）。协调副本启动时和之后每 5 分钟自检一次：
+
+| 检查 | 告警 | 严重 |
+| --- | --- | --- |
+| 数据盘（`dataHome()` 所在的盘） | 剩不到 10% 或 2 GB | 剩不到 3% 或 512 MB |
+| 对外地址的 HTTPS 证书（`IDOU_PUBLIC_URL`、`IDOU_SITES_URL`、`IDOU_ADMIN_URL` 里的 https 地址，从地址本身读） | 还剩不到 21 天，或连不上 | 还剩不到 7 天，或证书不被信任 |
+| 定时任务出口证书（到期前 14 天自动续签） | 还剩不到 10 天 | 还剩不到 3 天 |
+| 定时任务沙箱 | — | 不可用 |
+| 最近一天的定时任务运行（至少 4 次） | 一半以上失败 | 全部失败 |
+| 最近一天机器人推送结果（至少 3 次） | 一半以上没送到 | — |
+| 最近一天被挂起的任务 | 5 个以上 | — |
+| 云盘额度账本 | 用了 80% | 用了 95% |
+| 共享数据库（设了 `IDOU_DATABASE_URL` 时） | — | 连不上 |
+| 模型上游 | 某个模型被停用 | 默认模型被停用 |
+
+结论在监控端口的 `/metrics`（`idou_health_check`，0 正常、1 告警、2 严重；`idou_health_check_value` 是背后的数字）和 `GET /health`（JSON，有严重问题时返回 503，给本机的看门狗用），也在管理台的「服务状态」里。设 `IDOU_ADMIN_ALERTS=1`，机器人还会私聊每位管理员（`IDOU_ADMIN_USERS` 里的人和 `IDOU_ADMIN_CHAT` 群的成员）：同一结论连续两次才算数；变坏时说一次，没修好每天再说一次，恢复时说一次。告警只有检查结论和数字：定时任务失败只报次数，不带任何人的运行内容。
+
+`/healthz` 不变：它回答的是「这个进程活着，默认用哪个模型」，桌面端靠它认模型，每个副本都答，而多数副本不知道协调副本的证书和运行情况。
+
 **备份**。`bin/backup.js` 由 `idou-backup.timer` 每天 03:30 以 `idou` 身份运行（模板在 `deploy/server/`）：
 
 - 每份备份是 `/home/idou/backups/idou-<时间>/`，目录 0700；只保留最近 14 份。
 - SQLite 用 `VACUUM INTO` 做一致快照并通过 `quick_check`（只复制主文件会丢掉 WAL 里的数据，实测过）；其余文件原样复制，保留权限；`backup.json` 记着每个文件的 sha256。
-- **备份和数据在同一块盘上**，防误操作和损坏，防不了盘坏。里面有机密（无人值守凭据和旁边的密钥）：要带出这台机器，先加密。
-- 数据进了 PostgreSQL（§10）以后，另外用 `pg_dump` 备份数据库。
+- **备份和数据在同一块盘上**，防误操作和损坏，防不了盘坏。里面有机密（无人值守凭据和旁边的密钥）：带出这台机器的只能是加密副本（下面的 `--seal`）。
+- 数据进了 PostgreSQL（§10）以后，加 `--postgres "$IDOU_DATABASE_URL"`：`pg_dump`（custom 格式）进同一份备份，并用 `pg_restore --list` 读回一遍才算完成。库里的内容是用状态密钥封存的，没有密钥只能恢复出密文，所以同时加 `--also /etc/idou/state.key`（可以写多次，文件放进备份的 `extra/`）。`pg_dump` 不在 PATH 上时用 `--pg-bin` 指向它的目录。
 
-**从备份恢复**：停协调副本；把数据目录挪到旁边（`mv`，不要删）；`cp -a` 一份备份回来，删掉其中的 `backup.json`，`chown -R idou:idou`；启动。
+**加密副本与异地**（`.264` 起）。在**你自己的电脑上**生成一对密钥，私钥不要放到服务器上：
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out idou-backup-private.pem
+```
+
+```bash
+openssl pkey -in idou-backup-private.pem -pubout -out idou-backup-public.pem
+```
+
+公钥放到服务器（例如 `/etc/idou/backup-public.pem`），备份加上 `--seal /etc/idou/backup-public.pem`：每份快照另存一份加密副本到 `<备份目录>/sealed/<名字>.idou-backup`（RSA-OAEP-SHA256 封装一次性密钥，AES-256-GCM 加密整个快照），保留份数和快照一样。服务器自己读不回这份副本。再加 `--ship /usr/local/bin/idou-backup-ship`，每次备份后用这份副本的路径作为唯一参数调用这个程序；它把文件送到哪里（对象存储、另一台机器）由它决定，失败时这次备份记为失败（`systemctl status idou-backup` 看得到），副本留在本机。加密副本只加密、不签名：拿到公钥的人也能做出一份，所以打开时会拒绝任何越出快照目录、或不是普通文件和目录的条目。
+
+**恢复演练**：在放私钥的电脑上，定期拿一份送出去的副本跑一遍：
+
+```bash
+node bin/backup.js --drill /绝对路径/idou-20261001T033000123Z.idou-backup --key /绝对路径/idou-backup-private.pem
+```
+
+它把副本解到临时目录、逐个文件对照 `backup.json` 的 sha256、打开每个 SQLite 做完整性检查、`pg_restore --list` 读一遍数据库转储，最后删掉临时目录。对本机的快照目录也能跑（不需要私钥）。
+
+**从备份恢复**：停协调副本；把数据目录挪到旁边（`mv`，不要删）；`cp -a` 一份备份回来，删掉其中的 `backup.json`、`extra/` 和 `postgres.dump`，`chown -R idou:idou`；启动。加密副本先在放私钥的电脑上解开（目录必须还不存在，解开后同样逐项核对），再把解开的目录传到服务器：
+
+```bash
+node bin/backup.js --open /绝对路径/idou-20261001T033000123Z.idou-backup --key /绝对路径/idou-backup-private.pem --into /绝对路径/restore
+```
+
+数据库用 `pg_restore --clean --if-exists -d <库> postgres.dump` 恢复，状态密钥用 `extra/` 里的那一份。解开的目录里有全部机密，用完移走。
 
 ## 9. 多副本
 

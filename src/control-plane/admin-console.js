@@ -38,7 +38,7 @@ const escape = (value) => String(value).replace(/[&<>"]/g, (character) =>
 // Everything the console knows, as data. The page is a rendering of this, and
 // so is /admin/state.json -- one shape, so what somebody reads and what they
 // could script against cannot disagree.
-export function adminState({ deployment = {}, models = [], health = null, sites = [], directory = null, audit = null, visibility = null, usage = null } = {}) {
+export function adminState({ deployment = {}, models = [], health = null, sites = [], directory = null, audit = null, visibility = null, usage = null, checks = null } = {}) {
   return {
     deployment: {
       // What this deployment lets happen, in the words the settings use.
@@ -62,6 +62,8 @@ export function adminState({ deployment = {}, models = [], health = null, sites 
       sourced: site.sourced === true, bytes: site.bytes ?? null, createdAt: site.createdAt ?? null,
     })),
     administrators: directory,
+    // What the server's own checks last said (health-monitor.js), worst first.
+    checks: checks ? { level: checks.level, checks: checks.checks.map((check) => ({ name: check.name, label: check.label, level: check.level, summary: check.summary, at: check.at })) } : null,
     // The policy as written. The ids are in it: this page is for the person who
     // wrote the file and can read it anyway, and a rule you cannot see the
     // target of is a rule you cannot check.
@@ -101,6 +103,10 @@ export function adminPage(state, { who = null } = {}) {
         .map(([key, value]) => `${key}=${value}`).join(" ").slice(0, 160))])).join("")
     : row(["—", "—", "重启之后还没有事件"]);
   const directory = state.administrators;
+  const LEVEL_WORDS = { ok: "正常", warning: '<b class="bad">告警</b>', critical: '<b class="bad">严重</b>' };
+  const checks = state.checks?.checks?.length
+    ? state.checks.checks.map((check) => row([escape(check.label), LEVEL_WORDS[check.level] ?? escape(check.level), escape(check.summary)])).join("")
+    : row(["—", "—", "还没有自检结果：启动后第一次还没有做完"]);
   const WHO = { user: "某个人", chat: "某个群", everyone: "所有人" };
   const visibility = state.visibility?.enabled
     ? state.visibility.rules.map((rule) => row([escape(WHO[rule.kind] ?? rule.kind) + (rule.id ? ` <em>${escape(rule.id)}</em>` : ""),
@@ -140,6 +146,10 @@ ${row(["沙箱模式", escape(state.deployment.sandboxMode ?? "—")])}
 </table></section>
 ${state.deployment.anonymous && !state.deployment.allowlist?.length
   ? '<p class="note">免登录开着、又没有网段白名单：任何能连到这个端口的人都能打开免登录的网站。设 IDOU_SITES_ALLOW 收一收。</p>' : ""}
+
+<h2>服务状态</h2>
+<section><table><thead>${row(["检查", "结论", "说明"])}</thead>${checks}</table></section>
+<p class="note">协调副本每 5 分钟自检一次。设了 IDOU_ADMIN_ALERTS=1 时，出了问题机器人会私聊每位管理员：变坏时一次，没修好每天一次，恢复时一次。</p>
 
 <h2>模型</h2>
 <section><table><thead>${row(["模型", "来源", "现在能不能答"])}</thead>${models}</table></section>

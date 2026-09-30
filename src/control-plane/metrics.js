@@ -8,6 +8,7 @@
 // token, a path -- nothing here is keyed by anybody, so nothing can be.
 import { createServer } from "node:http";
 import { monitorEventLoopDelay } from "node:perf_hooks";
+import { HEALTH_LEVELS } from "./health-monitor.js";
 
 const NAME = /^[a-z_][a-z0-9_]*$/;
 const LOOP_RESOLUTION_MS = 10;
@@ -35,7 +36,7 @@ const counter = (name, help, values) => ({ name, help, type: "counter", values }
 
 // What this server is doing now. Each source is optional: a server without
 // Feishu login has no CLI proxy, one without scheduled tasks no scheduler.
-export function collectMetrics({ release = "unknown", role = "coordinator", startedAt, sessions = null, gateway = null, cliProxy = null, scheduler = null, sourceAccess = null, renewal = null, loop = null, now = Date.now }) {
+export function collectMetrics({ release = "unknown", role = "coordinator", startedAt, sessions = null, gateway = null, cliProxy = null, scheduler = null, sourceAccess = null, renewal = null, health = null, loop = null, now = Date.now }) {
   const memory = process.memoryUsage();
   const samples = [
     gauge("idou_release_info", "The signed release this server runs", 1, { release }),
@@ -103,18 +104,36 @@ export function collectMetrics({ release = "unknown", role = "coordinator", star
       gauge("idou_renewals_active", "Online renewals in flight", c.renewals),
       gauge("idou_renewals_limit", "Online renewals allowed in flight at once, for the whole server", c.renewalsLimit));
   }
+  // The server's own checks (health-monitor.js), as they last read: a level
+  // each, and the number behind it where there is one.
+  if (health) {
+    const { checks } = health.status();
+    samples.push(
+      { name: "idou_health_check", help: "What each of the server's own checks last said: 0 ok, 1 warning, 2 critical", type: "gauge",
+        values: checks.map((check) => ({ labels: { check: check.name }, value: HEALTH_LEVELS[check.level] })) },
+      { name: "idou_health_check_value", help: "The number each check last read: seconds left on a certificate, bytes free, a share", type: "gauge",
+        values: checks.filter((check) => check.value !== null).map((check) => ({ labels: { check: check.name }, value: check.value })) });
+  }
   return samples;
 }
 
 // GET /metrics on 127.0.0.1:<port>. The event loop delay is sampled from the
-// moment this starts and reset at each scrape.
-export async function startMetricsListener({ port, collect }) {
+// moment this starts and reset at each scrape. With the server's checks,
+// GET /health answers what they last said, as JSON, with 503 while any of them
+// is critical -- for a watchdog on this machine; the words are for its operator.
+export async function startMetricsListener({ port, collect, health = null }) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid metrics port");
   if (typeof collect !== "function") throw new Error("Metrics need a collector");
   const loop = monitorEventLoopDelay({ resolution: LOOP_RESOLUTION_MS });
   loop.resolutionMs = LOOP_RESOLUTION_MS;
   loop.enable();
   const server = createServer((req, res) => {
+    if (health && req.method === "GET" && req.url === "/health") {
+      const status = health.status();
+      res.writeHead(status.level === "critical" ? 503 : 200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+      res.end(`${JSON.stringify(status)}\n`);
+      return;
+    }
     if (req.method !== "GET" || req.url !== "/metrics") { res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }); res.end("not found\n"); return; }
     let body;
     try { body = renderMetrics(collect(loop)); loop.reset(); }

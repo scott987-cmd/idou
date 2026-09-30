@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
+import { createHash, X509Certificate } from "node:crypto";
 import { createServer } from "node:https";
 import { admitPeers } from "./egress-relay.js";
 import path from "node:path";
-import { ScheduleStore } from "./schedule-store.js";
+import { SCHEDULE_LIMITS, ScheduleStore } from "./schedule-store.js";
 import { Scheduler } from "./scheduler.js";
 import { ScheduleService } from "./schedule-service.js";
 import { SandboxEgressService } from "./sandbox-egress.js";
@@ -18,6 +18,7 @@ import { UnattendedCredentialStore } from "./unattended-credential.js";
 import { UnattendedConsent } from "./unattended-consent.js";
 import { ScheduleReportArchive, ScheduleArchiveError, reportCandidates } from "./schedule-report-archive.js";
 import { ScheduleDelivery } from "./schedule-delivery.js";
+import { ScheduleReminders } from "./schedule-reminders.js";
 
 // Everything a scheduled task needs, assembled in one place: the rules on disk,
 // the clock that reads them, the container each run happens in, the one address
@@ -42,6 +43,10 @@ const noSession = () => null;
 
 // How long a deleted task's runs stay in 运行记录 (G11).
 const ORPHAN_RUN_DAYS = 90;
+// How often the egress certificate, and the authorizations about to end, are
+// looked at while the server runs.
+const CERTIFICATE_CHECK_MS = 6 * 3600_000;
+const REMINDER_CHECK_MS = 6 * 3600_000;
 
 // The network a sandbox joins when IDOU_SANDBOX_NETWORK does not name one: the
 // one this host already has. A host set up before the product was renamed has
@@ -65,20 +70,60 @@ export async function openDockerSandbox({ docker = "docker", runtime = "runc", g
 // written to the places they chose (schedule-delivery.js) -- whether or not it
 // could be saved, since those are theirs and the words are the run's either
 // way; not for a run that was stopped. What happened at each place is added to
-// the run's record, beside what happened to the report.
+// the run's record, beside what happened to the report, and how many it did
+// not reach is kept with it (`undelivered`).
 export const afterRun = ({ archive, delivery = null }) => async (finished) => {
   let saved = null, failure = null;
   try { saved = await archive(finished); } catch (error) { failure = error; }
-  const lines = delivery && !finished.signal?.aborted ? await delivery.deliver(finished) : [];
+  const { lines, missed } = delivery && !finished.signal?.aborted ? await delivery.deliver(finished) : { lines: [], missed: 0 };
   if (failure) {
     if (!lines.length) throw failure;
     throw new ScheduleArchiveError([String(failure?.message ?? failure), ...lines].join("\n"), failure?.artifact ?? null);
   }
-  return lines.length ? { ...saved, detail: [saved?.detail ?? "报告已保存到飞书云盘。", ...lines].join("\n") } : saved;
+  return lines.length ? { ...saved, detail: [saved?.detail ?? "报告已保存到飞书云盘。", ...lines].join("\n"), ...(missed ? { undelivered: missed } : {}) } : saved;
+};
+
+// A finished run's result, pushed to its owner (schedule-push.js). With the bot
+// on, one that did not reach them is said on the run, which then reads 未全部
+// 送达 rather than a plain success (the long-running review, 2026-09-29: a bot
+// missing its permission had every result go nowhere, each run still 成功).
+// Without a bot a push is only tried as the owner, and one this server does not
+// allow is how it was set up, not a failure.
+// `observe` hears each bot push, for the administrators' check (health-monitor.js).
+export const notifyOwner = ({ push, store, bot, log = () => {}, observe = () => {} }) => async (finished) => {
+  const outcome = await push.deliver(finished);
+  if (outcome.sent) { if (outcome.as === "bot") observe("push_sent"); return; }
+  log(`定时任务：结果未推送（${outcome.reason}）。`);
+  const refused = String(outcome.reason ?? "");
+  if (!bot || !finished.runId || !refused.startsWith("bot: ")) return;
+  observe("push_failed", refused.slice(5, 200));
+  await Promise.resolve().then(() => store.markUndelivered(finished.schedule.tenant, finished.runId, `结果没有推送给你：机器人没有发出（${refused.slice(5, 300)}）`))
+    .catch((error) => log(`定时任务：推送失败没有记进运行记录（${String(error?.message ?? error).slice(0, 120)}）。`));
 };
 
 // Where a container finds the egress proxy.
 export const egressGateway = (egressPort = EGRESS_PORT) => `https://${EGRESS_HOSTNAME}:${egressPort}`;
+
+// A report this server no longer keeps gives back the Drive budget it was
+// charged. Before, every report a task overwrote stayed counted, and the ledger
+// only filled (drive-budget.js). Its reservation was made as its owner, and is
+// given back as them; without a ledger there is nothing to give back.
+export function reportReleaser({ driveBudget, appId }) {
+  return async ({ tenant, owner, runId }) => (driveBudget && appId
+    ? driveBudget.release({ authProvider: "feishu", tenantId: tenant, appId, userId: owner }, runId)
+    : false);
+}
+// Every superseded report's, a page at a time; how many were given back.
+export async function reclaimSupersededReports({ store, release, pageSize = 500 }) {
+  let given = 0;
+  for (let after = null; ;) {
+    const page = await store.supersededReports({ after, limit: pageSize });
+    for (const row of page) if (await release(row).catch(() => false)) given += 1;
+    if (page.length < pageSize) break;
+    after = page.at(-1);
+  }
+  return given;
+}
 
 export async function startScheduledTasks({
   // `feishu` is the deployment every Feishu call a run makes is for: where the
@@ -122,6 +167,9 @@ export async function startScheduledTasks({
   // Where the tasks and their runs are kept, the same way: unset, this
   // machine's SQLite file; given, the store it opens (schedule-store-postgres.js).
   openStore = null,
+  // Told how each run ended, each bot push and each suspension -- never what a
+  // run said -- for the administrators' checks (health-monitor.js).
+  observe = () => {},
 } = {}) {
   // `sourceAccess` is optional on purpose. Without it a schedule can still be
   // written, listed and deleted -- it simply cannot run, and says so at every
@@ -216,6 +264,8 @@ export async function startScheduledTasks({
   // oldest still intact -- read from its own receipts here, never from the
   // run -- is overwritten in place. Its run stops naming the file, and so does
   // every run whose file was found deleted, renamed or changed on the way.
+  const releaseReport = reportReleaser({ driveBudget, appId: sourceAccess?.appId });
+  const reclaimReports = () => reclaimSupersededReports({ store, release: releaseReport });
   const archive = reportArchive ? async (finished) => {
     const kept = await store.retainedReports(finished.schedule.tenant, finished.schedule.id);
     const saved = await reportArchive.archive({ ...finished, candidates: reportCandidates(kept) });
@@ -224,7 +274,11 @@ export async function startScheduledTasks({
     // that run is counted as kept until a later run finds out otherwise.
     for (const runId of [saved?.replaced, ...(saved?.stale ?? [])].filter(Boolean)) {
       try { await store.supersedeReport(finished.schedule.tenant, runId); }
-      catch (error) { log(`定时任务：不再保留的报告，运行记录未更新（${String(error?.message ?? error).slice(0, 120)}）。`); }
+      catch (error) { log(`定时任务：不再保留的报告，运行记录未更新（${String(error?.message ?? error).slice(0, 120)}）。`); continue; }
+      // And the Drive budget it was charged for: the bytes are no longer the
+      // ones it reserved. Missed here, the next start gives it back.
+      await releaseReport({ tenant: finished.schedule.tenant, owner: finished.schedule.owner, runId })
+        .catch((error) => log(`定时任务：不再保留的报告，云盘额度未归还（${String(error?.message ?? error).slice(0, 120)}），下次启动再试。`));
     }
     return saved;
   } : async () => {
@@ -244,7 +298,15 @@ export async function startScheduledTasks({
     log(`定时任务：无人值守运行已开启（最长 ${unattended.windowDays} 天），当前保存了 ${held} 份长效凭据于 ${credentials.directory === "postgres" ? "共享数据库" : path.join(dataDir, "unattended")}。`);
   }
 
+  // Their owners are told, through the bot, before the authorization their
+  // tasks run on ends, and when tasks of theirs are suspended.
+  const reminders = new ScheduleReminders({ store, unattended: unattendedConsent, bot, feishu, allowedTenants, promptDays, now, log });
+
   const scheduler = new Scheduler({ store, now, execute: runner.execute, ...(capacity.maxConcurrentRuns ? { maxConcurrent: capacity.maxConcurrentRuns } : {}),
+    onEvent: (event) => {
+      if (event.kind === "suspended") { reminders.suspended(event.schedule, event.reason); observe("suspended", event.reason ?? null); }
+      else if (["completed", "failed"].includes(event.kind)) observe(event.kind);
+    },
     // A scheduled task only ever runs inside the lifetime of the login that
     // created it. `sourceAccess` is the only thing that knows whether one is
     // still live, and it is asked per run rather than trusted from creation.
@@ -269,10 +331,7 @@ export async function startScheduledTasks({
     // them: `push` reads the recipient from the stored schedule and takes none
     // from the run. Where the operator has not enabled `message.send` this is
     // refused like any other write, logged once, and the run is unaffected.
-    notify: async (finished) => {
-      const outcome = await push.deliver(finished);
-      if (!outcome.sent) log(`定时任务：结果未推送（${outcome.reason}）。`);
-    } });
+    notify: notifyOwner({ push, store, bot, log, observe }) });
 
   const service = new ScheduleService({ sessions, store, scheduler, consent, allowDevelopment, unattended: unattendedConsent, grants, feishu, resourceResolver: sourceAccess, push, now });
   // Containers and run tokens outlive a control plane that was killed; both are
@@ -298,31 +357,75 @@ export async function startScheduledTasks({
   const prune = async () => {
     const cleared = await store.pruneRunDetail(retentionMs);
     if (cleared > 0) log(`定时任务：清除了 ${cleared} 条超过 ${runDetailDays} 天的运行正文（运行记录本身保留）。`);
-    // A deleted task's runs are kept (G11), for this long after they finished.
-    const orphans = await store.pruneOrphanRuns(ORPHAN_RUN_DAYS * 86400_000);
-    if (orphans > 0) log(`定时任务：清除了 ${orphans} 条已删除任务、结束超过 ${ORPHAN_RUN_DAYS} 天的运行记录。`);
+    // And the rows themselves, past what 运行记录 keeps: each task's newest (as
+    // many as any view shows of one task) and whatever is younger than the
+    // text above, so the desktop has had its chance at all of it; a deleted
+    // task's (G11) for longer. A report's Drive reservation is given back first.
+    const pruned = await store.pruneRuns({ keep: SCHEDULE_LIMITS.maxRuns, olderThanMs: retentionMs,
+      orphanOlderThanMs: ORPHAN_RUN_DAYS * 86400_000, release: releaseReport });
+    if (pruned > 0) log(`定时任务：清除了 ${pruned} 条超出保留范围的运行记录（每个任务保留最新 ${SCHEDULE_LIMITS.maxRuns} 条和 ${runDetailDays} 天内的，已删除任务的保留 ${ORPHAN_RUN_DAYS} 天）。`);
     const prompts = await store.prunePrompts(promptDays * 86400_000);
     if (prompts > 0) log(`定时任务：清除了 ${prompts} 条停用超过 ${promptDays} 天的提示词（配置与运行记录保留，恢复需重建任务）。`);
   };
   // A database away at that moment is tried again the next day; said, not thrown.
   const pruneSafely = () => prune().catch((error) => log(`定时任务：清理没有完成（${String(error?.message ?? error).slice(0, 120)}），明天再试。`));
   await pruneSafely();
+  // What reports gave up before their reservations were given back with them
+  // -- every overwritten report, until this release -- is given back once, now.
+  if (driveBudget && sourceAccess?.appId) {
+    void reclaimReports().then((given) => { if (given) log(`定时任务：归还了 ${given} 份不再保留的报告占用的云盘额度。`); },
+      (error) => log(`定时任务：云盘额度归还没有完成（${String(error?.message ?? error).slice(0, 120)}），下次启动再试。`));
+  }
   const pruning = setInterval(pruneSafely, 86400_000);
   pruning.unref?.();
+  // The egress certificate is renewed while the server runs, not only when it
+  // starts. It lasts 90 days and is re-issued in its last 14, and it used to be
+  // looked at only at start: a server not restarted in that window would have
+  // had every run fail at once the day it ran out (the one issued on 2026-09-29,
+  // on 2026-12-28), and again every 90 days. Looked at every six hours; a new
+  // one goes into both listeners without a restart -- a handshake from then on
+  // gets it, a run already connected keeps what it has -- and the CA the
+  // containers trust is the same one unless it had itself run out.
+  let issued = certificate;
+  const renewCertificate = async () => {
+    const next = await ensureEgressCertificate({ directory: path.join(dataDir, "egress-tls"), now });
+    if (!next.reissued) return false;
+    for (const listener of [egressServer, remoteServer]) listener?.setSecureContext({ key: next.key, cert: next.cert });
+    runner.ca = next.ca;
+    issued = next;
+    log(`定时任务：出口证书已续签，有效期到 ${new Date(new X509Certificate(next.cert).validTo).toISOString()}，没有重启。`);
+    return true;
+  };
+  const renewSafely = () => renewCertificate().catch((error) => log(`定时任务：出口证书续签没有完成（${String(error?.message ?? error).slice(0, 160)}），六小时后再试。`));
+  const renewing = setInterval(renewSafely, CERTIFICATE_CHECK_MS);
+  renewing.unref?.();
+  // Reminders of an ending authorization: looked at on start and every six
+  // hours; each is sent once per grant, whatever restarts come between.
+  const remindSafely = () => reminders.sweep().then((told) => { if (told) log(`定时任务：提醒了 ${told} 个人无人值守授权快到期。`); },
+    (error) => log(`定时任务：到期提醒没有完成（${String(error?.message ?? error).slice(0, 120)}），六小时后再试。`));
+  void remindSafely();
+  const reminding = setInterval(remindSafely, REMINDER_CHECK_MS);
+  reminding.unref?.();
   // Keep the management surface available, but never launch beside containers
   // whose shutdown we could not establish. start() cannot reopen a closed clock.
   if (recoverySafe) await scheduler.start();
   else await scheduler.close();
 
   return {
-    service, scheduler, egress, store, runner, reportArchive, certificate,
+    service, scheduler, egress, store, runner, reportArchive, certificate, reminders,
+    // What the egress listeners serve now, and when it runs out (operations
+    // watch, metrics); and the renewal itself, for a caller that cannot wait
+    // six hours to see it work.
+    egressCertificate: () => ({ validTo: Date.parse(new X509Certificate(issued.cert).validTo), ca: issued.ca }),
+    renewEgressCertificate: renewCertificate,
     unattended: unattendedConsent,
     sandboxReady: available.ok && recoverySafe,
     egressPort, egressAddress: gatewayAddress ?? "0.0.0.0",
     remoteEgressAddress: remoteServer?.address() ?? null,
     async close() {
-      clearInterval(pruning);
+      clearInterval(pruning); clearInterval(renewing); clearInterval(reminding);
       await scheduler.close();
+      await reminders.close();
       unattendedConsent?.close();
       egress.closeAll();
       for (const listener of [egressServer, remoteServer]) { listener?.close(); listener?.closeAllConnections?.(); }

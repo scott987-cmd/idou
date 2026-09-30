@@ -71,6 +71,12 @@ export function runLabel(run) {
   if (!Number.isSafeInteger(run.finishedAt)) return { text: "运行中", tone: "running" };
   if (run.outcome === "skipped") return { text: "已跳过", tone: "failed" };
   const done = run.outcome === "completed";
+  // Done, but its result did not reach every place it was meant for -- a
+  // document, a chat, its owner (the lines under it say which, and why). Not a
+  // plain success: the reason is exactly what the person has to act on.
+  if (done && run.undelivered > 0) {
+    return { text: run.kind === "manual" ? "测试运行未全部送达" : run.kind === "catch-up" ? "补跑未全部送达" : "未全部送达", tone: "failed" };
+  }
   if (run.kind === "manual") return done ? { text: "测试运行完成", tone: "completed" } : { text: "失败", tone: "failed" };
   if (run.kind === "catch-up") return done ? { text: "补跑完成", tone: "completed" } : { text: "补跑失败", tone: "failed" };
   return done ? { text: "成功", tone: "completed" } : { text: "失败", tone: "failed" };

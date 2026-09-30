@@ -35,7 +35,8 @@ function harness({ stored = schedule(), who = WHO, actions = ["document.append",
   });
   return { delivery, seen };
 }
-const run = (delivery, over = {}) => delivery.deliver({ schedule: schedule(), parentToken: "parent", runId: "run-1", report: Buffer.from("# 要点\n\n1. 上线了\n"), ...over });
+const deliver = (delivery, over = {}) => delivery.deliver({ schedule: schedule(), parentToken: "parent", runId: "run-1", report: Buffer.from("# 要点\n\n1. 上线了\n"), ...over });
+const run = async (delivery, over = {}) => (await deliver(delivery, over)).lines;
 
 test("the places are read again when the run ends: one taken off meanwhile is not written to", async () => {
   // The claim still names both; the person took the document off while the run
@@ -204,10 +205,14 @@ test("after a run: the report is saved, then the places are written, and the rec
   const finished = { schedule: schedule(), parentToken: "parent", runId: "run-1", report: Buffer.from("r") };
   const artifact = { state: "verified", fileToken: "FileToken0001" };
   const saving = async () => ({ detail: "报告已保存到飞书云盘：https://x", artifact });
-  const delivering = (lines, seen = []) => ({ deliver: async (input) => { seen.push(input); return lines; } });
+  const delivering = (lines, seen = [], missed = 0) => ({ deliver: async (input) => { seen.push(input); return { lines, missed }; } });
 
   const both = await afterRun({ archive: saving, delivery: delivering(["已发到「产品群」"]) })(finished);
   assert.deepEqual(both, { detail: "报告已保存到飞书云盘：https://x\n已发到「产品群」", artifact });
+  // And how many places it missed, kept with the run (the desktop shows it as
+  // 未全部送达, not as a plain success).
+  assert.deepEqual(await afterRun({ archive: saving, delivery: delivering(["已发到「产品群」", "没有追加到文档《周报》：飞书拒绝"], [], 1) })(finished),
+    { detail: "报告已保存到飞书云盘：https://x\n已发到「产品群」\n没有追加到文档《周报》：飞书拒绝", artifact, undelivered: 1 });
   const saved = await saving();
   assert.deepEqual(await afterRun({ archive: saving, delivery: delivering([]) })(finished), saved, "a task with no places reads as before");
   assert.deepEqual(await afterRun({ archive: saving })(finished), saved, "and so does a server without the bridge");
@@ -225,4 +230,21 @@ test("after a run: the report is saved, then the places are written, and the rec
   const seen = [];
   await afterRun({ archive: saving, delivery: delivering(["不该有"], seen) })({ ...finished, signal: controller.signal });
   assert.equal(seen.length, 0);
+});
+
+// Found in the long-running review (2026-09-29): a run whose result reached
+// none of its places still read 成功. Each place not written -- refused, not
+// allowed, stopped, or not known to have arrived -- is counted, and only those.
+test("the places a result did not reach are counted, and a place it reached is not", async () => {
+  const missed = async (options, over) => (await deliver(harness(options).delivery, over)).missed;
+  assert.equal(await missed({}), 0, "both written");
+  assert.equal(await missed({ stored: schedule({ deliveries: [] }) }), 0, "no places, nothing missed");
+  assert.equal(await missed({ who: null }), 2, "an identity not allowed to write misses every place");
+  assert.equal(await missed({ actions: ["message.send"] }), 1, "documents not enabled");
+  assert.equal(await missed({ append: async (id, markdown, beforeDispatch) => { await beforeDispatch(); throw new Error("timed out"); } }), 1,
+    "an append not known to have arrived");
+  assert.equal(await missed({ send: () => ({ sent: false, reason: "403 feishu_cli_write_not_enabled" }) }), 1, "a chat refused");
+  assert.equal(await missed({ getFails: true }), 1, "the places could not even be read");
+  const controller = new AbortController();
+  assert.equal(await missed({ append: async () => { controller.abort(); throw new Error("aborted"); } }, { signal: controller.signal }), 2, "stopped on the way");
 });
