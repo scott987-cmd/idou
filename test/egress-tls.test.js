@@ -148,3 +148,31 @@ test("every openssl on this machine signs a certificate that is sound", { skip: 
     assert.ok(cert.checkIssued(new X509Certificate(issued.ca)) && cert.checkHost(EGRESS_HOSTNAME), binary);
   }
 });
+
+// What a machine's openssl.cnf adds to a certificate differs from build to
+// build and machine to machine. On GitHub's macOS runner the CA certificate
+// came out with two Basic Constraints -- the configuration's `v3_ca` and the
+// command line's own -- which is invalid, and the soundness check refused it:
+// every scheduled-task test failed there, and would have failed any server so
+// configured. Reproduced here with LibreSSL and a configuration like the one
+// most openssl builds ship; and a configuration that adds the wrong extensions
+// outright. With every openssl this machine has, neither may leave a mark.
+const CONFIGURATIONS = {
+  shipped: "[req]\ndistinguished_name = dn\nx509_extensions = v3_ca\n[dn]\n[v3_ca]\nsubjectKeyIdentifier = hash\nauthorityKeyIdentifier = keyid:always,issuer\nbasicConstraints = critical,CA:true\n",
+  hostile: "[req]\ndistinguished_name = dn\nx509_extensions = hostile\nreq_extensions = hostile_request\n[dn]\n"
+    + "[hostile]\nbasicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature\nsubjectAltName = DNS:evil.example\n[hostile_request]\nsubjectAltName = DNS:evil.example\n",
+};
+test("the machine's openssl.cnf has no say in the certificates, whichever openssl signs them", { skip: !openssls.length && "no openssl here" }, async (t) => {
+  const where = await directory(t);
+  for (const binary of openssls) for (const [name, text] of Object.entries(CONFIGURATIONS)) {
+    const label = `${binary} with the ${name} configuration`, config = path.join(where, `${name}.cnf`);
+    await writeFile(config, text);
+    const issued = await ensureEgressCertificate({ directory: path.join(where, `${name}-${openssls.indexOf(binary)}`),
+      run: (command, args, options) => runProcess(binary, args, { ...options, env: { ...process.env, OPENSSL_CONF: config } }) });
+    const cert = new X509Certificate(issued.cert), ca = new X509Certificate(issued.ca);
+    assert.ok(cert.checkIssued(ca) && cert.verify(ca.publicKey), `${label}: the CA signed it`);
+    assert.ok(cert.checkHost(EGRESS_HOSTNAME), label);
+    assert.equal(cert.checkHost("evil.example"), undefined, `${label}: nothing the configuration wanted in it`);
+    assert.equal(ca.ca, true, `${label}: the CA is a CA`);
+  }
+});

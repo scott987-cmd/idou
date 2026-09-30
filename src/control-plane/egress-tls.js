@@ -25,19 +25,37 @@ const FILES = Object.freeze({ caKey: "egress-ca.key", caCert: "egress-ca.pem", k
 
 async function readIfPresent(file) { try { return await readFile(file, "utf8"); } catch { return null; } }
 
-// Whether this pair is sound: it parses, the CA signed it, and it carries the
-// name the sandbox will dial. Deliberately says nothing about expiry.
-function sound(caPem, certPem, hostname) {
-  if (!caPem || !certPem) return false;
+// What is wrong with this pair, or null when it is sound: it parses, the CA
+// signed it, and it carries the name the sandbox will dial. Deliberately says
+// nothing about expiry.
+function unsound(caPem, certPem, hostname) {
+  if (!caPem || !certPem) return "缺少证书文件";
   try {
     const ca = new X509Certificate(caPem), cert = new X509Certificate(certPem);
     // Signed by this CA, not merely naming it as issuer: `checkIssued` compares
     // names (and key identifiers only where the certificate carries them), and
     // LibreSSL -- the openssl macOS ships -- writes none, so a certificate from
-    // another CA of the same name passed as ours.
-    return Boolean(cert.checkIssued(ca)) && cert.verify(ca.publicKey) && Boolean(cert.checkHost(hostname));
-  } catch { return false; }
+    // another CA of the same name passed as ours. It also fails for a CA whose
+    // own extensions are invalid, such as two Basic Constraints.
+    if (!cert.checkIssued(ca)) return "CA 证书与签发关系不符（或 CA 证书的扩展无效）";
+    if (!cert.verify(ca.publicKey)) return "签名不是这张 CA 的";
+    if (!cert.checkHost(hostname)) return `证书不带主机名 ${hostname}`;
+    return null;
+  } catch (error) { return `证书读不出来（${error.message}）`; }
 }
+const sound = (caPem, certPem, hostname) => unsound(caPem, certPem, hostname) === null;
+
+// Everything openssl is told comes from these, never from the machine's
+// openssl.cnf: what that file adds (`x509_extensions`, `req_extensions`)
+// differs between builds and machines. With LibreSSL and the configuration most
+// builds ship, the CA certificate came out with the file's Basic Constraints
+// and the command line's both -- invalid -- on GitHub's macOS runner, where
+// every scheduled-task test then failed at the check below.
+const CA_CONFIG = ["[req]", "distinguished_name = dn", "prompt = no", "x509_extensions = ca", "[dn]", "CN = idou Sandbox Egress CA",
+  "[ca]", "basicConstraints = critical,CA:TRUE,pathlen:0", "keyUsage = critical,keyCertSign,cRLSign", "subjectKeyIdentifier = hash", ""].join("\n");
+const requestConfig = (hostname) => ["[req]", "distinguished_name = dn", "prompt = no", "[dn]", `CN = ${hostname}`, ""].join("\n");
+const serverExtensions = (hostname) => [`subjectAltName = DNS:${hostname}`, "basicConstraints = critical,CA:FALSE",
+  "keyUsage = critical,digitalSignature,keyEncipherment", "extendedKeyUsage = serverAuth", "subjectKeyIdentifier = hash", "authorityKeyIdentifier = keyid,issuer", ""].join("\n");
 
 // Whether it is still worth keeping. Separate from `sound` because the two ask
 // about different clocks, and merging them was a real defect: renewal passes a
@@ -83,31 +101,32 @@ export async function ensureEgressCertificate({ directory, hostname = EGRESS_HOS
   // working; only a CA that is itself gone or expired is replaced.
   const caUsable = existingCa && (() => { try { return Date.parse(new X509Certificate(existingCa).validTo) > at; } catch { return false; } })();
   if (!caUsable) {
-    await openssl(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", String(CA_DAYS),
-      "-keyout", FILES.caKey, "-out", FILES.caCert, "-subj", "/CN=idou Sandbox Egress CA",
-      "-addext", "basicConstraints=critical,CA:TRUE,pathlen:0", "-addext", "keyUsage=critical,keyCertSign,cRLSign"], { run, directory });
+    await writeFile(file("egress-ca.cnf"), CA_CONFIG, { mode: 0o600 });
+    await openssl(["req", "-x509", "-config", "egress-ca.cnf", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", String(CA_DAYS),
+      "-keyout", FILES.caKey, "-out", FILES.caCert], { run, directory });
     await chmod(file(FILES.caKey), 0o600);
   }
 
-  await openssl(["req", "-new", "-newkey", "rsa:2048", "-nodes", "-sha256",
-    "-keyout", FILES.key, "-out", "egress.csr", "-subj", `/CN=${hostname}`], { run, directory });
-  // The extensions are written to a file, always. This used to try `-extfile -`
-  // first -- stdin, which openssl is never given -- and fall back to a file when
-  // that failed; the openssl on GitHub's macOS runner did not fail, it signed a
-  // certificate with no extensions at all.
-  await writeFile(file("egress.ext"), `subjectAltName=DNS:${hostname}\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n`, { mode: 0o600 });
+  await writeFile(file("egress-request.cnf"), requestConfig(hostname), { mode: 0o600 });
+  await openssl(["req", "-new", "-config", "egress-request.cnf", "-newkey", "rsa:2048", "-nodes", "-sha256",
+    "-keyout", FILES.key, "-out", "egress.csr"], { run, directory });
+  await writeFile(file("egress.ext"), serverExtensions(hostname), { mode: 0o600 });
   await openssl(["x509", "-req", "-in", "egress.csr", "-CA", FILES.caCert, "-CAkey", FILES.caKey, "-CAcreateserial",
     "-days", String(SERVER_DAYS), "-sha256", "-out", FILES.cert, "-extfile", "egress.ext"], { run, directory });
   await chmod(file(FILES.key), 0o600);
 
   const ca = await readFile(file(FILES.caCert), "utf8"), cert = await readFile(file(FILES.cert), "utf8");
-  // Verified after writing, not assumed from a zero exit: `x509 -req` drops
-  // extensions unless told otherwise, so a zero exit can still produce a
-  // certificate with no SAN, which would fail every sandbox at connect time
-  // instead of here where the reason is still visible. Soundness only -- what it
-  // must not be judged against is the caller's clock, which during a renewal is
-  // deliberately set near the *old* certificate's expiry.
-  if (!sound(ca, cert, hostname)) throw new Error("生成的出口证书未通过校验（主机名或签发关系不符）");
+  // Verified after writing, not assumed from a zero exit: a zero exit has
+  // produced a certificate with no SAN, and a CA with invalid extensions, and
+  // either would fail every sandbox at connect time instead of here where the
+  // reason is still visible. Soundness only -- what it must not be judged
+  // against is the caller's clock, which during a renewal is deliberately set
+  // near the *old* certificate's expiry.
+  const wrong = unsound(ca, cert, hostname);
+  if (wrong) {
+    const version = await run("openssl", ["version"], { cwd: directory, timeoutMs: 10_000, maxOutputBytes: 4096 }).then((result) => result.stdout.trim(), () => "?");
+    throw new Error(`生成的出口证书未通过校验：${wrong}（${version}）`);
+  }
   return { hostname, reissued: true, ca, cert, key: await readFile(file(FILES.key), "utf8"),
     caFile: file(FILES.caCert), certFile: file(FILES.cert), keyFile: file(FILES.key) };
 }
