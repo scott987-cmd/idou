@@ -91,15 +91,13 @@ export async function ensureEgressCertificate({ directory, hostname = EGRESS_HOS
 
   await openssl(["req", "-new", "-newkey", "rsa:2048", "-nodes", "-sha256",
     "-keyout", FILES.key, "-out", "egress.csr", "-subj", `/CN=${hostname}`], { run, directory });
+  // The extensions are written to a file, always. This used to try `-extfile -`
+  // first -- stdin, which openssl is never given -- and fall back to a file when
+  // that failed; the openssl on GitHub's macOS runner did not fail, it signed a
+  // certificate with no extensions at all.
+  await writeFile(file("egress.ext"), `subjectAltName=DNS:${hostname}\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n`, { mode: 0o600 });
   await openssl(["x509", "-req", "-in", "egress.csr", "-CA", FILES.caCert, "-CAkey", FILES.caKey, "-CAcreateserial",
-    "-days", String(SERVER_DAYS), "-sha256", "-out", FILES.cert,
-    "-extfile", "-", "-extensions", "v3_req"], { run, directory }).catch(async () => {
-    // `-extfile -` is not portable across openssl builds; fall back to a file.
-    const extensions = file("egress.ext");
-    await writeFile(extensions, `subjectAltName=DNS:${hostname}\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n`, { mode: 0o600 });
-    await openssl(["x509", "-req", "-in", "egress.csr", "-CA", FILES.caCert, "-CAkey", FILES.caKey, "-CAcreateserial",
-      "-days", String(SERVER_DAYS), "-sha256", "-out", FILES.cert, "-extfile", path.basename(extensions)], { run, directory });
-  });
+    "-days", String(SERVER_DAYS), "-sha256", "-out", FILES.cert, "-extfile", "egress.ext"], { run, directory });
   await chmod(file(FILES.key), 0o600);
 
   const ca = await readFile(file(FILES.caCert), "utf8"), cert = await readFile(file(FILES.cert), "utf8");

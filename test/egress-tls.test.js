@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { existsSync, realpathSync } from "node:fs";
 import { X509Certificate } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { ensureEgressCertificate, sandboxTrustEnvironment, EGRESS_HOSTNAME } from "../src/control-plane/egress-tls.js";
+import { runProcess } from "../src/providers/process-runner.js";
 
 async function directory(t) {
   const made = await mkdtemp(path.join(os.tmpdir(), "idou-egress-tls-"));
@@ -111,4 +113,38 @@ test("a relative directory or an unusable hostname is refused up front", async (
   await assert.rejects(() => ensureEgressCertificate({ directory: "relative/path" }), /绝对路径/);
   await assert.rejects(() => ensureEgressCertificate({ directory: "/tmp/x", hostname: "not a hostname" }), /主机名不合法/);
   await assert.rejects(() => ensureEgressCertificate({ directory: "/tmp/x", hostname: "" }), /主机名不合法/);
+});
+
+// Found by CI on GitHub's macOS runner, where every scheduled-task test failed
+// here: its openssl took `-extfile -` with nothing on stdin (openssl is never
+// given one) as "no extensions" and signed anyway, exit 0, so the fallback that
+// writes the extensions to a file never ran and the certificate had no name.
+// Stood in for here by an openssl that does just that with an empty stdin.
+test("the extensions come from a file, whatever an openssl makes of an empty stdin", async (t) => {
+  const where = await directory(t);
+  const asked = [];
+  const permissive = async (command, args, options) => {
+    asked.push(args);
+    const at = args.indexOf("-extfile");
+    if (at < 0 || args[at + 1] !== "-") return runProcess(command, args, options);
+    const section = args.indexOf("-extensions");
+    return runProcess(command, args.filter((_, index) => ![at, at + 1, section, section + 1].includes(index)), options);
+  };
+  const issued = await ensureEgressCertificate({ directory: where, run: permissive });
+  assert.ok(new X509Certificate(issued.cert).checkHost(EGRESS_HOSTNAME), "the certificate carries the name");
+  assert.equal(asked.some((args) => args[args.indexOf("-extfile") + 1] === "-"), false, "openssl is never asked to read what it is not given");
+});
+
+// Every openssl this machine has, not only the first on PATH: a Mac has
+// LibreSSL at /usr/bin and often Homebrew's OpenSSL in front of it, and a
+// server may have either.
+const openssls = [...new Set(["/usr/bin/openssl", "/opt/homebrew/bin/openssl", "/usr/local/bin/openssl", "/opt/homebrew/opt/openssl@3/bin/openssl"]
+  .filter((file) => existsSync(file)).map((file) => realpathSync(file)))];
+test("every openssl on this machine signs a certificate that is sound", { skip: !openssls.length && "no openssl here" }, async (t) => {
+  for (const binary of openssls) {
+    const where = await directory(t);
+    const issued = await ensureEgressCertificate({ directory: where, run: (command, args, options) => runProcess(binary, args, options) });
+    const cert = new X509Certificate(issued.cert);
+    assert.ok(cert.checkIssued(new X509Certificate(issued.ca)) && cert.checkHost(EGRESS_HOSTNAME), binary);
+  }
 });
