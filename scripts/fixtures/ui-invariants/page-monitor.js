@@ -226,6 +226,18 @@ export function installMonitor() {
   // After the click has been handled: a microtask would run between this
   // listener and the control's own, before the menu is open.
   addEventListener("click", () => setTimeout(safe(() => { for (const node of document.querySelectorAll("[aria-expanded='true']")) if (!watched.get(node)?.expanded) remember(node, { expanded: true }); }), 0), true);
+  // And the moment a menu opens, within a second of the person's click: the
+  // timer above runs after whatever the page queued first, and a page that
+  // rebuilt its card before it -- a redraw in the click's own microtask, or its
+  // own timer due first under load -- lost the menu unreported (2026-09-30).
+  // Made before the observer below, so in one checkpoint it is told first.
+  new MutationObserver(safe((records) => {
+    if (performance.now() - lastInput.at > 1000) return;
+    for (const record of records) {
+      const node = record.target;
+      if (node.isConnected && node.getAttribute?.("aria-expanded") === "true" && !watched.get(node)?.expanded) remember(node, { expanded: true });
+    }
+  })).observe(document, { attributes: true, attributeFilter: ["aria-expanded"], subtree: true });
   const twinOf = (row, tag) => [...document.getElementsByTagName(tag)].find((candidate) => !watched.has(candidate) && signature(candidate) === row.sig) ?? null;
   new MutationObserver(safe(() => {
     for (const [node, row] of watched) {

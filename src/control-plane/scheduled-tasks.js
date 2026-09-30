@@ -366,6 +366,9 @@ export async function startScheduledTasks({
     if (pruned > 0) log(`定时任务：清除了 ${pruned} 条超出保留范围的运行记录（每个任务保留最新 ${SCHEDULE_LIMITS.maxRuns} 条和 ${runDetailDays} 天内的，已删除任务的保留 ${ORPHAN_RUN_DAYS} 天）。`);
     const prompts = await store.prunePrompts(promptDays * 86400_000);
     if (prompts > 0) log(`定时任务：清除了 ${prompts} 条停用超过 ${promptDays} 天的提示词（配置与运行记录保留，恢复需重建任务）。`);
+    // And the refresh tokens of authorizations that have ended.
+    const forgotten = await (unattendedConsent?.sweep() ?? 0);
+    if (forgotten > 0) log(`定时任务：${forgotten} 份已结束的无人值守授权不再保存飞书刷新令牌（记录和原因保留）。`);
   };
   // A database away at that moment is tried again the next day; said, not thrown.
   const pruneSafely = () => prune().catch((error) => log(`定时任务：清理没有完成（${String(error?.message ?? error).slice(0, 120)}），明天再试。`));

@@ -734,7 +734,12 @@ test("source text, title and synthesis-only changes each create a new frozen ver
   assert.equal((await f.publisher.plan(planningInput(f.input))).state, "ready");
   const result = await f.publisher.publish(newOperation(f)); assert.equal(result.generation, 4); assert.equal(f.state.uploads, 4);
   assert.equal(f.state.artifacts.size, 4, "never overwrite prior files");
-  const entries = await f.publisher.journal.load(); assert.equal(new Set(entries.map(row => row.contentDigest)).size, 4);
+  // Every version is its own file in Drive, never overwritten; the journal keeps
+  // the shard's newest published operations only -- what the next plan reads
+  // back -- so it does not fill (publication-journal.js compactPublications).
+  const entries = await f.publisher.journal.load();
+  assert.deepEqual(entries.map(row => [row.state, row.expectedGeneration]), [["published", 2], ["published", 3]]);
+  assert.equal(new Set(entries.map(row => row.contentDigest)).size, 2);
   assert.equal(f.ledger.snapshot(f.who).chargedBytes, [...f.state.artifacts.values()].reduce((sum, item) => sum + item.bytes.length, 0));
   assert.equal((await f.publisher.publish(newOperation(f))).state, "unchanged"); assert.equal(f.state.uploads, 4);
 });

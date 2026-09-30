@@ -138,8 +138,10 @@ export class UnattendedConsent {
   }
 
   async #terminal(tenantId, userId, reason, { remove = false } = {}) {
+    // Ended, the record keeps why and lets its token go (endedRecord): nothing
+    // opens a record that is not active again.
     if (remove) await this.store.remove(tenantId, userId).catch(() => {});
-    else await this.store.patch(tenantId, userId, { state: "needs_reauthorization", reason }).catch(() => {});
+    else await this.store.patch(tenantId, userId, { state: "needs_reauthorization", reason, sealed: "" }).catch(() => {});
     this.#forget(tenantId, userId);
     this.#record({ kind: "unattended_refused", tenantId, userId, terminal: true });
     return { ok: false, retry: false, reason };
@@ -180,7 +182,7 @@ export class UnattendedConsent {
         // does not always rotate, so the stored copy may well still work, and
         // today's run is not worth discarding over tomorrow's uncertainty.
         await this.store.write(tenantId, userId, { ...record, sealed: resealed, lastUsedAt: this.now(), failures: 0 })
-          .catch(() => this.store.patch(tenantId, userId, { state: "needs_reauthorization", reason: "服务端未能保存续期后的凭据，请重新授权。" }).catch(() => {}));
+          .catch(() => this.store.patch(tenantId, userId, { state: "needs_reauthorization", reason: "服务端未能保存续期后的凭据，请重新授权。", sealed: "" }).catch(() => {}));
       }
 
       const ttlMs = Math.min(15 * 60_000, Math.floor(identity.expiresAt - this.now()));
@@ -232,6 +234,13 @@ export class UnattendedConsent {
       "连续多次无法连上飞书完成续期，已停用无人值守运行，任务已暂停。网络恢复后请重新授权。");
     return this.#terminal(tenantId, userId,
       "飞书拒绝了这次续期（可能是你在飞书里撤销了本应用的授权，或长期未使用）。任务已暂停，重新登录并重新授权后恢复。");
+  }
+
+  // Every authorization past its end marked ended, and every ended one's token
+  // let go, whether or not a due task has asked it (scheduled-tasks.js, daily).
+  // How many.
+  async sweep() {
+    return this.store.forgetEnded({ now: this.now(), reason: "无人值守授权已到期，任务已暂停。重新授权后自动恢复。" });
   }
 
   // The minted sessions are left to the registry, which is cleared on shutdown

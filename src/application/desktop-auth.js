@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, writeFile, unlink, rmdir, rename } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile, unlink, rmdir, rename } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { FeishuLoginClient, LoginRestartRequired, SESSION_IDENTITY_FIELDS, validateRenewal } from "./feishu-login-client.js";
@@ -52,6 +52,7 @@ export function legacyAccountNamespace(session) {
 // this does not by itself stop the agent from reading the token; keeping the
 // token out of reach of a read is a separate, larger change.)
 const LEASE_ROOT = path.join(dataHome(), "run");
+export const SESSION_LEASE_ROOT = LEASE_ROOT;
 export async function createSessionLease(session) {
   await mkdir(LEASE_ROOT, { recursive: true, mode: 0o700 });
   const directory = await mkdtemp(path.join(LEASE_ROOT, "agent-session-"));
@@ -83,6 +84,32 @@ export async function createSessionLease(session) {
     await writeFile(filename, encode(session), { mode: 0o600, flag: "wx" });
     return { filename, close, replace };
   } catch (error) { await close(); throw error; }
+}
+
+// Leases a crash left behind: a process that dies runs no close(), and its
+// lease stays -- a turn token in plain text, run out long since (the
+// long-running review, 2026-09-29, found six from over a fortnight). Swept when
+// the app starts: each whose token ran out more than a day ago, or that cannot
+// be read and was last written as long ago. A live lease is never among them:
+// its token is replaced before it runs out. How many went.
+export async function sweepStaleLeases({ root, now = Date.now(), graceMs = 86_400_000 } = {}) {
+  // Named by the caller, never defaulted: what removes files is never pointed
+  // at a real place by a test that forgot to say where.
+  if (typeof root !== "string" || !path.isAbsolute(root)) throw new Error("清理会话租约需要明确给出目录");
+  let names;
+  try { names = await readdir(root); } catch { return 0; }
+  let swept = 0;
+  for (const name of names.filter((entry) => /^agent-session-[A-Za-z0-9]{6}$/.test(entry))) {
+    const directory = path.join(root, name);
+    const info = await lstat(directory).catch(() => null);
+    if (!info?.isDirectory()) continue;
+    let ranOut;
+    try { ranOut = JSON.parse(await readFile(path.join(directory, "session.json"), "utf8"))?.expiresAt; } catch { ranOut = info.mtimeMs; }
+    if (!Number.isFinite(ranOut) || ranOut + graceMs >= now) continue;
+    await rm(directory, { recursive: true, force: true });
+    swept += 1;
+  }
+  return swept;
 }
 
 export class DesktopAuth {

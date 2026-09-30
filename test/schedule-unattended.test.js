@@ -209,7 +209,24 @@ test("a refusal from Feishu suspends once, and the next schedule never asks agai
   assert.equal(second.ok, false);
   assert.equal(it.state.grants.length, calls, "answered from disk; Feishu is not asked fifty times");
   assert.equal((await it.store.read(TENANT, USER)).state, "needs_reauthorization");
+  assert.equal((await it.store.read(TENANT, USER)).sealed, "", "and the refresh token is let go: nothing opens an ended record");
   assert.equal((await it.consent.status({ tenantId: TENANT, userId: USER })).authorized, false);
+});
+
+// The daily sweep (scheduled-tasks.js): an authorization past its end is ended
+// and its token let go even when no due task has asked it.
+test("an authorization nobody asks after it ends is ended by the sweep, and says why", async (t) => {
+  const it = await setup(t);
+  it.signIn(); await it.grant();
+  const record = await it.store.read(TENANT, USER);
+  it.state.now = record.expiresAt + 1;
+  assert.equal(await it.consent.sweep(), 1);
+  const ended = await it.store.read(TENANT, USER);
+  assert.deepEqual([ended.state, ended.sealed], ["needs_reauthorization", ""]);
+  const status = await it.consent.status({ tenantId: TENANT, userId: USER });
+  assert.equal(status.authorized, false);
+  assert.match(status.reason, /无人值守授权已到期/);
+  assert.equal(await it.consent.sweep(), 0);
 });
 
 test("a transport failure keeps the schedule alive instead of stopping it overnight", async (t) => {

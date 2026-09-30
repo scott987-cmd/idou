@@ -142,6 +142,12 @@ test("unattended credentials: one pair of keys for every coordinator, records pa
   const reopened = await PostgresUnattendedCredentialStore.open({ state: (await f.connect()).state });
   assert.equal(reopened.deviceId, disk.deviceId, "the disk's device key");
   assert.equal(reopened.unseal(await reopened.read("t2", "ou_b")).refreshToken, "DISK-REFRESH");
+  // Ended authorizations let their tokens go here too, each over the version read.
+  await reopened.write("t3", "ou_c", { sealed: reopened.seal({ appId: "cli_x", tenantId: "t3", userId: "ou_c", refreshToken: "ENDED-REFRESH", notAfter: Date.now() }), state: "active", expiresAt: Date.now() - 1 });
+  assert.equal(await reopened.forgetEnded({ now: Date.now(), reason: "无人值守授权已到期" }), 1);
+  assert.deepEqual([(await reopened.read("t3", "ou_c")).state, (await reopened.read("t3", "ou_c")).sealed], ["needs_reauthorization", ""]);
+  assert.equal(reopened.unseal(await reopened.read("t2", "ou_b")).refreshToken, "DISK-REFRESH", "one without an end is untouched");
+  assert.equal((await everything(f.admin)).includes(Buffer.from("ENDED-REFRESH")), false);
 });
 
 test("the site sign-in key: one for every coordinator, starting at once or later, and the one already on disk is the one kept", { timeout: 60_000 }, async (t) => {

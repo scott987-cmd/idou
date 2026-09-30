@@ -60,7 +60,7 @@ import { listProjectCommands, PRODUCT_COMMANDS, projectCommand } from "../applic
 import { ApprovalRules } from "../application/approval-rules.js";
 import { takeCheckpoint, checkpointChanges, releaseCheckpoint, restoreCheckpoint } from "../application/checkpoints.js";
 import { CodexExtensions, marketplaceSource, pluginId } from "../skills/codex-extensions.js";
-import { attachFiles, listTaskFiles, removeTaskFile } from "../application/task-files.js";
+import { attachFiles, listTaskFiles, removeEmptyTaskFolder, removeTaskFile } from "../application/task-files.js";
 import { MediaDownloader } from "../application/media-download.js";
 import { FileDelivery, uploadableTypes } from "../application/file-delivery.js";
 import { bundleStaticApp } from "../apps/single-file.js";
@@ -82,7 +82,7 @@ import { DesktopWikiReception } from "../knowledge/desktop-reception.js";
 import { WikiCloudWork } from "../knowledge/cloud-work.js";
 import { runWikiRenewalCheckpoint } from "../knowledge/renewal-checkpoint.js";
 import { GatewayWikiSynthesizer } from "../knowledge/synthesis.js";
-import { DesktopAuth, SESSION_UNKNOWN } from "../application/desktop-auth.js";
+import { DesktopAuth, SESSION_LEASE_ROOT, SESSION_UNKNOWN, sweepStaleLeases } from "../application/desktop-auth.js";
 import { FeishuLoginClient } from "../application/feishu-login-client.js";
 import { DeviceIdentityStore } from "../application/device-identity.js";
 import { ResumeStore } from "../application/resume-store.js";
@@ -151,6 +151,8 @@ else start().catch((error) => { dialog.showErrorBox("启动失败", error.messag
 
 async function start() {
   await app.whenReady();
+  // What an earlier crash left of its session leases (desktop-auth.js); never waited for.
+  void sweepStaleLeases({ root: SESSION_LEASE_ROOT }).catch(() => 0);
   // Started from Finder, a packaged app has launchd's bare PATH; see login-path.js.
   if (app.isPackaged) process.env.PATH = await loginShellPath();
   const initialConfig = await loadConfig();
@@ -1271,7 +1273,7 @@ async function start() {
     const task = scope.service.get(id);
     const choice = await confirmInApp({ type: "warning", title: "确认删除任务", taskId: id,
       message: `删除「${task.title}」这段对话`,
-      detail: `工作目录 ${task.cwd} 不会被删除：里面是你放进去的文件和已经产出的结果。\n删除的只是这段对话记录，删掉之后无法恢复。`,
+      detail: `工作目录 ${task.cwd} 里的文件不会被删除：里面是你放进去的文件和已经产出的结果（为这个任务新建的文件夹如果是空的，会一起清掉）。\n删除的只是这段对话记录，删掉之后无法恢复。`,
       buttons: ["取消", "删除对话"], defaultId: 0, cancelId: 0 });
     if (choice.response !== 1) return null;
     scope.previews.close(id);
@@ -1279,6 +1281,8 @@ async function start() {
     const removed = await scope.service.remove(id);
     await scope.taskUi.remove(id);
     await removePastedImages(imageFolder(scope.root, task.id)).catch(() => {});
+    // The folder made for it, when nothing was ever put there (task-files.js).
+    await removeEmptyTaskFolder({ cwd: task.cwd, root: taskFolderRoot(), tasks: scope.service.snapshot().tasks });
     return removed;
   });
   // A pasted image, for the conversation to show: only one of this task's own.

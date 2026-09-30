@@ -110,7 +110,7 @@ npm run check          # 全部单元和集成测试，不花钱、不连真实�
 | 主题 | 文档 |
 | --- | --- |
 | 总体 | [架构](docs/architecture.md) · [上游契约](docs/upstream-contracts.md) · [路线图](docs/roadmap.md) · [ADR 0001](docs/adr/0001-external-upstream-runtimes.md) |
-| 部署与运维 | [用真实飞书账号跑起来](docs/setup-real-feishu.md) · [服务端部署](docs/server-deployment.md) · [服务端管理](docs/server-administration.md) · [扩容](docs/scaling-plan.md) · [打包与内置运行时](docs/runtime-packaging.md) · [升级上游](docs/upgrading-upstreams.md) |
+| 部署与运维 | [用真实飞书账号跑起来](docs/setup-real-feishu.md) · [服务端部署](docs/server-deployment.md) · [服务端管理](docs/server-administration.md) · [扩容](docs/scaling-plan.md) · [打包与内置运行时](docs/runtime-packaging.md) · [升级上游](docs/upgrading-upstreams.md) · [卸载](docs/uninstall.md) |
 | 飞书 | [登录](docs/feishu-login.md) · [CLI 单点登录桥](docs/feishu-cli-bridge.md) · [文档](docs/feishu-document-reader.md) · [电子表格](docs/feishu-sheet-reader.md) · [多维表格](docs/feishu-base.md) · [消息](docs/feishu-chat.md) · [发送](docs/feishu-delivery.md) · [源权限核验](docs/feishu-source-access.md) |
 | Agent | [编程 Agent](docs/coding-agent.md) · [对照 Codex 和 Claude Code](docs/coding-task-parity.md) · [对话模型](docs/chat-models.md) · [MCP 连接](docs/mcp-connections.md) · [企业 MCP 代理](docs/enterprise-mcp-broker.md) · [企业技能](docs/enterprise-skills.md) · [浏览器](docs/browser-integration.md) · [图片视频](docs/media.md) |
 | 定时任务与网站 | [定时任务](docs/scheduled-tasks.md) · [用表格做网站](docs/table-driven-sites.md) · [企业应用平台](docs/enterprise-app-platform.md) · [云盘额度](docs/drive-budget.md) |

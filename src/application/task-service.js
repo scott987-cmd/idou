@@ -356,10 +356,20 @@ export class TaskService extends EventEmitter {
   // Removes the record of the conversation. The working directory is left
   // alone: it holds the files the person attached and the results that were
   // produced, and deleting those is a separate decision they make in Finder.
+  //
+  // The runtime's own copy of the conversation goes with it (thread/delete).
+  // Its transcript holds everything the task read and every tool's output,
+  // screenshots included, and deleting the conversation used to leave all of
+  // it in the account's Codex home for good (the long-running review,
+  // 2026-09-29). Only this task's thread is ever named, never a sweep of
+  // others: other parts of the application keep threads of their own there.
+  // Best effort, and bounded: a runtime that cannot start now does not keep
+  // the record the person asked to delete.
   async remove(id) {
     if (this.closing) throw new Error("应用正在退出");
     const task = this.get(id);
     if (this.active.has(id)) throw new Error("这个任务正在执行，停止后才能删除");
+    if (task.codexThreadId) await this.deleteThread(task).catch(() => {});
     await this.store.remove(id);
     await this.queue?.removeTask(id);
     this.tasks.delete(id);
@@ -570,6 +580,19 @@ export class TaskService extends EventEmitter {
 
   // One short-lived runtime for an operation on a task that is not running.
   // Whatever happens, the process is stopped again.
+  async deleteThread(task, { timeoutMs = 20_000 } = {}) {
+    let timer;
+    const deleting = (async () => {
+      const { client } = await this.runtimeFactory(task, null);
+      await client.start();
+      try { await client.request("thread/delete", { threadId: task.codexThreadId }); }
+      finally { await client.stop().catch(() => {}); }
+    })();
+    try {
+      await Promise.race([deleting, new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error("删除 Codex 对话记录超时")), timeoutMs); })]);
+    } finally { clearTimeout(timer); deleting.catch(() => {}); }
+  }
+
   async withThread(task, run, { experimental = false } = {}) {
     const { client, params } = await this.runtimeFactory(task, null);
     if (experimental) client.capabilities = { experimentalApi: true };

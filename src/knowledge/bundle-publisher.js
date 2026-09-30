@@ -1,4 +1,4 @@
-import { PublicationJournal } from "./publication-journal.js";
+import { PublicationJournal, compactPublications } from "./publication-journal.js";
 import { sealWikiBundle, portablePage, bundleDigest, bundleSourceSetHash, bundleContentDigest } from "./bundle.js";
 import { wikiDigest, wikiUuid, wikiHash, wikiExact, wikiManifest } from "./manifest.js";
 import { ownFileName } from "../product-names.js";
@@ -94,8 +94,10 @@ export class WikiBundlePublisher {
       wikiExact(input, ["id", "shardKey", "sourceIds", "folderReference", "confirmed"]);
       if (!wikiUuid(input.id) || !wikiDigest(input.shardKey) || input.confirmed !== true || !Array.isArray(input.sourceIds) || !input.sourceIds.length || input.sourceIds.length > 200 || !input.sourceIds.every(wikiDigest) || new Set(input.sourceIds).size !== input.sourceIds.length) throw new Error("invalid request");
       await this.authorized(signal);
-      const { decision, session, status, folder, entries, scopeOwner } = await this.inspect({ shardKey: input.shardKey, sourceIds: input.sourceIds, folderReference: input.folderReference }, signal);
-      if (entries.some(row => row.id === input.id)) throw new Error("existing operation");
+      const { decision, session, status, folder, entries: loaded, scopeOwner } = await this.inspect({ shardKey: input.shardKey, sourceIds: input.sourceIds, folderReference: input.folderReference }, signal);
+      if (loaded.some(row => row.id === input.id)) throw new Error("existing operation");
+      // What a shard's newer publication superseded is let go before this one is added.
+      const entries = compactPublications(loaded);
       if (decision.state === "unchanged") return decision;
       if (decision.state !== "ready") throw new Error("prior publication requires inspection");
       if (entries.length >= 1000 || typeof this.keyAuthority?.preparePublication !== "function") throw new Error("journal full or key authorization unavailable");

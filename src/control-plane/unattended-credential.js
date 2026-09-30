@@ -38,6 +38,21 @@ const MAX_RECORD_BYTES = 16384;
 const digest = (value) => createHash("sha256").update(value).digest("base64url");
 const nameFor = (tenantId, userId) => createHash("sha256").update(`${tenantId}\n${userId}`).digest("hex");
 
+// What an ended authorization keeps: why it ended, for the page and the
+// reminder that say so, and nothing that could still act. A record that is not
+// active is never opened for its token again (unattended-consent.js), and one
+// past its end is ended whether or not a due task has asked it yet. Found in
+// the long-running review (2026-09-29): an ended record kept its sealed refresh
+// token for good -- one that Feishu may well still honour -- and one that
+// nothing asked stayed active, token and all. The record to store, or null
+// when there is nothing to let go.
+export function endedRecord(record, now, reason) {
+  // Past its end only as #mint judges it: a record naming no end is not ended here either.
+  if (record.state === "active" && !(Number.isFinite(record.expiresAt) && record.expiresAt <= now)) return null;
+  if (record.state !== "active" && record.sealed === "") return null;
+  return { ...record, sealed: "", ...(record.state === "active" ? { state: "needs_reauthorization", reason } : {}) };
+}
+
 // Created once and never replaced: `wx` means a second process racing to open
 // the same directory loses and reads what the winner wrote, rather than
 // silently replacing a key that every stored credential depends on.
@@ -58,6 +73,18 @@ export class UnattendedCredentialStore {
     Object.assign(this, { directory, key, privateKey, publicKey, now });
     this.deviceId = digest(publicKey.export({ type: "spki", format: "der" }).toString("base64url"));
     this.devicePublicKey = publicKey.export({ type: "spki", format: "pem" }).toString();
+    // One change to a record at a time: letting an ended one go (forgetEnded)
+    // must not land on top of a grant written a moment before.
+    this.chains = new Map();
+  }
+
+  #serial(name, work) {
+    const previous = this.chains.get(name) ?? Promise.resolve();
+    const next = previous.then(work, work);
+    const tail = next.catch(() => {});
+    this.chains.set(name, tail);
+    tail.then(() => { if (this.chains.get(name) === tail) this.chains.delete(name); });
+    return next;
   }
 
   static async open({ directory, now = Date.now } = {}) {
@@ -93,9 +120,11 @@ export class UnattendedCredentialStore {
   // thing and whose sealed copy says another must be believed on the sealed one.
   unseal(record) { return openResume(this.key, record.sealed); }
 
-  async read(tenantId, userId) {
+  async read(tenantId, userId) { return this.#read(this.#file(tenantId, userId)); }
+
+  async #read(file) {
     let raw;
-    try { raw = await readFile(this.#file(tenantId, userId), "utf8"); }
+    try { raw = await readFile(file, "utf8"); }
     catch (error) { if (error.code === "ENOENT") return null; throw error; }
     if (raw.length > MAX_RECORD_BYTES) return null;
     let record; try { record = JSON.parse(raw); } catch { return null; }
@@ -103,8 +132,7 @@ export class UnattendedCredentialStore {
     return record;
   }
 
-  async write(tenantId, userId, record) {
-    const file = this.#file(tenantId, userId);
+  async #put(file, record) {
     const temporary = path.join(path.dirname(file), `.${randomUUID()}.tmp`);
     let handle = null;
     try {
@@ -116,6 +144,11 @@ export class UnattendedCredentialStore {
       await handle?.close();
       await unlink(temporary).catch((error) => { if (error.code !== "ENOENT") throw error; });
     }
+  }
+
+  async write(tenantId, userId, record) {
+    const file = this.#file(tenantId, userId);
+    await this.#serial(path.basename(file), () => this.#put(file, record));
     return record;
   }
 
@@ -123,14 +156,42 @@ export class UnattendedCredentialStore {
   // failure count, last use. Returns null when there is nothing to patch, so a
   // caller never resurrects a record it has just deleted.
   async patch(tenantId, userId, fields) {
-    const record = await this.read(tenantId, userId);
-    if (!record) return null;
-    return this.write(tenantId, userId, { ...record, ...fields });
+    const file = this.#file(tenantId, userId);
+    return this.#serial(path.basename(file), async () => {
+      const record = await this.#read(file);
+      if (!record) return null;
+      const next = { ...record, ...fields };
+      await this.#put(file, next);
+      return next;
+    });
   }
 
   async remove(tenantId, userId) {
-    try { await unlink(this.#file(tenantId, userId)); return true; }
-    catch (error) { if (error.code === "ENOENT") return false; throw error; }
+    const file = this.#file(tenantId, userId);
+    return this.#serial(path.basename(file), async () => {
+      try { await unlink(file); return true; }
+      catch (error) { if (error.code === "ENOENT") return false; throw error; }
+    });
+  }
+
+  // Every ended authorization's token let go, and every one past its end
+  // marked ended (endedRecord); how many.
+  async forgetEnded({ now = this.now(), reason }) {
+    let names;
+    try { names = (await readdir(path.join(this.directory, FILES.grants))).filter((name) => /^[0-9a-f]{64}\.json$/.test(name)); }
+    catch { return 0; }
+    let forgotten = 0;
+    for (const name of names) {
+      const file = path.join(this.directory, FILES.grants, name);
+      const changed = await this.#serial(name, async () => {
+        const record = await this.#read(file);
+        const next = record && endedRecord(record, now, reason);
+        if (next) await this.#put(file, next);
+        return Boolean(next);
+      });
+      if (changed) forgotten += 1;
+    }
+    return forgotten;
   }
 
   // How many credentials this server is holding -- for one line at startup, so an
@@ -227,6 +288,22 @@ export class PostgresUnattendedCredentialStore {
   }
   async remove(tenantId, userId) { return this.state.delete(GRANTS, nameFor(tenantId, userId)); }
   async count() { return this.state.count(GRANTS); }
+  // As the file store's: each over the version it read, so a grant written in
+  // between is never overwritten -- that record is simply not this pass's.
+  async forgetEnded({ now = this.now(), reason }) {
+    let forgotten = 0;
+    for (let after = null; ;) {
+      const page = await this.state.list(GRANTS, { after, limit: 1000 });
+      for (const row of page) {
+        const record = PostgresUnattendedCredentialStore.#valid(row.value);
+        const next = record && endedRecord(record, now, reason);
+        if (next && await this.state.update(GRANTS, row.key, row.version, next)) forgotten += 1;
+      }
+      if (page.length < 1000) break;
+      after = page.at(-1).key;
+    }
+    return forgotten;
+  }
 
   // The keys and every record, for moving them between stores (bin/migrate-data.js).
   async dump() {

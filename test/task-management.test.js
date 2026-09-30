@@ -88,6 +88,25 @@ test("删除只删对话记录，工作目录和里面的文件都留着", async
   assert.ok((await readdir(f.directory)).includes("产出.md"), "工作目录里的文件不该被删");
   // 删掉之后不该还能从快照里看到它。
   assert.equal(f.service.snapshot().tasks.some((row) => row.id === f.task.id), false);
+  // Codex 那份完整记录（读到的内容、工具输出、截图）也一起删，只删这个任务自己的那一段。
+  assert.deepEqual(f.calls.filter((call) => call.method === "thread/delete").map((call) => call.params), [{ threadId: "codex-thread" }]);
+});
+
+test("Codex 那边删不掉时，对话记录照样删掉，不会卡住", async (t) => {
+  const f = await setup(t);
+  await f.service.send(f.task.id, "第一句");
+  await finished(f.service, f.task.id);
+  f.service.runtimeFactory = async () => { throw new Error("运行时起不来"); };
+  await f.service.remove(f.task.id);
+  assert.throws(() => f.service.get(f.task.id), /找不到这个任务/);
+  const g = await setup(t);
+  await g.service.send(g.task.id, "第一句");
+  await finished(g.service, g.task.id);
+  const factory = g.service.runtimeFactory;
+  g.service.runtimeFactory = async (...args) => { const runtime = await factory(...args); runtime.client.request = () => new Promise(() => {}); return runtime; };
+  const started = Date.now();
+  await g.service.deleteThread(g.service.get(g.task.id), { timeoutMs: 50 }).catch((error) => assert.match(error.message, /超时/));
+  assert.ok(Date.now() - started < 5_000, "一个不答话的运行时不会让删除一直等着");
 });
 
 test("压缩走 Codex 自己的压缩，屏幕上的记录不被改写", async (t) => {

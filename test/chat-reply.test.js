@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { SaasFeishuCliProvider } from "../src/providers/feishu/saas-cli-provider.js";
 import { ChatReader } from "../src/application/chat-reader.js";
-import { ChatReply } from "../src/application/chat-reply.js";
+import { ChatReply, makeRoomForReply } from "../src/application/chat-reply.js";
 import { chatFixture, chatResponse } from "../scripts/fixtures/chat-data.js";
 import { fixtureCipher } from "../scripts/fixtures/wiki-cipher.js";
 import { STUB_CLI } from "./helpers/stub-cli.js";
@@ -132,4 +132,22 @@ test("identity change during disk reservation prevents the external reply", asyn
   f.reply.save = async entries => { await save(entries); f.state.user = "ou_changed_on_disk"; };
   assert.equal((await f.reply.send(handle, "reserved identity", false, () => true)).state, "unknown");
   assert.equal(f.state.writes.length, 0);
+});
+
+// Found in the long-running review (2026-09-29): every receipt was kept, and
+// this machine's 5001st reply was refused for good.
+test("a full journal makes room from its oldest acknowledged receipts, and never forgets an uncertain one", async t => {
+  const f = await setup(t), handle = await f.open();
+  const receipt = (index, state = "acknowledged") => ({ fingerprint: index.toString(16).padStart(64, "0"), id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, state, createdAt: new Date(index).toISOString() });
+  const uncertain = [receipt(1, "unknown"), receipt(2, "dispatching")];
+  const full = [...uncertain, ...Array.from({ length: 4998 }, (_, i) => receipt(i + 3))];
+  f.reply.load = async () => full.map((row) => ({ ...row }));
+  let saved = null; const save = f.reply.save.bind(f.reply);
+  f.reply.save = async (entries) => { saved = entries; return save(entries); };
+  assert.equal((await f.reply.send(handle, "第 5001 条", false, () => true)).state, "acknowledged");
+  assert.equal(f.state.writes.length, 1);
+  assert.equal(saved.length, 4001, "down to 4000, and the new one");
+  assert.deepEqual(saved.slice(0, 2).map((row) => row.state), ["unknown", "dispatching"], "the uncertain ones stay, however old");
+  assert.equal(saved[2].id, receipt(1003).id, "then the newest acknowledged ones");
+  assert.equal(makeRoomForReply(Array.from({ length: 5000 }, (_, i) => receipt(i, "unknown"))).length, 5000, "nothing uncertain is ever let go");
 });

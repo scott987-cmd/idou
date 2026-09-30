@@ -11,7 +11,7 @@ const home = "/Users/someone";
 test("an installation from before the rename keeps its folders, and a new one gets the new names", () => {
   for (const [label, legacy, current, find] of [
     ["data", `${home}/.mydoubao`, `${home}/.idou`, (exists) => dataHome({ home, exists })],
-    ["tasks", `${home}/我的豆包`, `${home}/i豆`, (exists) => taskFolderRoot({ home, exists })],
+    ["tasks", `${home}/我的豆包`, `${home}/i豆`, (exists) => taskFolderRoot({ home, exists, dataDir: null })],
   ]) {
     assert.equal(find(disk()), current, `${label}: a new installation`);
     assert.equal(find(disk(legacy)), legacy, `${label}: one from before the rename`);
@@ -22,6 +22,12 @@ test("an installation from before the rename keeps its folders, and a new one ge
   assert.equal(desktopProfileName({ appData, exists: disk() }), "i豆");
   assert.equal(desktopProfileName({ appData, exists: disk(path.join(appData, "我的豆包")) }), "我的豆包", "the name its Keychain item was made under");
   assert.equal(kept("new", "old", disk("old")), "old");
+});
+
+// A desktop on a profile of its own -- development, every acceptance run --
+// keeps its task folders in that profile, not in the person's home.
+test("a desktop on a profile of its own keeps its task folders there", () => {
+  assert.equal(taskFolderRoot({ home, exists: disk(`${home}/我的豆包`), dataDir: "/tmp/acceptance-profile" }), "/tmp/acceptance-profile/task-folders");
 });
 
 test("the deployment file and a project's settings are found under either name, the new one first", () => {

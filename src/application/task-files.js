@@ -1,4 +1,4 @@
-import { copyFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { copyFile, readdir, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { convert } from "officeparser";
 
@@ -116,4 +116,15 @@ export function taskFilesPrompt(rows) {
   return `这个任务的工作目录里有以下文件，都是本人放进来的：\n${lines.join("\n")}\n`
     + "在这个目录里直接读写即可；产出也写在这个目录下，用清楚的中文文件名。"
     + "以「.读取版.md」结尾的是自动转换出来的文字副本，只用于阅读，不要改它，也不要把它当成交付物。";
+}
+
+// The folder made for a work task, once its conversation is deleted, when
+// nothing was ever put there: rmdir refuses one with anything in it, a folder
+// the person chose never sits directly under `root`, and one another task
+// still works in stays. Each new conversation makes one, and before they all
+// stayed (the long-running review, 2026-09-29). True when it went.
+export async function removeEmptyTaskFolder({ cwd, root, tasks }) {
+  if (typeof cwd !== "string" || path.dirname(cwd) !== root) return false;
+  if (tasks.some((task) => task.cwd === cwd)) return false;
+  return rmdir(cwd).then(() => true, () => false);
 }

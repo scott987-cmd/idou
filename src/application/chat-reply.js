@@ -6,7 +6,22 @@ const hash = value => createHash("sha256").update(JSON.stringify(value)).digest(
 const unknown = "回复可能已发送，回执未确认；请到飞书核查。本应用不会自动重发。";
 
 // Account-local one-shot receipt journal. No chat or draft text is persisted.
-// Entries are never silently evicted: forgetting an uncertain send permits duplicates.
+// An uncertain entry is never evicted: forgetting an uncertain send permits
+// duplicates. Acknowledged ones make room when the journal is full.
+const MAX_ENTRIES = 5000, ROOM_TO = 4000;
+
+// Room for one more, from the oldest acknowledged receipts. An acknowledged
+// reply is kept only so the same words are not sent to the same message twice
+// by mistake; one whose sending is uncertain ("dispatching", "unknown") is what
+// must never be forgotten, and never is. Before, this machine's 5001st reply
+// was refused for good (the long-running review, 2026-09-29). Entries are
+// appended as they are made, so the first are the oldest.
+export function makeRoomForReply(entries) {
+  if (entries.length < MAX_ENTRIES) return entries;
+  let excess = entries.length - ROOM_TO;
+  return entries.filter((row) => !(row.state === "acknowledged" && excess-- > 0));
+}
+
 export class ChatReply {
   constructor({ reader, provider, filename, cipher }) {
     Object.assign(this, { reader, provider, filename, cipher }); this.active = false;
@@ -44,12 +59,13 @@ export class ChatReply {
     const draft = this.reader.captureMessage(handle);
     this.active = true;
     try {
-      const entries = await this.load(); draft.current();
+      let entries = await this.load(); draft.current();
       // Deliberately excludes source revision: editing the original must not unblock a lost receipt.
       const fingerprint = hash([draft.identity.tenantKey, draft.identity.principal, draft.chat.id, draft.message.id, text, inThread]);
       const previous = entries.find(row => row.fingerprint === fingerprint);
       if (previous) throw new Error(previous.state === "acknowledged" ? "相同回复已有发送回执，未再次发送。" : unknown);
-      if (entries.length >= 5000) throw new Error("本机回复回执已达 5000 条上限；请联系管理员，不自动清理或重发。");
+      entries = makeRoomForReply(entries);
+      if (entries.length >= MAX_ENTRIES) throw new Error(`本机有 ${MAX_ENTRIES} 条回复的发送结果还不确定，先不发新的；请到飞书核查这些回复。不会自动重发。`);
       await this.provider.verifyReplyTarget(draft); draft.current();
       if (!await confirm(structuredClone({ chat: draft.chat, message: draft.message, identity: draft.identity, text, inThread }))) return { state: "canceled" };
       draft.current();

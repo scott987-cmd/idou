@@ -574,3 +574,31 @@ test("a renewal that comes due while busy is tried again, before the session run
   assert.equal(auth.operatorSession().token, "r".repeat(43));
   await auth.close();
 });
+
+// Found in the long-running review (2026-09-29): a crashed app runs no close(),
+// and its lease -- a turn token in plain text -- stayed for good; six from over
+// a fortnight were on the maintainer's machine. Swept at start, and never one
+// still in use.
+test("leases a crash left behind are swept at start; one still in use, or something else there, is not", async (t) => {
+  const { sweepStaleLeases } = await import("../src/application/desktop-auth.js");
+  const { mkdir, mkdtemp, readdir, rm, utimes, writeFile } = await import("node:fs/promises");
+  const root = await mkdtemp(path.join(os.tmpdir(), "idou-leases-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const now = Date.now(), DAY = 86_400_000;
+  const lease = async (name, body, touched = now) => {
+    await mkdir(path.join(root, name), { mode: 0o700 });
+    if (body !== null) await writeFile(path.join(root, name, "session.json"), body, { mode: 0o600 });
+    await utimes(path.join(root, name), touched / 1000, touched / 1000);
+  };
+  await lease("agent-session-Old111", JSON.stringify({ token: "t", expiresAt: now - 3 * DAY, serverUrl: "https://x" }));
+  await lease("agent-session-Live22", JSON.stringify({ token: "t", expiresAt: now + 10 * 60_000, serverUrl: "https://x" }));
+  await lease("agent-session-Recent", JSON.stringify({ token: "t", expiresAt: now - 60_000, serverUrl: "https://x" }));
+  await lease("agent-session-Broken", "{", now - 3 * DAY);
+  await lease("agent-session-NoFile", null, now - 3 * DAY);
+  await lease("somebody-elses-dir", JSON.stringify({ expiresAt: 0 }));
+  assert.equal(await sweepStaleLeases({ root, now }), 3);
+  assert.deepEqual((await readdir(root)).sort(), ["agent-session-Live22", "agent-session-Recent", "somebody-elses-dir"],
+    "one in use, one that ran out within the day, and whatever else lives there stay");
+  assert.equal(await sweepStaleLeases({ root: path.join(root, "missing"), now }), 0);
+  await assert.rejects(sweepStaleLeases({ now }), /明确给出目录/, "never the real one by default");
+});

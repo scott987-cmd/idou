@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { MediaWorkspace, mediaOffer } from "../src/application/media-workspace.js";
+import { MediaWorkspace, mediaOffer, settledMediaRow } from "../src/application/media-workspace.js";
 import { agentMediaActions } from "../src/application/agent-media-actions.js";
 import { QwenVideoProvider } from "../src/control-plane/qwen-media.js";
 import { MediaDownloader, publicMediaAddress, validateMediaBytes } from "../src/application/media-download.js";
@@ -22,7 +22,7 @@ import { createServer } from "node:http";
 // providers: another provider for a kind, as the server runs video on Qwen.
 // seen: every request the desktop makes, with its body. legacy: the server
 // answers leases as one from before offers did.
-async function fixture(t, { serverAhead = 0, provider: given = null, providers = {}, seen = null, legacy = false } = {}) {
+async function fixture(t, { serverAhead = 0, provider: given = null, providers = {}, seen = null, legacy = false, getTask = () => ({ mode: "cowork" }) } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "idou-media-native-"));
   const sessions = new SessionRegistry({ now: () => Date.now() + serverAhead }); let calls = 0, drop = false;
   // What the provider offers is MiniMax's unless a test says otherwise.
@@ -33,7 +33,7 @@ async function fixture(t, { serverAhead = 0, provider: given = null, providers =
   server.listen(0, "127.0.0.1"); await once(server, "listening"); const origin = `http://127.0.0.1:${server.address().port}`;
   let current = { ...sessions.issue({ tenantId: "tenant", userId: "user", deviceId: "device" }), serverUrl: origin };
   const taskId = randomUUID(), filename = path.join(directory, "media.json");
-  const make = () => new MediaWorkspace({ filename, getTask: () => ({ mode: "cowork" }), getSession: async () => current, fetchImpl: async (url, init) => {
+  const make = () => new MediaWorkspace({ filename, getTask, getSession: async () => current, fetchImpl: async (url, init) => {
     if (url.endsWith("/v1/media/jobs")) { const journal = JSON.parse(await readFile(filename, "utf8")); assert.ok(journal.rows.some((row) => row.id === JSON.parse(init.body).idempotencyKey)); }
     seen?.push({ route: new URL(url).pathname, body: JSON.parse(init.body) });
     const response = await fetch(url, init);
@@ -241,4 +241,47 @@ test("an offer is taken only as far as it can be shown truthfully", () => {
     { provider: "qwen", model: "happyhorse-1.1-t2v", seconds: 6, resolution: "<b>" }, { provider: "__proto__", model: "x" }]) {
     assert.throws(() => mediaOffer(offer, "video"), /媒体授权响应无效/, JSON.stringify(offer));
   }
+});
+
+// Found in the long-running review (2026-09-29): the ledger kept every row it
+// ever wrote and refused new work at 200, so an account's 201st picture or
+// video -- and every one after it -- was refused for good.
+const DAY_MS = 86400000;
+const ledgerRow = (taskId, over = {}) => ({ id: randomUUID(), taskId, instanceId: randomUUID(), jobId: randomUUID(), kind: "image", state: "failed",
+  ownerKey: "a".repeat(64), createdAt: Date.now() - 3600000, ...over });
+
+test("a full ledger makes room from its oldest settled rows, a deleted task's first, and never from one whose outcome is unknown", async (t) => {
+  const deleted = randomUUID();
+  const f = await fixture(t, { getTask: (id) => { if (id === deleted) throw new Error("找不到这个任务"); return { mode: "cowork" }; } });
+  const now = Date.now();
+  const unknown = Array.from({ length: 10 }, (_, i) => ledgerRow(f.taskId, { state: "submission_unknown", jobId: null, createdAt: now - 400 * DAY_MS + i }));
+  const gone = Array.from({ length: 20 }, (_, i) => ledgerRow(deleted, { createdAt: now - 3600000 + i }));
+  const ended = Array.from({ length: 170 }, (_, i) => ledgerRow(f.taskId, { createdAt: now - 100 * DAY_MS + i * 1000 }));
+  await writeFile(f.filename, JSON.stringify({ schemaVersion: 1, rows: [...unknown, ...gone, ...ended] }), { mode: 0o600 });
+  const created = await f.client.create(await f.client.prepare(f.taskId, { kind: "image", prompt: "synthetic" }));
+  assert.equal(f.calls(), 1, "the new one was submitted");
+  const kept = new Set(JSON.parse(await readFile(f.filename, "utf8")).rows.map((row) => row.id));
+  assert.equal(kept.size, 151, "down to 150, and the new one");
+  assert.ok(unknown.every((row) => kept.has(row.id)), "a row that may have been billed is never forgotten, however old");
+  assert.ok(gone.every((row) => !kept.has(row.id)), "a deleted task's rows go first, however new");
+  assert.deepEqual(ended.filter((row) => kept.has(row.id)), ended.slice(-140), "then the oldest");
+  assert.ok(kept.has(created.id));
+});
+
+test("a ledger full of rows whose outcome is unknown submits nothing new, and says what to do", async (t) => {
+  const f = await fixture(t);
+  await writeFile(f.filename, JSON.stringify({ schemaVersion: 1, rows: Array.from({ length: 200 }, () => ledgerRow(f.taskId, { state: "unresolved", jobId: null })) }), { mode: 0o600 });
+  await assert.rejects(f.client.create(await f.client.prepare(f.taskId, { kind: "image", prompt: "synthetic" })), /200 条媒体记录的生成或保存结果还不确定.*逐条刷新核查/);
+  assert.equal(f.calls(), 0, "nothing paid for");
+});
+
+test("settled: a job that ended, one nobody refreshed for two days, or a result saved in Drive; never an upload in doubt", () => {
+  const now = Date.now(), row = (over) => ledgerRow(randomUUID(), over);
+  const delivery = (state) => ({ state, folder: {}, bytes: 1, sha256: "b".repeat(64), name: "x.png", fileToken: state === "available" ? "FileTok" : null });
+  for (const state of ["failed", "canceled", "expired", "server_lost"]) assert.equal(settledMediaRow(row({ state }), now), true, state);
+  for (const state of ["unresolved", "submission_unknown"]) assert.equal(settledMediaRow(row({ state, createdAt: now - 400 * DAY_MS }), now), false, state);
+  assert.equal(settledMediaRow(row({ state: "running" }), now), false);
+  assert.equal(settledMediaRow(row({ state: "awaiting_acceptance", createdAt: now - 3 * DAY_MS }), now), true, "its result expired with the job");
+  assert.equal(settledMediaRow(row({ state: "failed", delivery: delivery("upload_unknown") }), now), false);
+  assert.equal(settledMediaRow(row({ state: "awaiting_acceptance", delivery: delivery("available") }), now), true);
 });

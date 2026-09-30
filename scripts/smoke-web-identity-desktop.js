@@ -356,7 +356,7 @@ try {
   await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   // Only ever the empty folders this run made: rmdir refuses a non-empty one.
   for (const folder of workFolders) {
-    if (path.dirname(folder) === taskFolderRoot()) await rmdir(folder).catch(() => {});
+    if (path.dirname(folder) === taskFolderRoot({ dataDir: directory })) await rmdir(folder).catch(() => {});
   }
 }
 

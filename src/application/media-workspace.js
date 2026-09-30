@@ -11,6 +11,23 @@ import { CLOCK_SKEW_MS } from "./clock-skew.js";
 const uuid = (value) => typeof value === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value);
 const states = ["running", "awaiting_acceptance", "failed", "submission_unknown", "canceled", "expired"];
 const localStates = [...states, "unresolved", "server_lost"];
+// The ledger holds at most MAX_ROWS; when full, the oldest settled rows go
+// until ROOM_TO remain (makeRoom).
+const MAX_ROWS = 200, ROOM_TO = 150;
+const ENDED = new Set(["failed", "canceled", "expired", "server_lost"]);
+// A job lives in the server's memory for a day (media-service.js): one older
+// than that which still reads running or awaiting acceptance is only a row
+// nobody refreshed, and its result can no longer be saved.
+const STALE_MS = 2 * 86400000;
+// Nothing about it can still change or cost anything: the job ended, or its
+// result is saved in Drive. A row whose submission or upload has an unknown
+// outcome -- possibly billed, possibly uploaded -- is never settled: forgetting
+// it is how the same thing would be paid for, or uploaded, twice.
+export function settledMediaRow(row, now) {
+  if (row.delivery) return row.delivery.state === "available";
+  if (ENDED.has(row.state)) return true;
+  return ["running", "awaiting_acceptance"].includes(row.state) && now - row.createdAt > STALE_MS;
+}
 const sha = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export function mediaInput(value) {
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => !["kind", "prompt", "aspectRatio"].includes(key)) || !["image", "video"].includes(value.kind) || typeof value.prompt !== "string" || !value.prompt.trim()) throw new Error("请输入有效的图片或视频描述");
@@ -102,7 +119,7 @@ export class MediaWorkspace {
         const stat = await handle.stat();
         if (!stat.isFile() || stat.size > 1048576 || (process.platform !== "win32" && ((stat.mode & 0o077) || stat.uid !== process.getuid()))) throw new Error();
         const value = JSON.parse(await handle.readFile("utf8"));
-        if (value.schemaVersion !== 1 || !Array.isArray(value.rows) || value.rows.length > 200) throw new Error();
+        if (value.schemaVersion !== 1 || !Array.isArray(value.rows) || value.rows.length > MAX_ROWS) throw new Error();
         for (const row of value.rows) {
           if (!uuid(row.id) || !uuid(row.taskId) || !uuid(row.instanceId) || (row.jobId !== null && !uuid(row.jobId)) || !["image", "video"].includes(row.kind) || !localStates.includes(row.state) || !/^[a-f0-9]{64}$/.test(row.ownerKey) || !Number.isFinite(row.createdAt) || Object.keys(row).some((key) => !["id", "taskId", "instanceId", "jobId", "kind", "state", "ownerKey", "createdAt", "delivery", "submitError"].includes(key))) throw new Error();
           if (row.delivery) validateDelivery(row.delivery);
@@ -174,7 +191,9 @@ export class MediaWorkspace {
   async create(draft) {
     return this.serial(async () => {
       this.task(draft.taskId); await this.unchanged(draft.session); await this.load();
-      if (draft.lease.expiresAt <= this.now() || this.rows.length >= 200) throw new Error("媒体授权已过期或本地记录已满，请重新检查");
+      if (draft.lease.expiresAt <= this.now()) throw new Error("媒体授权已过期，请重新检查");
+      if (this.rows.length >= MAX_ROWS) this.makeRoom();
+      if (this.rows.length >= MAX_ROWS) throw new Error(`本机有 ${MAX_ROWS} 条媒体记录的生成或保存结果还不确定，新的生成先不提交；请在对应任务里逐条刷新核查`);
       const row = { id: randomUUID(), taskId: draft.taskId, kind: draft.request.kind, instanceId: draft.lease.instanceId, ownerKey: draft.lease.ownerKey, jobId: null, state: "unresolved", createdAt: this.now() };
       this.rows.push(row);
       await this.save(); // Failure here must never dispatch the paid request.
@@ -196,6 +215,19 @@ export class MediaWorkspace {
       }
       return this.public(row);
     });
+  }
+  // Room for new jobs, made from the oldest settled rows -- a deleted task's
+  // first -- down to ROOM_TO. Before, every row stayed for good, and an
+  // account's 201st picture or video was refused, and every one after it (the
+  // long-running review, 2026-09-29). Saved next with the row that needed it.
+  makeRoom() {
+    const now = this.now();
+    const gone = (row) => { try { this.getTask(row.taskId); return false; } catch { return true; } };
+    const settled = this.rows.filter((row) => settledMediaRow(row, now)).map((row) => ({ row, gone: gone(row) }))
+      .sort((a, b) => Number(b.gone) - Number(a.gone) || a.row.createdAt - b.row.createdAt);
+    const drop = new Set(settled.slice(0, Math.max(0, this.rows.length - ROOM_TO)).map((entry) => entry.row));
+    this.rows = this.rows.filter((row) => !drop.has(row));
+    return drop.size;
   }
   public(row, job = {}) { return { id: row.id, taskId: row.taskId, kind: row.kind, state: row.state, createdAt: row.createdAt, hasResult: Boolean(job.result), hasError: job.hasError ?? false, ...(job.error ? { error: job.error, errorMeaning: MEDIA_ERRORS[job.error] ?? "生成服务报告了错误" } : {}), persisted: row.delivery?.state === "available", deliveryState: row.delivery?.state ?? null, ...(row.submitError ? { submitError: row.submitError } : {}) }; }
   async list(taskId) {

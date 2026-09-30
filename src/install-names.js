@@ -28,8 +28,13 @@ export function localEnvFile({ home, exists = existsSync } = {}) {
   return exists(current) ? current : kept(current, legacy, exists);
 }
 
-// Where work tasks get their folders: ~/i豆, or ~/我的豆包.
-export function taskFolderRoot({ home = os.homedir(), exists } = {}) {
+// Where work tasks get their folders: ~/i豆, or ~/我的豆包. A desktop running on
+// a profile of its own (IDOU_DESKTOP_DATA_DIR: development, every acceptance
+// run) keeps them inside that profile instead. Before, each such run left its
+// folders in the person's home: 4997 empty ones on the maintainer's machine by
+// 2026-09-30, 822 of them from that one week.
+export function taskFolderRoot({ home = os.homedir(), exists, dataDir = process.env.IDOU_DESKTOP_DATA_DIR } = {}) {
+  if (dataDir) return path.join(path.resolve(dataDir), "task-folders");
   return kept(path.join(home, "i豆"), path.join(home, "我的豆包"), exists);
 }
 

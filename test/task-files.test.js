@@ -211,3 +211,24 @@ test("识别文件类型，并认得自己生成的副本", () => {
   assert.equal(isDerived(`表.xlsx${READABLE_SUFFIX}`), true);
   assert.equal(isDerived("表.xlsx"), false);
 });
+
+// Found in the long-running review (2026-09-29): every new conversation makes
+// a folder under ~/i豆, and deleting the conversation left it there -- 4997
+// empty ones on the maintainer's machine. Only an empty one this application
+// made, and only once no other task works in it.
+test("deleting a conversation takes its folder along only when it is empty, ours, and nobody else's", async (t) => {
+  const { mkdir, mkdtemp, readdir, rm, writeFile } = await import("node:fs/promises");
+  const { removeEmptyTaskFolder } = await import("../src/application/task-files.js");
+  const root = await mkdtemp(path.join(os.tmpdir(), "idou-task-folders-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const name of ["2026-09-30", "2026-09-30-2", "2026-09-30-3"]) await mkdir(path.join(root, name));
+  await writeFile(path.join(root, "2026-09-30-2", "产出.md"), "已经做出来的东西");
+  const elsewhere = await mkdtemp(path.join(os.tmpdir(), "idou-chosen-"));
+  t.after(() => rm(elsewhere, { recursive: true, force: true }));
+  assert.equal(await removeEmptyTaskFolder({ cwd: path.join(root, "2026-09-30"), root, tasks: [] }), true);
+  assert.equal(await removeEmptyTaskFolder({ cwd: path.join(root, "2026-09-30-2"), root, tasks: [] }), false, "anything in it, and it stays");
+  assert.equal(await removeEmptyTaskFolder({ cwd: path.join(root, "2026-09-30-3"), root, tasks: [{ cwd: path.join(root, "2026-09-30-3") }] }), false, "another task still works in it");
+  assert.equal(await removeEmptyTaskFolder({ cwd: elsewhere, root, tasks: [] }), false, "a folder the person chose is never touched");
+  assert.deepEqual((await readdir(root)).sort(), ["2026-09-30-2", "2026-09-30-3"]);
+  assert.deepEqual(await readdir(elsewhere), []);
+});

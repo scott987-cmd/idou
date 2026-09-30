@@ -159,3 +159,44 @@ test("a directory anyone can read is refused outright", async (t) => {
   await chmod(directory, 0o755);
   await assert.rejects(open, /仅本人可读/);
 });
+
+// Found in the long-running review (2026-09-29): an ended authorization kept
+// its sealed refresh token for good, and one that nothing asked stayed active,
+// token and all. Ended, a record keeps why and nothing that could still act.
+test("an ended authorization lets its token go and keeps why; one still running is untouched", async (t) => {
+  const { open } = await store(t);
+  const it = await open();
+  const now = Date.now();
+  const sealed = (userId) => it.seal({ ...WHO, userId, refreshToken: REFRESH, notAfter: now + 86400_000 });
+  await it.write("tenant_a", "ou_running", record(sealed("ou_running"), { expiresAt: now + 86400_000 }));
+  await it.write("tenant_a", "ou_lapsed", record(sealed("ou_lapsed"), { expiresAt: now - 1 }));
+  await it.write("tenant_a", "ou_refused", record(sealed("ou_refused"), { state: "needs_reauthorization", reason: "飞书拒绝了这次续期", expiresAt: now + 86400_000 }));
+  assert.equal(await it.forgetEnded({ now, reason: "无人值守授权已到期" }), 2);
+  const running = await it.read("tenant_a", "ou_running");
+  assert.equal(running.state, "active"); assert.equal(it.unseal(running).refreshToken, REFRESH, "a running authorization keeps its token");
+  assert.deepEqual([(await it.read("tenant_a", "ou_lapsed")).state, (await it.read("tenant_a", "ou_lapsed")).reason, (await it.read("tenant_a", "ou_lapsed")).sealed],
+    ["needs_reauthorization", "无人值守授权已到期", ""]);
+  assert.deepEqual([(await it.read("tenant_a", "ou_refused")).reason, (await it.read("tenant_a", "ou_refused")).sealed], ["飞书拒绝了这次续期", ""], "its own reason stays");
+  assert.equal(await it.forgetEnded({ now, reason: "x" }), 0, "a second pass finds nothing");
+  for (const name of await readdir(path.join(it.directory, "grants"))) {
+    assert.equal((await readFile(path.join(it.directory, "grants", name))).includes(Buffer.from(REFRESH)), false);
+  }
+});
+
+// A person granting again at the moment the sweep reaches their record: the
+// new grant is what is left, whichever went first.
+test("a grant written while the ended records are swept is never overwritten", async (t) => {
+  const { open } = await store(t);
+  const it = await open();
+  const now = Date.now();
+  for (const order of ["sweep-first", "grant-first"]) {
+    await it.write("tenant_a", "ou_again", record(it.seal({ ...WHO, userId: "ou_again", refreshToken: "OLD", notAfter: now }), { expiresAt: now - 1 }));
+    const fresh = record(it.seal({ ...WHO, userId: "ou_again", refreshToken: "NEW", notAfter: now + 86400_000 }), { expiresAt: now + 86400_000, grantedAt: now });
+    await (order === "sweep-first"
+      ? Promise.all([it.forgetEnded({ now, reason: "到期" }), it.write("tenant_a", "ou_again", fresh)])
+      : Promise.all([it.write("tenant_a", "ou_again", fresh), it.forgetEnded({ now, reason: "到期" })]));
+    const kept = await it.read("tenant_a", "ou_again");
+    assert.equal(kept.state, "active", order);
+    assert.equal(it.unseal(kept).refreshToken, "NEW", order);
+  }
+});

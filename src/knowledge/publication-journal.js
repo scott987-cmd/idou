@@ -30,8 +30,23 @@ export function publicationRecord(row) {
   return row;
 }
 
-// One native publisher process per account directory. Entries are never evicted:
-// forgetting an ambiguous upload would let a scheduler create duplicate effects.
+// The operations this journal no longer needs: for each shard of each owner,
+// a published one below its newest published generation. Only that newest one
+// is ever read back (bundle-publisher.js inspect: the proof of the version the
+// head names); one not yet published -- its upload or its commit uncertain --
+// is never let go. Before, every operation stayed, and at up to 200 source
+// digests each the journal's 2 MiB filled after about a hundred publications
+// and refused every one after (the long-running review, 2026-09-29).
+export function compactPublications(entries) {
+  const newest = new Map(), key = (row) => `${row.owner}\n${row.shardKey}`;
+  for (const row of entries) if (row.state === "published" && (newest.get(key(row)) ?? -1) < row.expectedGeneration) newest.set(key(row), row.expectedGeneration);
+  return entries.filter((row) => row.state !== "published" || row.expectedGeneration === newest.get(key(row)));
+}
+
+// One native publisher process per account directory. An operation that is not
+// published is never evicted: forgetting an ambiguous upload would let a
+// scheduler create duplicate effects. A superseded published one is
+// (compactPublications).
 export class PublicationJournal {
   constructor({ filename, cipher }) { this.filename = path.resolve(filename); this.cipher = cipher; }
   validate(entries) {

@@ -83,6 +83,7 @@ systemctl restart idou-api@2         # 同上，3044
 systemctl restart idou-control-plane
 ```
 
+- 新发布跑稳以后清掉旧的发布目录（每个都带自己的 `node_modules`，以前从来不删）：先 `node /opt/idou/app/bin/prune-releases.js` 看会删哪些，再加 `--apply`。当前指向的那个和最新的另外几个（`--keep`，默认一共 3 个，最少 2 个，回退要用上一个）会留下，名字不是发布号的目录不碰。
 - 模型副本一次只重启一个：它停止接新连接后，nginx 把请求转给另一个，正在说的回答最多再等 45 秒。
 - 协调副本最后重启。会话、续期凭据和飞书访问授权都在库里，重启后桌面端不用重新登录；进行中的登录、写入确认、MCP 连接、媒体生成会中断，由客户端重新发起。
 - 改了 `deploy/server/` 里的文件，照原样装到 `/etc/systemd/system/` 或 `/etc/nginx/sites-available/`，再 `systemctl daemon-reload` 或 `nginx -t && systemctl reload nginx`。

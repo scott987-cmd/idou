@@ -170,11 +170,12 @@ try {
   await page.locator("#prompt").fill("撤回后不应发送"); await page.locator("#send").click(); await page.locator("#error-banner").filter({ hasText: "已下架" }).waitFor();
   assert.equal(state.modelCalls, priorRequests); assert.equal(await page.locator(".message.user").count(), 1); assert.equal(await page.locator("#prompt").inputValue(), "撤回后不应发送");
   const alpha = await page.evaluate(() => window.idou.createTask({ mode: "cowork" })); workFolders.push(alpha.cwd);
-  // A work task's folder belongs to the person now -- `~/i豆 (or ~/我的豆包)/<日期>` -- and
-  // is no longer a hidden directory inside the account. Still one fresh folder
+  // A work task's folder belongs to the person -- `~/i豆 (or ~/我的豆包)/<日期>` --
+  // and is no longer a hidden directory inside the account; a run on a profile
+  // of its own, as this one is, keeps it inside that profile instead. Still one fresh folder
   // per task; that two accounts cannot reach each other is proved below by what
   // each account can open, not by where its folder sits.
-  assert.equal(path.dirname(alpha.cwd), taskFolderRoot());
+  assert.equal(path.dirname(alpha.cwd), taskFolderRoot({ dataDir: dataRoot }), "inside this run's own profile, never the person's home");
   assert.deepEqual(await readdir(alpha.cwd), [], "a new work task must start in a folder of its own");
   await assert.rejects(page.evaluate((id) => window.idou.openDocument(id, "https://example.feishu.cn/docx/SyntheticDocument"), alpha.id), /CLI 业务访问能力/);
   await assert.rejects(page.evaluate((id) => window.idou.searchDocumentRecipients(id, "unlinked", "张三"), alpha.id), /CLI 业务访问能力/);
@@ -262,6 +263,6 @@ try {
   await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   // Only ever the empty folders this run made: rmdir refuses a non-empty one.
   for (const folder of workFolders) {
-    if (path.dirname(folder) === taskFolderRoot()) await rmdir(folder).catch(() => {});
+    if (path.dirname(folder) === taskFolderRoot({ dataDir: dataRoot })) await rmdir(folder).catch(() => {});
   }
 }

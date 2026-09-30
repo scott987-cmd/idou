@@ -146,6 +146,32 @@ test("the UI rules catch each fault met while filming, and pass a sound page", {
   assert.ok(sound.stats.samples >= 1, "the sweep must have looked");
 });
 
+// Found in a full run (2026-09-30): the menu was remembered in a timer after the
+// click, and a page that rebuilt the card before that timer ran -- its own
+// timer due first under load, or a redraw in the click's own microtask, as
+// here -- lost it without a report. Deterministic: this page rebuilds in the
+// microtask right after the click, every time.
+const REDRAW_ON_CLICK = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>${STYLE}</style></head><body>
+  <div id="card" data-approval="a2"></div>
+  <script>
+    const card = document.getElementById("card");
+    const draw = () => {
+      const details = document.createElement("details"); details.innerHTML = "<summary>技术详情</summary><pre>{}</pre>";
+      const reason = document.createElement("textarea"); reason.setAttribute("aria-label", "告诉它怎么做");
+      const toggle = document.createElement("button"); toggle.textContent = "更多"; toggle.setAttribute("aria-expanded", "false");
+      toggle.onclick = () => { toggle.setAttribute("aria-expanded", "true"); queueMicrotask(draw); };
+      card.replaceChildren(details, reason, toggle);
+    };
+    draw();
+  </script>
+</body></html>`;
+
+test("a menu closed by a redraw in the click's own microtask is still caught", { timeout: 60_000 }, async (t) => {
+  const sweepResult = await sweep(t, REDRAW_ON_CLICK);
+  const described = JSON.stringify(sweepResult.findings, null, 1);
+  assert.ok(sweepResult.findings.some((row) => row.kind === "重绘丢状态" && row.detail === "打开的菜单被关上"), `not caught:\n${described}`);
+});
+
 test("closing the application from any state is prompt, or it is reported", { timeout: 60_000 }, async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "idou-ui-slow-quit-"));
   await mkdir(path.join(directory, "renderer"));
