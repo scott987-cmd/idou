@@ -207,7 +207,7 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out idou-backup-pr
 openssl pkey -in idou-backup-private.pem -pubout -out idou-backup-public.pem
 ```
 
-公钥放到服务器（例如 `/etc/idou/backup-public.pem`），备份加上 `--seal /etc/idou/backup-public.pem`：每份快照另存一份加密副本到 `<备份目录>/sealed/<名字>.idou-backup`（RSA-OAEP-SHA256 封装一次性密钥，AES-256-GCM 加密整个快照），保留份数和快照一样。服务器自己读不回这份副本。再加 `--ship /usr/local/bin/idou-backup-ship`，每次备份后用这份副本的路径作为唯一参数调用这个程序；它把文件送到哪里（对象存储、另一台机器）由它决定，失败时这次备份记为失败（`systemctl status idou-backup` 看得到），副本留在本机。加密副本只加密、不签名：拿到公钥的人也能做出一份，所以打开时会拒绝任何越出快照目录、或不是普通文件和目录的条目。
+公钥放到服务器（例如 `/etc/idou/backup-public.pem`），备份加上 `--seal /etc/idou/backup-public.pem`（要送到飞书云盘，再加 `--ship /opt/idou/app/bin/backup-ship-feishu.js`，并在部署配置里写 `IDOU_BACKUP_FEISHU_FOLDER`：应用机器人把加密副本传进那个文件夹，满 `IDOU_BACKUP_FEISHU_KEEP` 份后覆盖最旧的一份，不删除任何文件；应用要是那个文件夹可编辑的协作者，备份单元要像服务单元一样载入部署配置）：每份快照另存一份加密副本到 `<备份目录>/sealed/<名字>.idou-backup`（RSA-OAEP-SHA256 封装一次性密钥，AES-256-GCM 加密整个快照），保留份数和快照一样。服务器自己读不回这份副本。再加 `--ship /usr/local/bin/idou-backup-ship`，每次备份后用这份副本的路径作为唯一参数调用这个程序；它把文件送到哪里（对象存储、另一台机器）由它决定，失败时这次备份记为失败（`systemctl status idou-backup` 看得到），副本留在本机。加密副本只加密、不签名：拿到公钥的人也能做出一份，所以打开时会拒绝任何越出快照目录、或不是普通文件和目录的条目。
 
 **恢复演练**：在放私钥的电脑上，定期拿一份送出去的副本跑一遍：
 

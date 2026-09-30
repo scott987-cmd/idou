@@ -1263,3 +1263,19 @@ for (const kind of KINDS) test(`${kind}: a run whose result missed a place is co
   await opened.markUndelivered(WHO.tenantId, going, "不该记上");
   assert.deepEqual([(await opened.getRun(WHO, going)).undelivered, (await opened.getRun(WHO, going)).detail], [0, null], "a run still going is not marked");
 });
+
+// When a person leaves (person-data.js): their tasks and every run of theirs,
+// those of a task already deleted too, counted and let go; nobody else's.
+for (const kind of KINDS) test(`${kind}: one person's tasks and runs are counted and let go, and nobody else's`, async (t) => {
+  const { opened, clock } = await store(t, { kind });
+  const COLLEAGUE = { tenantId: WHO.tenantId, userId: "person-b", familyId: "login-b" };
+  const mine = await opened.create(WHO, daily()), gone = await opened.create(WHO, daily()), theirs = await opened.create(COLLEAGUE, daily());
+  for (const task of [mine, gone, theirs]) { clock.at += 1000; await opened.finish(WHO.tenantId, (await opened.claimNow(task, clock.at)).runId, "completed"); }
+  await opened.remove(WHO, gone.id);
+  assert.deepEqual(await opened.ownerData(WHO.tenantId, WHO.userId), { schedules: 1, runs: 2 });
+  assert.deepEqual(await opened.forgetOwner(WHO.tenantId, WHO.userId), { schedules: 1, runs: 2 });
+  assert.deepEqual(await opened.ownerData(WHO.tenantId, WHO.userId), { schedules: 0, runs: 0 });
+  assert.deepEqual(await opened.ownerData(COLLEAGUE.tenantId, COLLEAGUE.userId), { schedules: 1, runs: 1 });
+  assert.deepEqual(await opened.recentRuns(WHO), []);
+  assert.equal((await opened.recentRuns(COLLEAGUE)).length, 1);
+});

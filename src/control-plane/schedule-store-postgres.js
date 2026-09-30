@@ -497,6 +497,22 @@ export class PostgresScheduleStore {
     return removed;
   }
 
+  async ownerData(tenant, owner) {
+    const schedules = Number((await this.pool.query("SELECT count(*) AS n FROM idou_schedules WHERE tenant = $1 AND owner = $2", [tenant, owner])).rows[0].n);
+    const runs = Number((await this.pool.query(`SELECT count(*) AS n FROM idou_schedule_runs WHERE tenant = $1 AND (owner = $2
+      OR (owner IS NULL AND schedule_id IN (SELECT id FROM idou_schedules WHERE tenant = $1 AND owner = $2)))`, [tenant, owner])).rows[0].n);
+    return { schedules, runs };
+  }
+
+  async forgetOwner(tenant, owner) {
+    return this.#transaction(async (query) => {
+      const runs = (await query(`DELETE FROM idou_schedule_runs WHERE tenant = $1 AND (owner = $2
+        OR (owner IS NULL AND schedule_id IN (SELECT id FROM idou_schedules WHERE tenant = $1 AND owner = $2)))`, [tenant, owner])).rowCount;
+      const schedules = (await query("DELETE FROM idou_schedules WHERE tenant = $1 AND owner = $2", [tenant, owner])).rowCount;
+      return { schedules, runs };
+    });
+  }
+
   async shelveRun(who, runId, shelved) {
     const own = "tenant = $1 AND id = $2 AND finished_at IS NOT NULL AND (owner = $3 OR (owner IS NULL AND schedule_id IN (SELECT id FROM idou_schedules WHERE tenant = $1 AND owner = $3)))";
     const changed = shelved

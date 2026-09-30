@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "releaseId": "0.1.0-20260930.265",
-  "createdAt": "2026-09-30T12:02:59.458Z",
+  "releaseId": "0.1.0-20260930.266",
+  "createdAt": "2026-09-30T15:04:12.838Z",
   "keyId": "dc9a5173c44fc9333d3c83893f5cc0d9d79709ad060c2e829842bb6d2792b1dd",
   "application": {
     "name": "idou",
     "version": "0.1.0",
-    "sourceSha256": "f72fc06a735eadd30c12258cb88e56d368d5fc1d7ff8a53fe01cdfccbc54bf5a",
+    "sourceSha256": "caf5e7c2598d4945789d5f3f423da6cf3e41a83c33b747684f24a42665fb8f8f",
     "packageLockSha256": "ef1a05ab4838341aa820f9db3d421b2dfd04d3626c7fad8585fde82190eb5993",
     "adapterContracts": {
       "codex": "app-server-jsonrpc-v2",

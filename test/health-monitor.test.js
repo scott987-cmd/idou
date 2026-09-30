@@ -91,7 +91,19 @@ test("a public address's certificate is read from the address, and one that does
   assert.equal((await check({ validTo: now + 14 * DAY, authorized: true })).level, "warning", "three weeks for a public one: certbot renews at 30 days");
   assert.equal((await check({ validTo: now + 90 * DAY, authorized: false, error: "Hostname/IP does not match certificate's altnames" })).level, "critical");
   assert.match((await publicCertificateCheck({ origin: "https://idou.example.com", read: async () => { throw new Error("ECONNREFUSED"); } }).run()).summary,
-    /连不上 idou\.example\.com 读它的 HTTPS 证书（ECONNREFUSED）/);
+    /连不上 idou\.example\.com 读它的 HTTPS 证书（ECONNREFUSED），本机的监听也没有答复/);
+  // A server that cannot reach its own public address -- a security group
+  // letting in only certain sources, as on the first deployment -- asks its own
+  // listener for the same name, and says so.
+  const asked = [];
+  const local = await publicCertificateCheck({ origin: "https://idou.example.com", now: () => now, read: async (origin, options = {}) => {
+    asked.push(options.address ?? null);
+    if (!options.address) throw new Error("10 秒没有连上");
+    return { validTo: now + 90 * DAY, authorized: true };
+  } }).run();
+  assert.deepEqual(asked, [null, "127.0.0.1"]);
+  assert.equal(local.level, "ok");
+  assert.match(local.summary, /有效，到 .*（从本机的监听读到）/);
 
   // And the reading itself, against a real TLS listener.
   const directory = await mkdtemp(path.join(os.tmpdir(), "idou-health-tls-"));
@@ -103,6 +115,8 @@ test("a public address's certificate is read from the address, and one that does
   const served = await servedCertificate(`https://127.0.0.1:${server.address().port}`);
   assert.ok(served.validTo > Date.now() + 80 * DAY, "the date the certificate says");
   assert.equal(served.authorized, false, "issued by a CA this process does not trust");
+  const byAddress = await servedCertificate(`https://egress.idou.internal:${server.address().port}`, { address: "127.0.0.1" });
+  assert.equal(byAddress.validTo, served.validTo, "the same listener, reached by address and asked for the name");
 });
 
 test("disk: a warning under 10% or 2 GB free, critical under 3% or 512 MB", async () => {

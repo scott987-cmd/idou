@@ -223,6 +223,15 @@ export class DriveBudget extends DriveLedgerRules {
   }
   // How many rows the ledger holds, against LEDGER_CAPACITY (health-monitor.js).
   size() { return Number(this.db.prepare("SELECT COUNT(*) AS count FROM drive_reservations").get().count); }
+  // One person's reservations, counted, and let go when they leave
+  // (person-data.js): what they uploaded is theirs in Drive, which Feishu
+  // handles; this ledger has nothing more to count for them.
+  ownerRows(identity) {
+    return Number(this.db.prepare("SELECT COUNT(*) AS count FROM drive_reservations WHERE tenant = ? AND owner = ?").get(this.policy(identity).key, this.owner(identity)).count);
+  }
+  forgetOwner(identity) {
+    return Number(this.db.prepare("DELETE FROM drive_reservations WHERE tenant = ? AND owner = ?").run(this.policy(identity).key, this.owner(identity)).changes);
+  }
   close() { this.db.close(); }
   assertReported(identity, body) {
     const { policy, owner } = reportedRequest(this, identity, body);
@@ -341,6 +350,12 @@ export class PostgresDriveBudget extends DriveLedgerRules {
       [this.policy(identity).key, id, this.owner(identity)])).rowCount > 0;
   }
   async size() { return Number((await this.pool.query("SELECT count(*) AS count FROM idou_drive_reservations")).rows[0].count); }
+  async ownerRows(identity) {
+    return Number((await this.pool.query("SELECT count(*) AS count FROM idou_drive_reservations WHERE tenant = $1 AND owner = $2", [this.policy(identity).key, this.owner(identity)])).rows[0].count);
+  }
+  async forgetOwner(identity) {
+    return (await this.pool.query("DELETE FROM idou_drive_reservations WHERE tenant = $1 AND owner = $2", [this.policy(identity).key, this.owner(identity)])).rowCount;
+  }
   async rows() {
     return (await this.pool.query(`SELECT ${COLUMNS.join(", ")} FROM idou_drive_reservations ORDER BY tenant, id`)).rows.map(plain);
   }

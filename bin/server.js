@@ -23,6 +23,7 @@ import { ModelHealth } from "../src/control-plane/model-health.js";
 import { ModelChoiceService, ModelPreferences, PostgresModelPreferences } from "../src/control-plane/model-choice.js";
 import { loadDatabaseConfig, loadWorkerDatabaseConfig, openDatabase, openSharedState, readRunQueueKey, runQueueKey } from "../src/control-plane/database.js";
 import { dataHome } from "../src/install-names.js";
+import { storePlaces } from "../src/control-plane/person-data.js";
 
 // How long a SIGTERM may take before the process ends regardless (closeAll).
 // Shorter than systemd's 90 seconds, so a restart is bounded by this file.
@@ -113,7 +114,7 @@ async function main() {
   let monitor = null;
   const modelChoice = new ModelChoiceService({ sessions, models: chatModels, health, visibility, allowDevelopment: mode === "--dev",
     preferences: durable ? await PostgresModelPreferences.open({ state: durable })
-      : await ModelPreferences.open({ file: mode === "--dev" ? null : path.join(dataHome(), "model-preferences.json") }) });
+      : await ModelPreferences.open({ file: mode === "--dev" ? null : storePlaces().modelPreferences }) });
   // Image and speech keep MiniMax's key on whichever chat route; which key, and
   // when a missing one is fatal, is decided (and tested) in loadMediaKey. Video
   // goes to Qwen when a Token Plan key file is configured (loadVideoKey).
@@ -181,7 +182,7 @@ async function main() {
     const { baseCellText } = await import("../src/providers/feishu/base-reader.js");
     const { SiteService } = await import("../src/control-plane/site-service.js");
     const { viewPermissionPath } = await import("../src/providers/feishu/openapi.js");
-    const root = sitesConfig.directory || path.join(dataHome(), "sites");
+    const root = storePlaces().sites(sitesConfig.directory);
     const registry = await SiteRegistry.open(root, durable ? { storage: await PostgresSiteStorage.open({ pool: shared.pool, state: shared.state, key: shared.key }) } : {});
     // Every event is a JSON line on stderr, which is what an operator's log
     // collection keeps; the tail is the same events held in memory so the
@@ -297,7 +298,7 @@ async function main() {
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(loginConfig?.port || 0, "127.0.0.1", resolve); });
   if (process.env.IDOU_SCHEDULED_TASKS === "1") {
     const { startScheduledTasks } = await import("../src/control-plane/scheduled-tasks.js");
-    const dataDir = process.env.IDOU_SCHEDULED_TASKS_DIR || path.join(dataHome(), "scheduled-tasks");
+    const dataDir = storePlaces().scheduledTasks;
     await mkdir(dataDir, { recursive: true, mode: 0o700 });
     // The identity an unattended run acts as. Held only while the person's own
     // login is live, and only after they have handed it over.
@@ -621,7 +622,7 @@ async function serveRuns({ mode, capacity, metricsPort, startedAt, log }) {
   const { RunWorker } = await import("../src/control-plane/run-worker.js");
   const { openDockerSandbox, egressGateway, EGRESS_PORT } = await import("../src/control-plane/scheduled-tasks.js");
   const name = loadWorkerName();
-  const dataDir = process.env.IDOU_SCHEDULED_TASKS_DIR || path.join(dataHome(), "scheduled-tasks");
+  const dataDir = storePlaces().scheduledTasks;
   const runsDir = path.join(dataDir, "pool", name);
   await mkdir(runsDir, { recursive: true, mode: 0o700 });
   const gatewayAddress = loadSandboxGateway(), sandboxUser = loadSandboxUser(), image = loadSandboxImage(), gatewayNetwork = loadSandboxNetwork();

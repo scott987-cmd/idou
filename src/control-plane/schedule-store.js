@@ -849,6 +849,29 @@ export class ScheduleStore {
     return changed > 0 ? this.getRun(who, runId) : null;
   }
 
+  // Everything of one person's here, for when they leave (person-data.js):
+  // their tasks, and every run that is theirs -- by the run's own owner, or,
+  // for one from before runs carried one, by its task's.
+  ownerData(tenant, owner) {
+    const schedules = Number(this.db.prepare("SELECT COUNT(*) AS n FROM schedules WHERE tenant = ? AND owner = ?").get(tenant, owner).n);
+    const runs = Number(this.db.prepare(`SELECT COUNT(*) AS n FROM schedule_runs WHERE tenant = ? AND (owner = ?
+      OR (owner IS NULL AND schedule_id IN (SELECT id FROM schedules WHERE tenant = ? AND owner = ?)))`).get(tenant, owner, tenant, owner).n);
+    return { schedules, runs };
+  }
+
+  // And all of it gone, in one transaction. Run with the coordinator stopped
+  // (bin/forget-person.js), so no run of theirs is going meanwhile.
+  forgetOwner(tenant, owner) {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const runs = Number(this.db.prepare(`DELETE FROM schedule_runs WHERE tenant = ? AND (owner = ?
+        OR (owner IS NULL AND schedule_id IN (SELECT id FROM schedules WHERE tenant = ? AND owner = ?)))`).run(tenant, owner, tenant, owner).changes);
+      const schedules = Number(this.db.prepare("DELETE FROM schedules WHERE tenant = ? AND owner = ?").run(tenant, owner).changes);
+      this.db.exec("COMMIT");
+      return { schedules, runs };
+    } catch (error) { this.db.exec("ROLLBACK"); throw error; }
+  }
+
   // One record, at the person's own request. The schedule and its other runs
   // are untouched, and a run still going is not deleted out from under itself.
   deleteRun(who, runId) {

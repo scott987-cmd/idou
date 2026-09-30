@@ -112,10 +112,12 @@ export function certificateCheck({ name, label, validTo, remedy = "", now = Date
 // itself: whatever renews it (certbot, a load balancer) is not this program.
 // One that does not verify -- expired, another host's, an unknown issuer -- is
 // critical whatever its date says.
-export function servedCertificate(origin, { timeoutMs = 10_000 } = {}) {
+// `address` connects somewhere other than the name, still asking for the name
+// (SNI) and judging the certificate against it: this machine's own listener.
+export function servedCertificate(origin, { timeoutMs = 10_000, address = null } = {}) {
   const { hostname, port } = new URL(origin);
   return new Promise((resolve, reject) => {
-    const socket = connectTls({ host: hostname, port: Number(port || 443), servername: hostname, rejectUnauthorized: false, timeout: timeoutMs }, () => {
+    const socket = connectTls({ host: address ?? hostname, port: Number(port || 443), servername: hostname, rejectUnauthorized: false, timeout: timeoutMs }, () => {
       const certificate = socket.getPeerCertificate();
       const answer = { validTo: Date.parse(certificate?.valid_to), authorized: socket.authorized, error: socket.authorizationError ? String(socket.authorizationError) : null };
       socket.end();
@@ -127,14 +129,24 @@ export function servedCertificate(origin, { timeoutMs = 10_000 } = {}) {
   });
 }
 
+// Read from the address itself first. A server often cannot reach its own
+// public address -- the cloud's security group lets in only certain sources,
+// and the server's own address is not one (the first deployment, 2026-09-30:
+// both addresses unreachable from the machine that serves them) -- and then
+// the same name is asked of this machine's own listener, which serves the
+// certificate everybody else is served.
 export function publicCertificateCheck({ origin, now = Date.now, read = servedCertificate }) {
   const host = new URL(origin).host, label = `${host} 的 HTTPS 证书`;
   return { name: `public_certificate_${host.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}`, label, run: async () => {
-    let served;
+    let served, where = "";
     try { served = await read(origin); }
-    catch (error) { return { level: "warning", summary: `连不上 ${host} 读它的 HTTPS 证书（${said(error)}）。` }; }
-    if (!served.authorized) return { level: "critical", summary: `${label}不被信任（${served.error ?? "原因不明"}），用户会打不开。`, value: Math.round((served.validTo - now()) / 1000) };
-    return expiry({ label, until: served.validTo, now: now(), warnDays: 21, criticalDays: 7, remedy: "请确认证书的自动续期（例如 certbot）在运行。" });
+    catch (error) {
+      try { served = await read(origin, { address: "127.0.0.1" }); where = "（从本机的监听读到）"; }
+      catch { return { level: "warning", summary: `连不上 ${host} 读它的 HTTPS 证书（${said(error)}），本机的监听也没有答复。` }; }
+    }
+    if (!served.authorized) return { level: "critical", summary: `${label}不被信任（${served.error ?? "原因不明"}）${where}，用户会打不开。`, value: Math.round((served.validTo - now()) / 1000) };
+    const verdict = expiry({ label, until: served.validTo, now: now(), warnDays: 21, criticalDays: 7, remedy: "请确认证书的自动续期（例如 certbot）在运行。" });
+    return { ...verdict, summary: `${verdict.summary}${where}` };
   } };
 }
 

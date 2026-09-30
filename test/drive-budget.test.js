@@ -277,6 +277,19 @@ for (const kind of ["sqlite", "postgres"]) test(`${kind}: a report the server no
   assert.equal((await (await f.make()).reservation(identity, kept)).state, "reported", "and the one still kept is untouched");
 });
 
+// When a person leaves (person-data.js): their reservations, whatever their
+// state, counted and let go; nobody else's.
+for (const kind of ["sqlite", "postgres"]) test(`${kind}: a person's reservations are counted and let go, and nobody else's`, { timeout: 60_000 }, async (t) => {
+  const f = await ledgers(t, kind);
+  const bob = { ...identity, userId: "bob" };
+  for (const who of [identity, identity, bob]) await f.ledger.reserve(who, await requestOf(f.ledger, randomUUID(), 10));
+  assert.equal(await f.ledger.ownerRows(identity), 2);
+  assert.equal(await f.ledger.forgetOwner(identity), 2);
+  assert.equal(await f.ledger.ownerRows(identity), 0);
+  assert.equal(await f.ledger.ownerRows(bob), 1, "a colleague's stay");
+  assert.equal((await f.ledger.snapshot(bob)).chargedBytes, 10);
+});
+
 // What BEGIN IMMEDIATE did across processes, the ledger's own lock does across
 // coordinators: eight asking at once for 20 of a 100-byte budget, five get it.
 test("postgres: reservations from separate coordinators at once never exceed the tenant's budget", { timeout: 60_000 }, async (t) => {
