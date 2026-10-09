@@ -98,8 +98,11 @@ npm run preflight && npm start
 ## 测试
 
 ```bash
+npx playwright install --only-shell chromium   # 只需一次：网站测试用来打开页面的浏览器
 npm run check          # 全部单元和集成测试，不花钱、不连真实飞书
 ```
+
+- 网站相关的测试用 Playwright 自己的 Chromium 打开真的已发布页面，`npm ci` 不会装它，第一次跑测试前装一次（Linux 上缺系统库时加 `--with-deps`）。没装时这几条测试会失败，并提示这条命令。
 
 - `npm run check` 第一次运行时会下载 Electron 的二进制（Electron 44 起不在 `npm ci` 时下载，而是第一次用到时才下载；并行的测试同时去下载会互相踩到，所以检查一开始就先装好）。
 - `npm run check` 在源码检出里按开发模式运行：源码不要求和签名发布一致，但内置的二进制仍按 `upstreams.lock.json` 的摘要核对。发布前维护者用 `npm run check:release` 按签名核对。

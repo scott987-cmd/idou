@@ -34,8 +34,8 @@ app.whenReady().then(async () => {
 
 const STYLE = `body { margin: 0; font: 14px sans-serif; } #native-slot { position: fixed; left: 600px; top: 300px; width: 200px; height: 120px; }`;
 
-// Every fault once. The card at the bottom is rebuilt from nothing every 300 ms,
-// as the approval cards were on 2026-09-25.
+// Every fault once. The card at the bottom is rebuilt from nothing after each
+// thing the person does, as the approval cards were every second on 2026-09-25.
 const FAULTY = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>${STYLE}
   #column { position: relative; width: 160px; height: 36px; margin: 8px; }
   #column button { position: absolute; top: 44px; left: 0; }
@@ -68,7 +68,9 @@ const FAULTY = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><s
       toggle.onclick = () => toggle.setAttribute("aria-expanded", "true");
       card.replaceChildren(details, reason, toggle);
     };
-    draw(); setInterval(draw, 300);
+    // Rebuilt when the test says (sweep), as a timer would: never in the middle
+    // of one of Playwright's actions.
+    draw(); window.redraw = draw;
   </script>
 </body></html>`;
 
@@ -94,7 +96,7 @@ const SOUND = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><st
     <button>滚到标题下面的按钮</button><div style="height: 200px"></div>
   </div>
   <script>
-    // Rebuilt every 300 ms too, but what the person did survives it.
+    // Rebuilt between actions too, but what the person did survives it.
     const card = document.getElementById("card");
     const kept = { open: false, reason: "", expanded: false };
     const draw = () => {
@@ -108,7 +110,7 @@ const SOUND = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><st
       card.replaceChildren(details, reason, toggle);
       if (focused) reason.focus();
     };
-    draw(); setInterval(draw, 300);
+    draw(); window.redraw = draw;
     // The list scrolled a little: its first button is under the sticky title.
     document.getElementById("scroller").scrollTop = 12;
   </script>
@@ -131,12 +133,20 @@ async function sweep(t, html) {
   t.after(() => app.close().catch(() => {}));
   const inspector = inspect(app, { every: 0 });
   const screen = await app.firstWindow();
-  await screen.waitForFunction(() => Boolean(window.__uiInv) && document.readyState === "complete");
+  // Polled on a timer: by default it waits for an animation frame, and a page
+  // that changes nothing in a window in the background may not draw one.
+  await screen.waitForFunction(() => Boolean(window.__uiInv) && document.readyState === "complete", null, { polling: 100 });
   await screen.waitForTimeout(300);
-  // What a person does to the card: open its details, type a reason, open its menu.
-  await screen.locator("#card summary").click(); await screen.waitForTimeout(700);
-  await screen.locator("#card textarea").fill("先别发，改成只发给我"); await screen.waitForTimeout(700);
-  await screen.locator("#card button").click(); await screen.waitForTimeout(700);
+  // What a person does to the card: open its details, type a reason, open its
+  // menu -- and after each, the page rebuilds the card the way a timer would.
+  // The test asks for that rebuild rather than the page running a timer of its
+  // own: Playwright's fill() focuses in one round trip and types in another, and
+  // a rebuild between the two (a 300 ms timer did, on a slow CI machine, 10-09)
+  // sends the text nowhere -- so there was nothing to lose and nothing caught.
+  const redraw = () => screen.evaluate(() => window.redraw?.());
+  await screen.locator("#card summary").click(); await screen.waitForTimeout(700); await redraw();
+  await screen.locator("#card textarea").fill("先别发，改成只发给我"); await screen.waitForTimeout(700); await redraw();
+  await screen.locator("#card button").click(); await screen.waitForTimeout(700); await redraw();
   await inspector.sample();
   return inspector;
 }
@@ -220,7 +230,7 @@ test("closing the application from any state is prompt, or it is reported", { ti
   t.after(() => rm(directory, { recursive: true, force: true }));
   const app = await electron.launch({ executablePath: electronBinary, args: [main], env: { ...process.env, UI_PAGE: page, SLOW_QUIT: "1500" } });
   const inspector = inspect(app, { every: 0, slowClose: 800 });
-  await (await app.firstWindow()).waitForFunction(() => Boolean(window.__uiInv));
+  await (await app.firstWindow()).waitForFunction(() => Boolean(window.__uiInv), null, { polling: 100 });
   await app.close();
   assert.deepEqual(inspector.findings.map((row) => row.kind), ["退出太慢"], JSON.stringify(inspector.findings));
 });

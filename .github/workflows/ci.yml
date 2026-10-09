@@ -61,6 +61,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The site tests open real published pages in Playwright's own Chromium
+      # (site-isolation, site-templates-served, site-pick). It is not part of
+      # npm ci; without it those tests fail with "Executable doesn't exist".
+      - name: The browser the site tests open pages in
+        run: npx playwright install --with-deps --only-shell chromium
+
       - name: Build the bundled Feishu CLI from its reviewed commit
         env:
           LARK_COMMIT: ${{ steps.pins.outputs.lark_commit }}
