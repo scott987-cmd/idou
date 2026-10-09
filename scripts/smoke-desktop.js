@@ -524,6 +524,18 @@ try {
   assert.equal(workFilesLayout.noLineNumbers, true, "工作任务不应把普通资料伪装成代码编辑器");
   assert.equal(workFilesLayout.noHorizontalOverflow, true, "工作任务的文字预览不应出现横向滚动");
   await page.screenshot({ path: path.join(evidence, "desktop-work-files-cowork.png"), scale: "css" });
+  // The window itself never scrolls. Bringing a row of a scrolling list into
+  // view -- as the application does for a new site row, and as a focus does --
+  // also scrolls every ancestor that can, and the shell could: on 2026-10-08
+  // the whole window sat 48px up, its top bar cut off and a blank band below.
+  // Whatever gives the shell room to move (it had 769px in the installed app,
+  // none here), it does not stay moved: given some, and pushed.
+  await page.evaluate(() => { const tall = document.createElement("div"); tall.id = "smoke-overflow"; tall.style.cssText = "position:absolute;left:0;top:0;width:10px;height:3000px;pointer-events:none"; document.body.append(tall); });
+  await page.locator(".recent-row > button:first-child").last().evaluate((row) => row.scrollIntoView({ block: "center" }));
+  await page.evaluate(() => document.querySelector("#smoke-overflow").scrollIntoView({ block: "end" }));
+  await page.waitForFunction(() => [document.documentElement.scrollTop, document.documentElement.scrollLeft, document.body.scrollTop, document.body.scrollLeft].every((value) => value === 0), null, { polling: 50, timeout: 2_000 })
+    .catch(async () => assert.fail(`the window itself was left scrolled: ${JSON.stringify(await page.evaluate(() => [document.documentElement.scrollTop, document.body.scrollTop]))}`));
+  await page.evaluate(() => document.querySelector("#smoke-overflow").remove());
   assert.equal(await page.locator("#task-tabs").isVisible(), true, "用任务文件应当自动建立任务");
   assert.equal(await page.locator(".recent-row > button:first-child").count(), beforeOpen + 1);
   await page.locator("#prompt").fill("工作任务导航验收"); await page.locator("#send").click();
@@ -532,10 +544,19 @@ try {
   await page.locator('[data-section="coding"]').click();
   const row = page.locator(".recent-row").first();
   assert.equal(await row.locator("button:first-child strong, button:first-child").first().innerText().then((text) => text.split("\n")[0]), "桌面验收任务", "任务名应当取自第一句话并在标点处断开");
+  // As if the window had focus, so taking the input out blurs it -- as for a
+  // person at the keyboard. In the background it does not, and a rename that
+  // committed twice (Enter, then the blur from inside the first commit) passed
+  // here every time but once (2026-10-09).
+  const focus = await page.context().newCDPSession(page);
+  await focus.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await row.locator(".row-action", { hasText: "重命名" }).click();
   await page.locator(".rename-input").fill("改过名的任务");
   await page.locator(".rename-input").press("Enter");
   await page.locator(".recent-row").first().filter({ hasText: "改过名的任务" }).waitFor();
+  await page.waitForTimeout(300);
+  assert.equal((await page.locator("#error-banner").innerText().catch(() => "")).trim(), "", "renaming says nothing went wrong");
+  await focus.send("Emulation.setFocusEmulationEnabled", { enabled: false }); await focus.detach();
   // 压缩与回退是对这段对话本身的操作，有对话才出现。
   await page.locator(".recent-row > button:first-child").first().click();
   await page.locator("#task-actions").waitFor();

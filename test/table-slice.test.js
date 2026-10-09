@@ -67,3 +67,27 @@ test("what the confirmation card says is built from the slice itself", () => {
   assert.equal(describeSlice({ ...base, refreshSeconds: 90 }).refresh, "每 90 秒");
   assert.deepEqual(describeSlice(base).fields, ["fldAAA", "fldBBB"], "field ids when no names were read");
 });
+
+test("up to 20,000 rows, and past 5,000 no faster than every minute", () => {
+  assert.equal(parseSlice({ ...base, rows: SLICE_LIMITS.rows, refreshSeconds: 60 }).rows, 20_000);
+  assert.throws(() => parseSlice({ ...base, rows: SLICE_LIMITS.rows + 1 }), /行数上限要在 1 到 20000 之间/);
+  assert.throws(() => parseSlice({ ...base, rows: 5001, refreshSeconds: 15 }), /超过 5000 行的表最快每 1 分钟刷新一次/);
+  assert.equal(parseSlice({ ...base, rows: 5000, refreshSeconds: 15 }).refreshSeconds, 15, "what was allowed before still is");
+  assert.equal(parseSlice({ ...sheet, rows: 6000, refreshSeconds: 60 }).rows, 6000);
+});
+
+test("a slice stored without a row count is what it was before the cap grew", () => {
+  const { rows: _rows, ...unsaid } = base;
+  assert.equal(parseSlice(unsaid).rows, 5000);
+  assert.equal(sliceId(unsaid), sliceId({ ...base, rows: 5000 }), "the same identity, so the same cache entries and probes");
+  assert.equal(parseSlice({ ...unsaid, refreshSeconds: 15 }).refreshSeconds, 15);
+});
+
+test("the slice picker offers what parseSlice accepts", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const app = await readFile(new URL("../src/desktop/renderer/app.js", import.meta.url), "utf8");
+  assert.match(app, new RegExp(`rowsInput\\.max = "${SLICE_LIMITS.rows}"`));
+  assert.match(app, new RegExp(`const big = Number\\(rowsInput\\.value\\) > ${SLICE_LIMITS.bigRows};`));
+  assert.match(app, new RegExp(`option\\.disabled = big && Number\\(option\\.value\\) < ${SLICE_LIMITS.bigRefreshSeconds};`));
+  assert.match(app, new RegExp(`if \\(refresh\\.selectedOptions\\[0\\]\\?\\.disabled\\) refresh\\.value = "${SLICE_LIMITS.bigRefreshSeconds}";`));
+});

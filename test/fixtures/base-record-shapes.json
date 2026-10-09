@@ -1,0 +1,195 @@
+{
+ "recorded": "2026-10-06: lark-cli 1.0.94, base +field-list and +record-list --as user, the `data` of each, from a synthetic test table; ids replaced, the rest as Feishu sent it",
+ "fieldList": {
+  "fields": [
+   {
+    "default_value": null,
+    "id": "fldShape01",
+    "name": "数量",
+    "style": {
+     "percentage": false,
+     "precision": 2,
+     "thousands_separator": false,
+     "type": "plain"
+    },
+    "type": "number"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape02",
+    "name": "金额",
+    "style": {
+     "percentage": false,
+     "precision": 2,
+     "thousands_separator": false,
+     "type": "plain"
+    },
+    "type": "number"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape03",
+    "name": "客户",
+    "style": {
+     "type": "plain"
+    },
+    "type": "text"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape04",
+    "multiple": false,
+    "name": "区域",
+    "options": [
+     {
+      "hue": "Orange",
+      "lightness": "Lighter",
+      "name": "华东"
+     },
+     {
+      "hue": "Lime",
+      "lightness": "Lighter",
+      "name": "华南"
+     },
+     {
+      "hue": "Blue",
+      "lightness": "Lighter",
+      "name": "华北"
+     },
+     {
+      "hue": "Green",
+      "lightness": "Lighter",
+      "name": "西南"
+     }
+    ],
+    "type": "select"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape05",
+    "name": "说明",
+    "style": {
+     "type": "plain"
+    },
+    "type": "text"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape06",
+    "name": "签约日期",
+    "style": {
+     "format": "yyyy/MM/dd"
+    },
+    "type": "datetime"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape07",
+    "multiple": false,
+    "name": "状态",
+    "options": [
+     {
+      "hue": "Wathet",
+      "lightness": "Lighter",
+      "name": "待跟进"
+     },
+     {
+      "hue": "Lime",
+      "lightness": "Lighter",
+      "name": "方案中"
+     },
+     {
+      "hue": "Lime",
+      "lightness": "Lighter",
+      "name": "已签约"
+     },
+     {
+      "hue": "Red",
+      "lightness": "Lighter",
+      "name": "已流失"
+     }
+    ],
+    "type": "select"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape08",
+    "name": "负责人",
+    "style": {
+     "type": "plain"
+    },
+    "type": "text"
+   }
+  ],
+  "total": 8
+ },
+ "recordList": {
+  "data": [
+   [
+    "客户12000 科技有限公司",
+    44000,
+    "2026-11-17T08:00:00.000+08:00",
+    "第 12000 条，合成数据，用于读取测速",
+    0,
+    [
+     "华东"
+    ],
+    "张伟",
+    [
+     "待跟进"
+    ]
+   ],
+   [
+    "客户12001 科技有限公司",
+    44037,
+    "2026-11-18T08:00:00.000+08:00",
+    "第 12001 条，合成数据，用于读取测速",
+    1,
+    [
+     "华南"
+    ],
+    "李娜",
+    [
+     "方案中"
+    ]
+   ]
+  ],
+  "field_id_list": [
+   "fldShape03",
+   "fldShape02",
+   "fldShape06",
+   "fldShape05",
+   "fldShape01",
+   "fldShape04",
+   "fldShape08",
+   "fldShape07"
+  ],
+  "field_type_list": [
+   "text",
+   "number",
+   "datetime",
+   "text",
+   "number",
+   "select",
+   "text",
+   "select"
+  ],
+  "fields": [
+   "客户",
+   "金额",
+   "签约日期",
+   "说明",
+   "数量",
+   "区域",
+   "负责人",
+   "状态"
+  ],
+  "has_more": true,
+  "record_id_list": [
+   "recShape09",
+   "recShape10"
+  ],
+  "rev": 1,
+  "timezone": "Asia/Shanghai"
+ }
+}

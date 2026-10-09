@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { TaskStore } from "../src/application/task-store.js";
-import { TaskService, upstreamFailure } from "../src/application/task-service.js";
+import { TaskService, upstreamFailure, MAX_CONTINUATIONS } from "../src/application/task-service.js";
 import { readWorkspaceFile } from "../src/application/workspace-files.js";
 import { getPermission } from "../src/modes.js";
 import { agentTool } from "../src/application/knowledge-commands.js";
@@ -656,6 +656,45 @@ test("a built-in connector is granted whole for the turn; an imported one tool b
   assert.equal(answered(812), undefined, "another tool of an imported connection is asked for on its own");
 });
 
+// 2026-10-08, the promo recording: the card's body was Codex's own sentence,
+// `Allow the browser MCP server to run tool "browser_preview"?`, and the
+// server's id `browser` stood alone by 允许这一次, on a screen that is Chinese
+// everywhere else. The card names the connector as 技能中心 does and the tool,
+// and says something Chinese even when the tool cannot be read.
+test("an MCP card says in Chinese which connector wants to run which tool, never Codex's English", async (t) => {
+  const { service, task, clients, calls } = await setup(t, "wait");
+  Object.assign(service.get(task.id), { mcpConnection: { id: "browser", title: "浏览器操作", builtin: true }, permission: "manual" });
+  await service.send(task.id, "看看生成的页面"); await waitFor(() => calls.some((call) => call.method === "turn/start"));
+  const ask = (id, server, message) => clients.at(-1).emit("serverRequest", { id, method: "mcpServer/elicitation/request", params: { threadId: "codex-thread", turnId: "turn", serverName: server, mode: "form",
+    message, requestedSchema: { type: "object", properties: {} }, _meta: { codex_approval_kind: "mcp_tool_call", tool_params: { path: "index.html" } } } });
+  const english = /Allow|MCP server|run tool/;
+
+  ask(900, "browser", 'Allow the browser MCP server to run tool "browser_preview"?');
+  const card = service.snapshot().approvals[0];
+  assert.equal(card.reason, "「浏览器操作」想运行「browser_preview」");
+  assert.equal(card.target, "浏览器操作", "the connector by its title, where the card names what it is about");
+  assert.match(card.command, /"path": "index.html"/, "the arguments stay as they are");
+  assert.deepEqual([card.cwd, card.tool], ["browser", "browser_preview"], "what scripts tell cards apart by, beside what the card shows");
+  service.approve(card.id, "decline");
+
+  ask(901, "browser", "Allow this call?");
+  const unread = service.snapshot().approvals[0];
+  assert.equal(unread.reason, "「浏览器操作」想运行一个工具，运行时没有说明是哪一个");
+  assert.equal(unread.target, "浏览器操作", "not the server's id, even with no tool to grant");
+  assert.equal(unread.tool, undefined);
+  service.approve(unread.id, "decline");
+  clients.at(-1).emit("notification", { method: "turn/completed", params: { threadId: "codex-thread", turn: { id: "turn", status: "completed", items: [] } } });
+  await finished(service, task.id);
+
+  // An imported connection is named by its server name.
+  Object.assign(service.get(task.id), { mcpConnection: { id: "demo", title: "演示" } });
+  await service.send(task.id, "用导入的工具"); await waitFor(() => calls.filter((call) => call.method === "turn/start").length === 2);
+  ask(910, "demo", 'Allow the demo MCP server to run tool "echo"?');
+  const imported = service.snapshot().approvals[0];
+  assert.equal(imported.reason, "「demo」想运行「echo」");
+  for (const row of [card, unread, imported]) assert.doesNotMatch(row.reason, english);
+});
+
 test("foreign, unbound, URL, oversized and data-collecting MCP elicitations are refused", async (t) => {
   const { service, task, clients, calls } = await setup(t, "wait"); service.get(task.id).mcpConnection = { id: "demo" };
   await service.send(task.id, "MCP test"); await waitFor(() => calls.some((call) => call.method === "turn/start"));
@@ -1294,6 +1333,11 @@ test("a few upstream failures are said in words somebody can act on", () => {
   assert.match(upstreamFailure("stream disconnected before completion: Incomplete response returned, reason: max_output_tokens"),
     /直接说「继续」就能接着写/);
   assert.match(upstreamFailure("400 context_length_exceeded"), /压缩对话/);
+  // Every request carries the whole conversation, screenshots and all
+  // (2026-10-08: 27 screenshots, refused from then on).
+  const tooLarge = upstreamFailure("unexpected status 413 Payload Too Large: request_too_large, url: https://gateway.example/v1/responses, request id: 4bd472d2-0000-4000-8000-000000000000");
+  assert.match(tooLarge, /截图太多.*压缩对话/);
+  assert.doesNotMatch(tooLarge, /https|request id|413/);
   // Anything not listed passes through exactly as it came: a friendlier
   // sentence for a failure nobody has read yet is how a real cause gets hidden.
   // Shown raw, with the machine's paths, when the account's directory had been
@@ -1429,3 +1473,55 @@ test("the unified start action sends one unauthored turn and restores planning w
   assert.match(service.get(failed.id).error, /synthetic dispatch failure/);
   service.send = send;
 });
+
+// The administrators withheld 完全访问 (control-plane/policy.js, read by the
+// desktop): no task can be set to it or created with it, and every card comes
+// back at once. (That a task left on it runs as standard: gateway-config.test.js.)
+test("管理员收回「完全访问」后：不能再选它、不能用它新建任务，确认卡片立刻回来", async t => {
+  const { setFullAccessAllowed, permitsUnattendedActions } = await import("../src/permissions.js");
+  t.after(() => setFullAccessAllowed(true));
+  const f = await setup(t);
+  const full = await f.service.setPermission(f.task.id, "full");
+  assert.equal(full.permission, "full");
+  assert.equal(permitsUnattendedActions(full), true);
+  setFullAccessAllowed(false);
+  assert.equal(permitsUnattendedActions(f.service.get(f.task.id)), false, "the card is back, even for a task already on full");
+  await assert.rejects(f.service.setPermission(f.task.id, "full"), /管理员关闭了「完全访问」/);
+  await assert.rejects(f.service.create({ mode: "cowork", cwd: f.task.cwd, permission: "full" }), /管理员关闭了「完全访问」/);
+  setFullAccessAllowed(true);
+  assert.equal(permitsUnattendedActions(f.service.get(f.task.id)), true, "given back, it is what it was");
+});
+
+// 2026-10-08, building the second promo's dashboard: MiniMax-M3 wrote a whole
+// page in one patch, and later rewrote a 343-line file whole for a small change.
+// Each time the reply ran past the output limit, the turn failed and the task
+// sat until the person typed 继续. Now it goes on by itself -- twice at most for
+// each message the person sent -- and says that it did.
+test("a turn cut off at the output limit goes on by itself, twice at most for each message", async (t) => {
+  const { service, task, clients, calls } = await setup(t, "wait");
+  const starts = () => calls.filter((call) => call.method === "turn/start");
+  const end = (turn) => clients.at(-1).emit("notification", { method: "turn/completed", params: { threadId: "codex-thread", turn: { id: "turn", items: [], ...turn } } });
+  const cutOff = () => end({ status: "failed", error: { message: "stream disconnected before completion: Incomplete response returned, reason: max_output_tokens" } });
+  const settled = async (count) => { await waitFor(() => !service.active.has(task.id)); await new Promise((r) => setTimeout(r, 30)); assert.equal(starts().length, count); };
+  await service.send(task.id, "把这个网站做成一块监控大屏");
+  await waitFor(() => starts().length === 1);
+  cutOff(); await waitFor(() => starts().length === 2);
+  assert.match(starts()[1].params.input[0].text, /分几段写，每个补丁不超过 150 行/);
+  const users = () => service.get(task.id).messages.filter((message) => message.role === "user");
+  assert.deepEqual(users().map((message) => [message.authored !== false, message.continuation === true]), [[true, false], [false, true]],
+    "sent by the application and marked so, never offered back by ↑ as the person's");
+  cutOff(); await waitFor(() => starts().length === 3);
+  assert.equal(MAX_CONTINUATIONS, 2);
+  cutOff(); await settled(3);
+  assert.equal(service.get(task.id).status, "failed", "a third cut-off stops rather than loop");
+  assert.match(service.get(task.id).error, /直接说「继续」/);
+  // The person's own message starts the count again.
+  await service.send(task.id, "继续"); await waitFor(() => starts().length === 4);
+  cutOff(); await waitFor(() => starts().length === 5);
+  // Any other failure is the person's to read, and a stopped turn stays stopped.
+  end({ status: "failed", error: { message: "upstream 502 Bad Gateway" } }); await settled(5);
+  await service.send(task.id, "再试一次"); await waitFor(() => starts().length === 6);
+  service.stop(task.id); await settled(6);
+  assert.equal(service.get(task.id).status, "interrupted");
+});
+

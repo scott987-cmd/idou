@@ -96,7 +96,7 @@ try {
     assert.match(await waitForHumanConfirm(page, "确认"), /调用按任务的权限确认/);
     await page.locator("#task-mcp-label").waitFor();
     await page.locator("#prompt").fill("仅调用已配置的 echo MCP，输入 synthetic-marker。不要执行任何 shell。"); await page.locator("#send").click();
-    await page.waitForFunction(() => document.querySelector("#approvals").textContent.includes("确认 MCP 工具调用") || document.querySelector("#task-status").textContent === "执行失败", null, { timeout: 30000 });
+    await page.waitForFunction(() => document.querySelector("#approvals").textContent.includes("确认使用工具") || document.querySelector("#task-status").textContent === "执行失败", null, { timeout: 30000 });
     assert.notEqual(await page.locator("#task-status").innerText(), "执行失败", await page.locator("#error-banner").innerText());
     // From the moment the card is on screen: Codex asked a moment before.
     const shownAt = Date.now(), slow = SLOW_APPROVAL_MS && decision !== "拒绝";

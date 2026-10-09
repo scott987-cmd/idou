@@ -14,6 +14,16 @@ With the reference checked, a question sends that page as context. **生成记�
 
 A response whose columns do not line up, that repeats a record, or that names a field the field list does not know is refused rather than displayed. Values are rendered as text only. The page is read between two identity checks. A Base has no version a write could be conditioned on: its `rev` is read with a lag (measured live), so the page's content digest stands for its version, and a reference is read again and compared before it is sent. The knowledge copy keeps its own text projection (`src/providers/feishu/base-reader.js`).
 
+### Every field kind, as read (2026-10-06)
+
+Recorded from a test Base with one field of each kind the CLI creates and a second table its links point into, in `test/fixtures/base-field-shapes.json` (lark-cli 1.0.94, as the user; every id and person replaced):
+
+- `+field-list` and `+table-get` list fields in a different order on every call. The order a person sees is the first grid view's: `+view-get-visible-fields` (a GET) gives it — by field **name** — and `+table-get` names the `primary_field` by id. Sites lay their columns out in that order.
+- Type names: `text` (with `style.type` `plain`, `phone`, `url`, `email`, `barcode`), `number` (`plain`, `currency`, `progress`, `rating`; `style.percentage` for a percentage), `select` (`multiple: true` for several options), `datetime`, `created_at`, `updated_at` (`style.format`, e.g. `yyyy-MM-dd HH:mm`), `checkbox`, `user`, `group_chat`, `created_by`, `updated_by`, `link` (to records of `link_table`), `auto_number`, `location`, `attachment`, `formula`.
+- Values: a date or time is an ISO 8601 string with its offset (`"2026-10-06T09:30:00.000+08:00"`), never milliseconds; a select, single or not, is a list of option names; a person is `[{ "id": "ou_…", "name": "…" }]`; a `link` is `[{ "id": "rec…" }]` and nothing else — its names are the linked table's primary field, read by id; a `url` text is Markdown, `"[北极星官网](https://…)"`, and a bare address `"[https://…](https://…)"`; a location is `{ full_address, lat, lng }`; an attachment is `[{ file_token, name, size }]`; an auto number is a string (`"T-001"`); an empty cell is `null`.
+- A formula's result is a string whatever it computes, and its field says nothing of its type: a number is `"3370.35"`, and a date is a day count — `[截止日期]+7` gives `"46030"`. Sites show formulas as text; a formula meant to be read as a date should format it itself (`TEXT(...)`).
+- A change in a linked table (a project renamed, a budget changed) shows in this table's links and formulas within two seconds, and this table's `rev` does not move. `+table-list` gives every table's `rev` in one call, so a site's probe includes the tables its links point into, and every table when it shows a formula.
+
 ## Editable fields
 
 Only plain text fields and plain or currency number fields are offered for editing. People, options, dates, attachments, links, formulas, phone, URL and email text, and every other kind are shown, and marked read-only, until their value shapes have been recorded.
@@ -35,6 +45,8 @@ Only plain text fields and plain or currency number fields are offered for editi
 7. **Undo.** Once, through its own card, by the same steps in reverse, for a `verified` write or for a mismatch in which Feishu kept each value in another form (a number as text). Every field must still hold what the read-back found; a field that was empty is written back as `null`.
 
 **The gap a Base leaves.** Nothing in a Base lets one writer notice another: `rev` lags, and the batch update answers only with the fields it ignored. The check before the write narrows the window to a second or two and the read-back proves the outcome, but a change someone makes to the same field inside that window is overwritten and cannot be detected afterwards. The confirmation card says so.
+
+**What `rev` is good for: knowing a table has not moved.** Measured on a real Base, 2026-10-04 (`docs/evidence/base-20k-live.txt`): `+table-list` gives each table `id`, `name`, `records_count` and `rev`; that `rev` is the same number as `+record-list`'s and moves by one with every write call -- records added, a text, number or option changed, a field renamed -- whatever the call touched. It shows a write 1–3 seconds after the call returns; in three tries it was never ahead of the records' values. It is not a condition a write can be made on, but it does say "nothing written since", which is what a table site's refresh asks before reading 100 pages again (docs/sites-phase1.md §1.7).
 
 ## Limits and verification
 

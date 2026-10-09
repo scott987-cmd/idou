@@ -129,19 +129,19 @@ test("签名下发的目录来自可写货架，且只给本租户", async (t) =
   await catalog.registry.publish(admin, bundle());
 
   const identity = { tenantId: "tenant_a", appId: "cli_x", expiresAt: Date.now() + 60_000 };
-  const signed = catalog.signedCatalog(identity, "n".repeat(43));
+  const signed = await catalog.signedCatalog(identity, "n".repeat(43));
   assert.equal(JSON.parse(Buffer.from(signed.payload, "base64url").toString("utf8")).skills[0].id, "enterprise-weekly");
   assert.ok(signed.keyId && signed.signature, "the shelf is served signed, never bare");
   assert.equal(catalog.shelf().revision, catalog.registry.snapshot().revision);
   // A tenant with nothing published yet still has a writable shelf -- an empty
   // one. Refusing it made an administrator's first publish unreachable and told
   // everyone else the catalogue was unavailable. It is scoped, signed and empty.
-  const other = JSON.parse(Buffer.from(catalog.signedCatalog({ ...identity, tenantId: "tenant_z" }, "n".repeat(43)).payload, "base64url").toString("utf8"));
+  const other = JSON.parse(Buffer.from((await catalog.signedCatalog({ ...identity, tenantId: "tenant_z" }, "n".repeat(43))).payload, "base64url").toString("utf8"));
   assert.equal(other.tenantId, "tenant_z");
   assert.deepEqual(other.skills, [], "another tenant never sees tenant_a's skills");
   // Withdrawing the last skill drops the tenant key; the shelf is empty, not gone.
   await catalog.registry.unpublish(admin, "enterprise-weekly");
-  assert.deepEqual(JSON.parse(Buffer.from(catalog.signedCatalog(identity, "n".repeat(43)).payload, "base64url").toString("utf8")).skills, []);
+  assert.deepEqual(JSON.parse(Buffer.from((await catalog.signedCatalog(identity, "n".repeat(43))).payload, "base64url").toString("utf8")).skills, []);
 
   // Configuring nothing keeps the whole feature off, which is what every
   // deployment has been running: the routes are simply not registered.
@@ -189,7 +189,7 @@ test("上架闭环：本机技能转企业身份、经 HTTP 上架、签名核�
   assert.deepEqual(promoted.requiredTools, [], "publishing must not become the way a folder grants itself tools");
 
   // A refusal has to say what to do about it, not just that the service is unwell.
-  await assert.rejects(everyone.publish(promoted), /不在企业技能管理员名单/);
+  await assert.rejects(everyone.publish(promoted), /不在企业技能上架人名单/);
   assert.equal((await everyone.shelf()).skills.length, 0);
 
   assert.equal((await boss.publish(promoted)).id, "enterprise-weekly-report");
@@ -199,7 +199,7 @@ test("上架闭环：本机技能转企业身份、经 HTTP 上架、签名核�
   assert.deepEqual(seen.skills.map(item => item.id), ["enterprise-weekly-report"]);
   assert.ok(seen.revision >= 2);
 
-  await assert.rejects(everyone.unpublish("enterprise-weekly-report"), /不在企业技能管理员名单/);
+  await assert.rejects(everyone.unpublish("enterprise-weekly-report"), /不在企业技能上架人名单/);
   await boss.unpublish("enterprise-weekly-report");
   assert.equal((await everyone.shelf()).skills.length, 0);
 });
@@ -212,5 +212,84 @@ test("a static catalogue still refuses a tenant it does not list", async () => {
   const catalog = new EnterpriseSkillCatalog({ origin: "https://agent.example", sessions, privateKey,
     catalog: { schemaVersion: 1, revision: 1, tenants: [{ tenantId: "tenant_a", skills: [bundle()] }] } });
   const identity = { tenantId: "tenant_z", appId: "cli_x", expiresAt: Date.now() + 60_000 };
-  assert.throws(() => catalog.signedCatalog(identity, "n".repeat(43)), /skill_catalog_not_available/);
+  await assert.rejects(() => catalog.signedCatalog(identity, "n".repeat(43)), /skill_catalog_not_available/);
+});
+
+// docs/enterprise-skill-governance.md, as the desktop meets it: with review on,
+// a publish waits and the shelf does not change; a publisher added in the
+// console may publish; a skill for one department is in nobody else's signed
+// catalogue; a task started with a skill is counted; each step is written down.
+test("governed: a publish waits for review, the console's publishers count, the catalogue follows departments, use is counted", async (t) => {
+  const { createServer } = await import("node:http");
+  const { once } = await import("node:events");
+  const { SessionRegistry: Sessions } = await import("../src/control-plane/sessions.js");
+  const { EnterpriseSkillsClient } = await import("../src/application/enterprise-skills.js");
+  const { openAdminDatabase } = await import("../src/control-plane/admin-db.js");
+  const { SkillGovernance } = await import("../src/control-plane/skill-governance.js");
+  const { skillTrail } = await import("../src/control-plane/audit-trail.js");
+  const { base, filename } = await setup(t);
+  const key = path.join(base, "sign.pem");
+  const pair = generateKeyPairSync("ed25519");
+  await writeFile(key, pair.privateKey.export({ format: "pem", type: "pkcs8" }), { mode: 0o600 });
+  const sessions = new Sessions();
+  const catalog = await EnterpriseSkillCatalog.fromConfig({ origin: "http://127.0.0.1:1", sessions,
+    env: { IDOU_SKILL_SIGNING_KEY_FILE: key, IDOU_SKILL_REGISTRY_FILE: filename, IDOU_SKILL_ADMINS: "ou_admin" } });
+  const db = await openAdminDatabase();
+  const governance = await SkillGovernance.open({ db, key: catalog.usageKey() });
+  t.after(async () => { governance.close(); await db.close(); });
+  const placed = { ou_legal: ["od-legal"], ou_plain: [] };
+  const trail = [];
+  catalog.govern({ governance, departmentsOf: async (who) => placed[who.userId] ?? [], audit: (event, context) => { const row = skillTrail(event, context); if (row) trail.push(row); } });
+  const server = createServer(async (req, res) => { if (!await catalog.handle(req, res)) { res.writeHead(404); res.end(); } });
+  server.listen(0, "127.0.0.1"); await once(server, "listening");
+  t.after(() => { server.close(); server.closeAllConnections(); });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  catalog.origin = origin;
+  const client = (userId) => {
+    const session = sessions.issue({ tenantId: "tenant_a", userId, deviceId: "d", authProvider: "feishu", appId: "cli_x", deviceProof: "ed25519-login" });
+    return new EnterpriseSkillsClient({ publicKey: pair.publicKey.export({ format: "pem", type: "spki" }), runtimeVersions: { codex: "0.147.0", feishu: "1.0.78" },
+      getSession: async () => ({ token: session.token, expiresAt: session.expiresAt, serverUrl: origin, identity: { provider: "feishu", tenantId: "tenant_a", userId, appId: "cli_x" } }) });
+  };
+  const boss = client("ou_admin"), legal = client("ou_legal"), plain = client("ou_plain");
+  // Review on (the default): the publish waits, the shelf is as it was.
+  const waiting = await boss.publish(bundle());
+  assert.deepEqual([waiting.pending, waiting.version], [true, "1.0.0"]);
+  assert.deepEqual((await plain.catalog()).skills, [], "nothing up until an administrator approves");
+  const mine = await boss.shelf();
+  assert.deepEqual([mine.review.required, mine.submissions.map((row) => [row.skillId, row.state])], [true, [["enterprise-weekly", "pending"]]]);
+  // Turned down in the console: the publisher sees why.
+  await governance.decide("tenant_a", waiting.submission, { decision: "rejected", by: { userId: "ou_owner" }, reason: "先删掉客户名单" });
+  assert.deepEqual((await boss.shelf()).submissions.map((row) => [row.state, row.reason]), [["rejected", "先删掉客户名单"]]);
+  // Review off: up at once, and kept as a version.
+  await governance.setSettings("tenant_a", { reviewRequired: false }, { userId: "ou_owner" });
+  assert.equal((await boss.publish(bundle())).id, "enterprise-weekly");
+  assert.equal((await governance.versions("tenant_a", "enterprise-weekly")).length, 1);
+  // A publisher added in the console publishes like a configured one.
+  await assert.rejects(legal.publish(bundle({ id: "enterprise-contract", title: "合同初审", files: [{ path: "SKILL.md", text: "---\nname: enterprise-contract\ndescription: 合同\n---\n逐条核对。" }] })), /不在企业技能上架人名单/);
+  await governance.addPublisher("tenant_a", { userId: "ou_legal", name: "法务小李" }, { userId: "ou_owner" });
+  assert.equal((await legal.publish(bundle({ id: "enterprise-contract", title: "合同初审", files: [{ path: "SKILL.md", text: "---\nname: enterprise-contract\ndescription: 合同\n---\n逐条核对。" }] }))).id, "enterprise-contract");
+  // For the legal department only: in their signed catalogue, nobody else's.
+  await governance.setVisibility("tenant_a", "enterprise-contract", { departments: ["od-legal"] }, { userId: "ou_owner" });
+  assert.deepEqual((await legal.catalog()).skills.map((skill) => skill.id).sort(), ["enterprise-contract", "enterprise-weekly"]);
+  assert.deepEqual((await plain.catalog()).skills.map((skill) => skill.id), ["enterprise-weekly"]);
+  // Nor in the management view, which anybody's skill center reads -- and no
+  // files there, for anybody (found in review, 2026-10-03: it handed every
+  // desktop the whole shelf, files included).
+  const shelfOf = async (who) => (await who.shelf()).skills;
+  assert.deepEqual((await shelfOf(plain)).map((skill) => skill.id), ["enterprise-weekly"]);
+  assert.deepEqual((await shelfOf(boss)).map((skill) => skill.id).sort(), ["enterprise-contract", "enterprise-weekly"], "a publisher manages all of it");
+  assert.ok((await shelfOf(boss)).every((skill) => skill.files === undefined && skill.digest));
+  // A task started with a skill is counted; the person is not named in what is
+  // kept; a skill they cannot see, or one not up, is not counted for them.
+  await plain.used("enterprise-weekly", "1.0.0");
+  await plain.used("enterprise-weekly", "9.9.9");
+  await plain.used("enterprise-contract", "1.0.0");
+  await plain.used("enterprise-nothing", "1.0.0");
+  const used = (await governance.usage("tenant_a", ["enterprise-weekly", "enterprise-contract", "enterprise-nothing"], 30));
+  assert.deepEqual([used.get("enterprise-weekly").people, used.get("enterprise-weekly").uses, used.get("enterprise-contract").uses, used.get("enterprise-nothing").uses], [1, 2, 0, 0]);
+  // Taken down from a desktop; every step in the trail, by whom.
+  await boss.unpublish("enterprise-weekly");
+  assert.deepEqual(trail.map((row) => [row.action, row.actor.id, row.target.id]), [
+    ["skill.submit", "ou_admin", "enterprise-weekly"], ["skill.publish", "ou_admin", "enterprise-weekly"],
+    ["skill.publish", "ou_legal", "enterprise-contract"], ["skill.unpublish", "ou_admin", "enterprise-weekly"]]);
 });

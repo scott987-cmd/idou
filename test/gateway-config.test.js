@@ -154,9 +154,22 @@ test("a coding task on a site's folder is told what publishing will take, before
   assert.match(onSite, /folder of "i豆 产品发布页"/);
   assert.match(onSite, /only html, css, js, mjs, json, png, jpg, jpeg, webp, svg, woff2, mp4, webm files/);
   assert.match(onSite, /at most 8 MiB for an mp4 or webm video and 2 MiB for any other file, 128 files and 10 MiB in all/);
-  assert.match(onSite, /Audio, Markdown, plain text, GIF, mov/);
+  assert.match(onSite, /Audio, plain text, GIF, mov/);
   assert.match(onSite, /compressed to fit/);
   assert.match(onSite, /read and write inside the working directory/, "and it still carries the permission");
+  // 2026-10-08: told that Markdown could not be published and to keep such files
+  // "outside this folder", a task under 完全访问 wrote its README, its plan and an
+  // npm install into i豆's own data, beside the site's folder. Notes may stay as
+  // Markdown, a library goes where it is published, and scratch goes in a
+  // temporary folder -- and where i豆 made the folder, the folder holding it is
+  // named for what it is.
+  assert.match(onSite, /Markdown \(\.md\) files -- notes about the site, such as a README or a plan, may stay here/);
+  assert.match(onSite, /such as vendor\/ or lib\/, never loaded from node_modules/);
+  assert.match(onSite, /goes in a temporary folder of your own \(mktemp -d\), never beside this folder/);
+  assert.doesNotMatch(onSite, /keep it outside this folder/);
+  assert.doesNotMatch(onSite, /i豆's own data/, "a folder of the person's own: what is beside it is theirs");
+  const owned = (await createTaskRuntime({ ...base, site: { name: "机房守卫", owned: true } }, { mode: "coding", cwd: work })).params.developerInstructions;
+  assert.match(owned, /the folder that contains this one is i豆's own data, holding the person's other sites, and nothing may be written there/);
   // Anywhere else, and in a work task, nothing is said about sites.
   const elsewhere = (await createTaskRuntime(base, { mode: "coding", cwd: work })).params.developerInstructions;
   const cowork = (await createTaskRuntime({ ...base, site: { name: "i豆 产品发布页" } }, { mode: "cowork", cwd: work })).params.developerInstructions;
@@ -263,6 +276,21 @@ test("a planning turn is read-only whatever the task's own permission says", asy
   // A task recorded before this existed has no stage, and behaves as it did.
   const older = await createTaskRuntime(base, { mode: "coding", cwd: work, permission: "auto" });
   assert.equal(older.params.sandbox, "workspace-write");
+});
+
+// The administrators withheld 完全访问 (control-plane/policy.js): a task left on
+// it runs its next turn as standard -- sandboxed and asking -- not unsandboxed.
+test("a task on full access runs as standard once the administrators have withheld it", async (t) => {
+  const { setFullAccessAllowed } = await import("../src/permissions.js");
+  t.after(() => setFullAccessAllowed(true));
+  const { config, work } = await sessionConfig(t);
+  const base = { ...config, feishu: { binary: process.execPath }, feishuBusinessLinked: false };
+  const task = { mode: "cowork", cwd: work, permission: "full" };
+  assert.equal((await createTaskRuntime(base, task)).params.sandbox, "danger-full-access");
+  setFullAccessAllowed(false);
+  const withheld = await createTaskRuntime(base, task);
+  assert.notEqual(withheld.params.sandbox, "danger-full-access");
+  assert.notEqual(withheld.params.approvalPolicy, "never");
 });
 
 // 标准 has no network for commands, and the application's own tools reach it by

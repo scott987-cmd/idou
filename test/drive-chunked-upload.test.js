@@ -11,6 +11,7 @@ import { FeishuCliSidecar } from "../src/providers/feishu/cli-sidecar.js";
 import { SaasFeishuCliProvider } from "../src/providers/feishu/saas-cli-provider.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
 import { requireBundledCli } from "./helpers/stub-cli.js";
+import { cliWriteTrail } from "../src/control-plane/audit-trail.js";
 
 // 超过 20 MB，内置 CLI 不再一次 upload_all，而是 upload_prepare → 按飞书给的块大小依次 upload_part →
 // upload_finish（对着打包的 CLI 录下来的）。一次性授权描述不了飞书中途决定的块数，所以这里用一个按顺序
@@ -111,15 +112,15 @@ test("分片上传：飞书回的块大小和块数要和确认的文件对得�
   assert.throws(() => validateFeishuCliWriteRequest(intentFor(payload), "POST", DRIVE_CHUNK_PATHS.prepare, prepareBody(payload)), /does not match/);
 });
 
-async function chunkFixture(t, { cliWriteActions = ["drive.upload", "drive.upload-chunked"], refusePart = null } = {}) {
+async function chunkFixture(t, { cliWriteActions = ["drive.upload", "drive.upload-chunked"], refusePart = null, policy = null } = {}) {
   const sessions = new SessionRegistry();
   const sourceAccess = new FeishuSourceAccess({ feishu: SAAS_FEISHU, sessions, appId: "cli_chunk_fixture", cliProxyScopes: ["fixture:read", "fixture.drive:write"], cliWriteActions });
   const identity = { authProvider: "feishu", appId: "cli_chunk_fixture", tenantId: "tenant_fixture", userId: "ou_fixture", displayName: "Fixture", expiresAt: Date.now() + 600_000, cliBridge: true, cliDriveWrites: true };
   sourceAccess.remember(identity, "server-only-feishu-user-token");
   const session = sessions.issue({ ...identity, deviceId: "device_chunk", deviceProof: "ed25519-login", ttlMs: 300_000 });
   sourceAccess.bind(identity, session);
-  const upstream = [], audits = [], stored = [];
-  const proxy = new FeishuCliProxyService({ sourceAccess, audit: event => audits.push(event), fetchImpl: async (url, options) => {
+  const upstream = [], audits = [], stored = [], contexts = [];
+  const proxy = new FeishuCliProxyService({ sourceAccess, policy, audit: (event, context) => { audits.push(event); contexts.push(context); }, fetchImpl: async (url, options) => {
     const target = new URL(url).pathname; upstream.push(target);
     if (target === DRIVE_CHUNK_PATHS.prepare) {
       const size = JSON.parse(Buffer.from(options.body).toString("utf8")).size;
@@ -144,7 +145,7 @@ async function chunkFixture(t, { cliWriteActions = ["drive.upload", "drive.uploa
   const issued = async intent => { const response = await grantFor(intent), payload = await response.json(); assert.equal(response.status, 201, JSON.stringify(payload)); return payload.grant; };
   const post = (grant, path, body, contentType) => fetch(`${origin}/v1/feishu/cli-proxy`, { method: "POST", headers: { authorization: `Bearer ${session.token}`, "content-type": contentType,
     "x-mydoubao-feishu-target": "https://open.feishu.cn", "x-mydoubao-feishu-path": path, ...(grant ? { "x-mydoubao-feishu-write-grant": grant } : {}) }, body });
-  return { session, identity, origin, upstream, audits, stored, grantFor, issued, post };
+  return { session, identity, origin, upstream, audits, contexts, stored, grantFor, issued, post };
 }
 
 test("控制面：分片上传整段放行并在 finish 时用掉授权；改过一个字节的上传到不了 finish", async t => {
@@ -161,6 +162,13 @@ test("控制面：分片上传整段放行并在 finish 时用掉授权；改过
   assert.equal(hash(Buffer.concat(f.stored)), hash(payload));
   assert.deepEqual(f.audits.map(event => event.kind), ["grant_issued", "dispatch_started", "upstream_finished"]);
   assert.doesNotMatch(JSON.stringify(f.audits), new RegExp(`${FOLDER}|${FILE}|upload-live-1|server-only-feishu-user-token`));
+  // Who it was goes beside the hashed line, for the administration console
+  // only (audit-trail.js) -- never a token there either.
+  const finished = f.audits.findIndex(event => event.kind === "upstream_finished");
+  const row = cliWriteTrail(f.audits[finished], f.contexts[finished]);
+  assert.deepEqual({ action: row.action, outcome: row.outcome, actor: row.actor.id, name: row.actor.name, tenant: row.tenant },
+    { action: "feishu.upload", outcome: "ok", actor: "ou_fixture", name: "Fixture", tenant: "tenant_fixture" });
+  assert.doesNotMatch(JSON.stringify(f.contexts), /server-only-feishu-user-token|upload-live-1/);
   assert.equal((await f.post(grant, DRIVE_CHUNK_PATHS.finish, finishBody(payload, "upload-live-1"), "application/json")).status, 403, "a spent grant admits nothing more");
 
   const g = await chunkFixture(t);
@@ -209,3 +217,19 @@ test("真实 CLI：22 MB 的文件经侧车和控制面分片落地，飞书收�
   assert.deepEqual(f.audits.map(event => event.kind), ["grant_issued", "dispatch_started", "upstream_finished"]);
   assert.equal(sidecar.writeKeys.size <= 1, true);
 });
+
+// An administrator turned this person's uploads off (policy.js): the grant is
+// refused -- recorded as a refusal, for the policy -- and Feishu never asked.
+test("控制面：管理员关掉了这个人的云盘上传，写入授权直接拒绝，飞书一次都没被调用", async t => {
+  const asked = [];
+  const f = await chunkFixture(t, { policy: { permits: async (who, feature) => { asked.push([who.userId, feature]); return feature !== "feishuDrive"; } } });
+  const payload = payloadOf(DRIVE_SINGLE_SHOT_MAX_BYTES + 2 * BLOCK + 11);
+  const refused = await f.grantFor(intentFor(payload));
+  assert.equal(refused.status, 403);
+  assert.equal((await refused.json()).error, "feishu_cli_write_not_allowed_by_policy");
+  assert.deepEqual(asked, [["ou_fixture", "feishuDrive"]]);
+  assert.deepEqual(f.audits.map(event => [event.kind, event.reason]), [["grant_rejected", "policy"]]);
+  assert.equal(cliWriteTrail(f.audits[0], f.contexts[0]).outcome, "refused");
+  assert.deepEqual(f.upstream, []);
+});
+

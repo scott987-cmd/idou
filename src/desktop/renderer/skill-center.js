@@ -87,7 +87,7 @@ export function skillCenterUi({ api, root, element, action, readableError, isCur
   const view = { tab: "skills", page: "browse", chip: "all", query: "", notice: "" };
   const data = {
     loaded: false, failures: {},
-    enterprise: [], enterpriseState: "loading", enterpriseNote: "正在核验租户、签名与版本…", administrator: false,
+    enterprise: [], enterpriseState: "loading", enterpriseNote: "正在核验租户、签名与版本…", administrator: false, submissions: [],
     feishu: [], local: [], plugins: [], markets: [], servers: [],
     // Connections a task is started with (see connectionRow), and what the
     // administrator has opened to this account; offeredReady says that list was
@@ -231,12 +231,14 @@ export function skillCenterUi({ api, root, element, action, readableError, isCur
     try {
       const result = await api.listEnterpriseSkills(); if (!alive()) return;
       data.enterprise = result.skills; data.enterpriseState = "ready";
-      data.administrator = (await shelf)?.administrator === true; if (!alive()) return;
-      data.enterpriseNote = `已核验目录版本 ${result.revision} · ${result.skills.length} 项技能${data.administrator ? " · 你可以上架和下架" : ""}`;
+      const answer = await shelf; if (!alive()) return;
+      data.administrator = answer?.administrator === true; data.submissions = answer?.submissions ?? [];
+      data.enterpriseNote = `已核验目录版本 ${result.revision} · ${result.skills.length} 项技能${data.administrator ? (answer?.review?.required ? " · 你提交的版本经管理员审核后上线" : " · 你可以上架和下架") : ""}`;
     } catch (cause) {
       if (!alive()) return;
       data.enterprise = []; data.enterpriseState = "error"; data.enterpriseNote = readableError(cause);
-      data.administrator = (await shelf)?.administrator === true; if (!alive()) return;
+      const answer = await shelf; if (!alive()) return;
+      data.administrator = answer?.administrator === true; data.submissions = answer?.submissions ?? [];
     }
     paint();
   }
@@ -361,6 +363,14 @@ export function skillCenterUi({ api, root, element, action, readableError, isCur
     const shown = items("enterprise").filter(matches);
     list.append(...shown.map(item => card(item, "featured")));
     featured.append(top, list);
+    // What this publisher submitted, and what became of it (docs/enterprise-skill-governance.md §2).
+    if (data.submissions.length) {
+      const said = { pending: "等管理员审核", approved: "已通过，已上线", rejected: "没有通过" };
+      const mine = element("div", undefined, "sc-submissions"); mine.id = "my-skill-submissions";
+      mine.append(element("h3", "你提交的版本"), ...data.submissions.slice(0, 5).map((row) => element("p",
+        `${row.title || row.skillId} ${row.version} · ${said[row.state] ?? row.state}${row.state === "rejected" && row.reason ? `：${row.reason}` : ""}`, `sc-submission ${row.state}`)));
+      featured.append(mine);
+    }
     if (data.enterpriseState === "ready" && !shown.length && !view.query) {
       featured.append(empty(data.administrator ? "企业货架还是空的。在「我的技能」里打开一个本机技能，从「更多」上架即可。" : "本企业还没有上架技能。"));
     }
@@ -839,7 +849,12 @@ export function skillCenterUi({ api, root, element, action, readableError, isCur
     // next to the button people are meant to press.
     const more = part("more"); more.replaceChildren();
     const extras = [];
-    if (item.kind === "local" && data.administrator) extras.push(["上架到企业", undefined, () => guarded(`local:${raw.id}`, async () => { if (await api.publishSkill(raw.id)) await loadEnterprise(); }), "publish-skill"]);
+    if (item.kind === "local" && data.administrator) extras.push(["上架到企业", undefined, () => guarded(`local:${raw.id}`, async () => {
+      const published = await api.publishSkill(raw.id);
+      if (!published) return;
+      view.notice = published.pending ? `已提交「${raw.title || raw.id}」${published.version}，等管理员在管理后台审核；通过前线上不变。` : `已上架「${raw.title || raw.id}」${published.version}。`;
+      await loadEnterprise();
+    }), "publish-skill"]);
     if (item.kind === "local") extras.push(["移除", undefined, () => guarded(`local:${raw.id}`, async () => { await api.removeLocalSkill(raw.id); detail.close(); await reload("local"); }), "remove-local-skill"]);
     if (item.kind === "enterprise" && data.administrator) extras.push(["从企业货架下架", undefined, () => guarded("enterprise", async () => { if (await api.unpublishSkill(raw.id)) { detail.close(); await loadEnterprise(); } }), "unpublish-skill"]);
     if (item.kind === "plugin" && raw.installed) extras.push(["卸载", undefined, () => guarded(`plugin:${raw.id}`, async () => { data.plugins = await api.removePlugin(raw.id); }), "remove-plugin"]);

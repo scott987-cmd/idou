@@ -15,7 +15,7 @@ export const RENDERER = /\/renderer\/index\.html(?:[?#].*)?$/;
 const key = (row) => `${row.kind}|${row.where}|${row.detail ?? ""}`;
 // What the page says rather than how it is laid out: text a person has read is
 // read, however soon it changes, so it needs no second look.
-const SAID = new Set(["内部标识外露", "英文"]);
+const SAID = new Set(["内部标识外露", "英文", "标点重复"]);
 
 // 退出太慢: closing the application, from whatever state a smoke left it in,
 // took longer than this. A card left waiting once held the quit for its whole

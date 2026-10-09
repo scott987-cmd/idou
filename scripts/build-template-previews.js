@@ -72,7 +72,8 @@ app.on("window-all-closed", () => {});`);
       // A game's board is drawn on a canvas after its script runs; a table page
       // has rows, cards, columns or events; a landing page is just there.
       const ready = { game: "#board", dashboard: "#rows tr", directory: ".card",
-        kanban: ".column", timeline: ".event", landing: ".hero" }[id];
+        kanban: ".column", timeline: ".event", landing: ".hero", weekly: ".tile", event: ".hero", handbook: ".prose", links: "#links .card" }[id];
+      if (!ready) throw new Error(`没有说 ${id} 什么时候算画好了`);
       await window.locator(ready).first().waitFor();
       if (id === "game") {
         // A game at rest is a dark empty box behind a curtain, which says

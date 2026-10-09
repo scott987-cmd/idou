@@ -106,6 +106,18 @@ try {
     assert.match(card, /用哪个数据库？/); assert.match(card, /SQLite/); assert.match(card, /Postgres/);
     assert.equal(requests, 2, "the model must not be asked anything more while the question is open");
     await page.screenshot({ path: path.join(evidence, "desktop-coding-question.png"), scale: "css" });
+    // An answer of one's own, typed across the card's repaints (2026-10-08: the
+    // card was rebuilt every second, its field with it, and what was typed after
+    // the first repaint went nowhere). Typing is not answering: the field is
+    // emptied again and the card left to the person.
+    const own = page.locator('#approvals .approval input[placeholder^="或者写"]').first();
+    assert.equal(await own.count(), 1, "the question offers a field for an answer of one's own");
+    await own.click();
+    const words = "先用 SQLite，以后再换";
+    for (const char of words) { await page.keyboard.type(char); await page.waitForTimeout(250); }
+    assert.equal(await own.inputValue(), words, "every character typed across two repaints is in the field");
+    assert.equal(await page.evaluate(() => document.activeElement?.placeholder?.startsWith("或者写") === true), true, "and the field still has the focus");
+    await own.fill("");
     await waitForHumanChoice(page.locator("#approvals .approval").first(), "回答");
   }
 

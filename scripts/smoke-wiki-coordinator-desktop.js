@@ -22,9 +22,11 @@ const service = new WikiCoordinatorService({ sessions, coordinator, allowDevelop
 const calls = []; let unavailable = false;
 // The desktop also asks this server which chat model it runs: /healthz (model
 // discovery, proved in smoke-discovery-desktop.js) and, since the server keeps
-// each person's model, /v1/models/* (docs/chat-models.md). Neither is a
-// coordinator contact, so they are answered but not counted.
-const server = createServer(async (req, res) => { if (req.url !== "/healthz" && !req.url.startsWith("/v1/models/")) calls.push(req.url); if (unavailable) { res.writeHead(503); res.end(); return; } if (!await service.handle(req, res)) { res.writeHead(404); res.end(); } });
+// each person's model, /v1/models/* (docs/chat-models.md); and, every few
+// minutes, what an administrator allows this person: /v1/policy
+// (docs/admin-console.md §7). None is a coordinator contact, so they are
+// answered but not counted.
+const server = createServer(async (req, res) => { if (req.url !== "/healthz" && !req.url.startsWith("/v1/models/") && req.url !== "/v1/policy") calls.push(req.url); if (unavailable) { res.writeHead(503); res.end(); return; } if (!await service.handle(req, res)) { res.writeHead(404); res.end(); } });
 server.listen(0, "127.0.0.1"); await once(server, "listening");
 const serverUrl = `http://127.0.0.1:${server.address().port}`, sessionFile = path.join(directory, "session.json");
 await writeFile(sessionFile, JSON.stringify({ token: parent.token, expiresAt: parent.expiresAt, serverUrl }), { mode: 0o600 });

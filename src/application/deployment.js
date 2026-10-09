@@ -39,6 +39,11 @@ export const DEPLOYMENT_KEYS = Object.freeze([
   "IDOU_ADMIN_CHAT", "IDOU_ADMIN_USERS", "IDOU_ADMIN_URL", "IDOU_ADMIN_PORT",
   // 服务端告警: the server's own checks, sent to those administrators by the bot.
   "IDOU_ADMIN_ALERTS",
+  // 服务状态 (docs/service-status.md): where bin/backup.js writes, so the server
+  // checks the last backup; and what this process is called on the page.
+  "IDOU_BACKUP_DIR", "IDOU_PROCESS_NAME",
+  // How long the administration console's audit trail is kept, in days (default 180).
+  "IDOU_AUDIT_RETENTION_DAYS",
   // 加密备份送到飞书云盘 (bin/backup-ship-feishu.js): the folder, and how many it keeps.
   "IDOU_BACKUP_FEISHU_FOLDER", "IDOU_BACKUP_FEISHU_KEEP",
   // 模型可见性: which models each person is offered, and what somebody no rule

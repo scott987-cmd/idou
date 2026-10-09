@@ -113,9 +113,19 @@ export class ModelVisibility {
 // Group membership, cached, shared by everything that needs it. One cache so
 // that removing somebody from a group takes the same time to matter wherever it
 // is asked about.
-export function chatMembership({ readChatMembers, cacheMs = VISIBILITY_LIMITS.cacheMs, now = Date.now }) {
+// At most `maxEntries` groups are held: what is kept for one asked about
+// once and never again used to stay for as long as the process ran (review of
+// phase 0, 2026-10-03).
+export function chatMembership({ readChatMembers, cacheMs = VISIBILITY_LIMITS.cacheMs, now = Date.now, maxEntries = 5_000 }) {
   const held = new Map();     // chatId -> { members:Set, until, failed }
   const reading = new Map();
+  const hold = (chatId, entry) => {
+    if (!held.has(chatId) && held.size >= maxEntries) {
+      for (const [id, row] of held) if (row.until <= now()) held.delete(id);
+      if (held.size >= maxEntries) held.delete(held.keys().next().value);
+    }
+    held.set(chatId, entry);
+  };
   return {
     async members(chatId) {
       const cached = held.get(chatId);
@@ -124,12 +134,12 @@ export function chatMembership({ readChatMembers, cacheMs = VISIBILITY_LIMITS.ca
       const work = (async () => {
         try {
           const members = new Set(await readChatMembers(chatId));
-          held.set(chatId, { members, until: now() + cacheMs, failed: false });
+          hold(chatId, { members, until: now() + cacheMs, failed: false });
           return members;
         } catch (error) {
           // A refusal is held as long as a success, or an upstream that is
           // saying no becomes something this asks on every single request.
-          held.set(chatId, { members: new Set(), until: now() + cacheMs, failed: true, why: String(error?.message ?? error) });
+          hold(chatId, { members: new Set(), until: now() + cacheMs, failed: true, why: String(error?.message ?? error) });
           throw error;
         } finally { reading.delete(chatId); }
       })();

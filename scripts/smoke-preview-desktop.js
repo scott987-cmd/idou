@@ -106,11 +106,17 @@ try {
   // The plan turn's 已完成 is still on screen for a moment, and the wait below
   // would take it for this turn's.
   await page.waitForFunction(() => !["已完成", "执行失败"].includes(document.querySelector("#task-status").textContent), null, { polling: 100 });
-  await page.waitForFunction(() => document.querySelector("#approvals").textContent.includes("确认 MCP 工具调用") || ["已完成", "执行失败"].includes(document.querySelector("#task-status").textContent), null, { timeout: 90_000, polling: 200 });
+  await page.waitForFunction(() => document.querySelector("#approvals").textContent.includes("确认使用工具") || ["已完成", "执行失败"].includes(document.querySelector("#task-status").textContent), null, { timeout: 90_000, polling: 200 });
   assert.equal(offered, true, "a coding task with 浏览器操作 on must be offered browser_preview");
   const card = await page.locator("#approvals").innerText();
-  assert.match(card, /确认 MCP 工具调用/, `no approval card (status: ${await page.locator("#task-status").innerText()}, error: ${await page.locator("#error-banner").innerText()})`);
+  assert.match(card, /确认使用工具/, `no approval card (status: ${await page.locator("#task-status").innerText()}, error: ${await page.locator("#error-banner").innerText()})`);
   assert.match(card, /index\.html/, "the card must show the file the model asked for");
+  // In the product's words, naming the connector by its title, with no line of
+  // its own holding the server's id: the promo recorded on 2026-10-08 showed
+  // Codex's English and a stray `browser` beside 允许这一次.
+  assert.match(card, /「浏览器操作」想运行「browser_preview」/, "the card must say which connector wants to run which tool");
+  assert.doesNotMatch(card, /Allow the|MCP server|run tool/, "the card must not show Codex's English");
+  assert.equal((await page.locator("#approvals .approval").first().locator(":scope > small").allInnerTexts()).some((text) => text.trim() === "browser"), false, "the server's id must not stand alone on the card");
 
   // While the card waits: the connector this app's Codex spawned, and the base
   // it was handed. The script must be the process's own first argument: Codex's

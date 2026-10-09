@@ -18,6 +18,10 @@ const keyOf = (schedule) => `${schedule.tenant}/${schedule.id}`;
 export class SchedulerRefusal extends Error { constructor(status, message) { super(message); this.status = status; } }
 const CANNOT_RUN_NOW = "这个任务现在不能运行：它可能已被删除、已过结束日期、已挂起，或没有资源授权";
 
+// Whose task a run was, for the administration console's trail: the tenant,
+// the owner, the task's id and its title -- not its instructions.
+const whose = (schedule) => ({ tenant: schedule?.tenant ?? null, owner: schedule?.owner ?? null, id: schedule?.id ?? null, title: String(schedule?.title ?? "").slice(0, 60) });
+
 export class Scheduler {
   #timer = null;
   #ticking = null;
@@ -171,12 +175,12 @@ export class Scheduler {
             // occurrence stands.
             if (verdict?.retry) {
               await this.#record(claim, "failed", verdict.reason ?? "这次未能开始，下次仍会尝试");
-              this.onEvent({ kind: "failed", key, runId: claim.runId });
+              this.onEvent({ kind: "failed", key, runId: claim.runId, whose: whose(claim.schedule), reason: verdict.reason ?? null });
               continue;
             }
             await this.#record(claim, "skipped", verdict?.reason ?? "登录已过期，定时任务已暂停，下次登录后自动恢复");
             await this.store.suspend(claim.schedule.tenant, claim.schedule.id);
-            this.onEvent({ kind: "suspended", key, runId: claim.runId, schedule: claim.schedule, reason: verdict?.reason ?? null });
+            this.onEvent({ kind: "suspended", key, runId: claim.runId, schedule: claim.schedule, whose: whose(claim.schedule), reason: verdict?.reason ?? null });
             continue;
           }
           // What authorize returned about the owner travels with the claim: the
@@ -268,7 +272,7 @@ export class Scheduler {
     this.controllers.set(key, controller);
     const done = async (outcome, detail, artifact = null, undelivered = 0) => {
       await this.#record(claim, outcome, detail, artifact, undelivered);
-      this.onEvent({ kind: outcome, key, runId: claim.runId });
+      this.onEvent({ kind: outcome, key, runId: claim.runId, whose: whose(claim.schedule), ...(undelivered ? { undelivered } : {}) });
       this.#tell(claim, outcome, detail);
     };
     // Turn execution/postprocessing into data before persisting it. If the

@@ -22,11 +22,17 @@
     return node;
   }
 
-  // 哪一列是时间。优先表格自己说是日期的那一列；一张没有日期列的表画不成时间线，
+  // 哪一列是时间。优先表格自己说是日期、而且是人填的那一列——创建时间、更新时间是系统记的，
+  // 一批一起建的记录全落在同一天；没有别的日期才用它们。一张没有日期列的表画不成时间线，
   // 这时就按表里的顺序排，并且不写月份——编一个日期出来比不写更糟。
   function chooseWhen() {
-    for (var i = 0; i < fields.length; i += 1) if (fields[i].kind === "date") return fields[i];
-    return null;
+    var system = null;
+    for (var i = 0; i < fields.length; i += 1) {
+      if (fields[i].kind !== "date") continue;
+      if (/^(created|updated|modified)_(at|time)$/.test(fields[i].type || "")) { system = system || fields[i]; continue; }
+      return fields[i];
+    }
+    return system;
   }
 
   // 分类筛选和别的模版同一条规矩：有值的每一行都各不相同的列是名字，不是分类。
@@ -98,12 +104,27 @@
     return item;
   }
 
-  function draw() {
+  // A page at a time: thousands of rows drawn at once took a second and more,
+  // and every keystroke drew them all again (2026-10-04). 显示更多 draws the
+  // next page; a new search, filter or sort starts from the first.
+  var PAGE = 100, shown = PAGE, waiting = null;
+  var more = document.createElement("button"); more.type = "button"; more.className = "more"; more.hidden = true;
+  more.addEventListener("click", function () { shown += PAGE; draw(true); });
+  function drawMore(total, after) {
+    var rest = total - shown;
+    more.hidden = rest <= 0;
+    more.textContent = rest > 0 ? "再显示 " + Math.min(PAGE, rest) + " 条（还有 " + rest + " 条）" : "";
+    if (more.parentNode !== after.parentNode || more.previousSibling !== after) after.parentNode.insertBefore(more, after.nextSibling);
+  }
+  function typed() { clearTimeout(waiting); waiting = setTimeout(function () { draw(); }, 150); }
+
+  function draw(keep) {
+    if (!keep) shown = PAGE;
     var needle = (q.value || "").trim().toLowerCase();
     var rows = Table.rows().filter(function (row) {
       if (facet && picked && row.text(facet.field.name).trim() !== picked) return false;
       if (!needle) return true;
-      return fields.some(function (field) { return row.text(field.name).toLowerCase().indexOf(needle) >= 0; });
+      return row.matches(needle);
     });
     if (when) {
       // 新的在上面。没有日期的排在最后：它们不属于任何一个月。
@@ -118,7 +139,7 @@
     }
     line.replaceChildren();
     var current = null, group = null;
-    rows.forEach(function (row) {
+    rows.slice(0, shown).forEach(function (row) {
       var label = period(row);
       if (label && label !== current) {
         current = label;
@@ -131,6 +152,7 @@
     });
     empty.hidden = rows.length > 0;
     line.hidden = rows.length === 0;
+    drawMore(rows.length, line);
     text(count, rows.length === Table.rowCount() ? "共 " + Table.rowCount() + " 条" : rows.length + " / " + Table.rowCount() + " 条");
   }
 
@@ -149,10 +171,10 @@
       ? "只显示了表格的前 " + Table.rowCount() + " 条；要看更多，在「文档网站」里把行数上限调大。"
       : "数据来自飞书表格，改表格这里就会跟着变。");
     drawFacet();
-    draw();
+    draw(true);
   }
 
-  q.addEventListener("input", draw);
+  q.addEventListener("input", typed);
   Table.onChange(redraw);
   redraw();
 })();

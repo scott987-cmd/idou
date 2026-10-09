@@ -16,13 +16,26 @@ import { createHash } from "node:crypto";
 
 export const SLICE_LIMITS = Object.freeze({
   fields: 60,
-  rows: 5000,
+  // 20,000 since docs/sites-phase1.md §1.7: a table of 几万行 was the case people
+  // actually had. Past that a page has to ask the server for rows rather than
+  // be given all of them, which is a different design, not a bigger number.
+  rows: 20_000,
   // One upstream page. `base +record-list --limit` accepts at most this.
   pageRows: 200,
-  // A snapshot bigger than this is refused rather than written or served.
-  bytes: 4 * 1024 * 1024,
+  // How many of those pages are asked for at once. One after another, the 100
+  // pages of a 20,000-row table took over a minute; four at a time stays well
+  // under Feishu's rate for one table and is a quarter of the wait.
+  pagesAtOnce: 4,
+  // A snapshot bigger than this, in bytes as sent, is refused rather than
+  // written or served. 20,000 rows of a dozen fields come to about 18 MB.
+  bytes: 24 * 1024 * 1024,
   minRefreshSeconds: 15,
   maxRefreshSeconds: 24 * 60 * 60,
+  // A slice of more rows than this is read no more often than every minute:
+  // 100 pages a minute is the same pace on Feishu as 25 every 15 seconds,
+  // which is what the shortest interval was set for.
+  bigRows: 5000,
+  bigRefreshSeconds: 60,
 });
 
 const BASE_TOKEN = /^[A-Za-z0-9]{10,64}$/;
@@ -49,11 +62,16 @@ export function parseSlice(input) {
   if (kind !== "base" && kind !== "sheet") fail("数据切片需要指明是多维表格还是电子表格");
   const token = input?.token;
   if (typeof token !== "string" || !BASE_TOKEN.test(token)) fail("表格标识无效");
-  const rows = Number(input?.rows ?? SLICE_LIMITS.rows);
+  // Unsaid, a slice is what it always was: the default did not grow with the
+  // cap, so a slice stored without one keeps its identity and its interval.
+  const rows = Number(input?.rows ?? SLICE_LIMITS.bigRows);
   if (!Number.isSafeInteger(rows) || rows < 1 || rows > SLICE_LIMITS.rows) fail(`行数上限要在 1 到 ${SLICE_LIMITS.rows} 之间`);
   const refreshSeconds = Number(input?.refreshSeconds ?? 60);
   if (!Number.isSafeInteger(refreshSeconds) || refreshSeconds < SLICE_LIMITS.minRefreshSeconds || refreshSeconds > SLICE_LIMITS.maxRefreshSeconds) {
     fail(`刷新间隔要在 ${SLICE_LIMITS.minRefreshSeconds} 到 ${SLICE_LIMITS.maxRefreshSeconds} 秒之间`);
+  }
+  if (rows > SLICE_LIMITS.bigRows && refreshSeconds < SLICE_LIMITS.bigRefreshSeconds) {
+    fail(`超过 ${SLICE_LIMITS.bigRows} 行的表最快每 ${SLICE_LIMITS.bigRefreshSeconds / 60} 分钟刷新一次`);
   }
   const common = { kind, token, rows, refreshSeconds };
   const slice = kind === "base" ? baseSlice(input, common) : sheetSlice(input, common);

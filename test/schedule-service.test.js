@@ -31,14 +31,14 @@ const request = (url, { token = "me", body = {}, method = "POST", headers = {} }
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...headers }, resume() {} });
 };
 
-async function service(t, { allowDevelopment = false, unattended = null, grants = null, feishu = null, resourceResolver = null, runNow = null, push = null, now = () => NOW, people = {} } = {}) {
+async function service(t, { allowDevelopment = false, unattended = null, grants = null, feishu = null, resourceResolver = null, runNow = null, push = null, now = () => NOW, people = {}, policy = null } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "idou-schedule-service-"));
   const store = new ScheduleStore({ databaseFile: path.join(directory, "s.db"), now: () => NOW });
   const armed = [], cancelled = [];
   const sessions = { prune() {}, verify: (token) => ({ me: ME, colleague: COLLEAGUE,
     dev: { ...ME, authProvider: "development" }, wrong: { ...ME, audience: "skill-center" }, ...people })[token] ?? null };
   const consent = new ScheduleConsent({ sessions, now: () => NOW });
-  const made = new ScheduleService({ sessions, store, consent, scheduler: { start: () => armed.push(1), cancel: (...args) => cancelled.push(args), ...(runNow ? { runNow } : {}) }, allowDevelopment, unattended, grants, feishu, resourceResolver, push, now });
+  const made = new ScheduleService({ sessions, store, consent, scheduler: { start: () => armed.push(1), cancel: (...args) => cancelled.push(args), ...(runNow ? { runNow } : {}) }, allowDevelopment, unattended, grants, feishu, resourceResolver, push, now, policy });
   t.after(async () => { store.close(); await rm(directory, { recursive: true, force: true }); });
   return { service: made, store, armed, cancelled, consent };
 }
@@ -745,4 +745,18 @@ test("a report linked in the old form is shown with the link Feishu opens, and a
   const claim = plain.store.claimNow(plain.store.get(ME, again.id), NOW);
   plain.store.finish(ME.tenantId, claim.runId, "completed", `报告：${old}`, artifact(old, claim.runId));
   assert.equal((await call(plain.service, "/v1/schedules/runs", { body: {} })).body.runs[0].artifact.url, old);
+});
+
+// An administrator turned scheduled tasks off for this person (policy.js): a
+// new task is refused in words that say whose decision it was; listing what
+// they have is still allowed.
+test("a person whose scheduled tasks an administrator turned off cannot create or run one, and is told why", async (t) => {
+  const asked = [];
+  const { service: made } = await service(t, { runNow: async () => ({ id: "r" }), policy: { permits: async (who, feature) => { asked.push([who.userId, feature]); return feature !== "scheduledTasks"; } } });
+  const created = await call(made, "/v1/schedules/create", { body: daily() });
+  assert.equal(created.status, 403);
+  assert.match(created.body.error, /管理员没有给你开放定时任务/);
+  assert.equal((await call(made, "/v1/schedules/run-now", { body: { id: "00000000-0000-4000-8000-000000000000" } })).status, 403);
+  assert.equal((await call(made, "/v1/schedules", {})).status, 200, "what they have can still be seen");
+  assert.deepEqual(asked[0], [ME.userId, "scheduledTasks"]);
 });

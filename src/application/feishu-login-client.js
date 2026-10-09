@@ -37,12 +37,16 @@ export function validateRenewal(session, now = Date.now()) {
 export class FeishuLoginClient {
   // `onReturn` is told when the browser that authorized a sign-in has come back
   // to this device (login-return.js), so the sign-in can be finished at once.
-  constructor({ fetchImpl = fetch, now = Date.now, getDeviceKey = () => generateKeyPairSync("ed25519").privateKey, openReturn = openLoginReturn, onReturn = () => {} } = {}) {
+  // `client`: this build's release id, sent with each request so the
+  // administration console can say which version each person runs. Nothing
+  // about the person; the server ignores it if it is not a release id.
+  constructor({ fetchImpl = fetch, now = Date.now, getDeviceKey = () => generateKeyPairSync("ed25519").privateKey, openReturn = openLoginReturn, onReturn = () => {}, client = null } = {}) {
     this.fetch = fetchImpl; this.now = now; this.getDeviceKey = getDeviceKey; this.openReturn = openReturn; this.onReturn = onReturn; this.attempt = null; this.generation = 0;
+    this.client = typeof client === "string" && /^[0-9A-Za-z._-]{1,64}$/.test(client) ? client : null;
   }
   async request(origin, route, value, token) {
     const response = await this.fetch(`${origin}${route}`, { method: value ? "POST" : "GET", redirect: "error", signal: AbortSignal.timeout(15_000),
-      headers: { ...(value ? { "content-type": "application/json" } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      headers: { ...(value ? { "content-type": "application/json" } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}), ...(this.client ? { "x-idou-client": this.client } : {}) },
       ...(value ? { body: JSON.stringify(value) } : {}) });
     if (!response.ok) {
       // The control plane names the exact check that refused. Carrying that name
@@ -56,7 +60,10 @@ export class FeishuLoginClient {
         } else await response.body?.cancel();
       } catch { /* the status alone still has to be reported */ }
       const reason = code ? `：${code}` : "";
-      const error = response.status >= 400 && response.status < 500 && ![408, 429].includes(response.status)
+      // An administrator's decision, said as one (access-list.js on the server).
+      const decided = { account_disabled: "你的 i豆 账号已被管理员停用。需要恢复请联系管理员。", signed_out: "管理员已让你的账号在所有设备上退出，请重新登录。" }[code];
+      const error = decided ? new LoginRestartRequired(decided)
+        : response.status >= 400 && response.status < 500 && ![408, 429].includes(response.status)
         ? new LoginRestartRequired(`飞书授权已失效或未获准（HTTP ${response.status}${reason}），请重新发起登录。`)
         : new Error(`飞书登录请求暂未完成（HTTP ${response.status}${reason}），请稍后手动检查。`);
       // Also apart from the sentence, so a caller can tell "the server no longer

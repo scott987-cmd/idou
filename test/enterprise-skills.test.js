@@ -67,7 +67,7 @@ test("unauthorized, development, cross-tenant selectors and browser requests can
 
 test("signature verification rejects tampering, foreign keys, replayed nonce, expiry and cross-origin/tenant/application payloads", async (t) => {
   const f = await setup(t), child = f.sessions.issueForSkills(f.parent.token), nonce = "n".repeat(43);
-  const envelope = f.service.signedCatalog(child, nonce), options = { publicKey: f.keys.publicKey, serverUrl: f.origin, tenantId: "tenant_a", appId: "cli_fixture", nonce };
+  const envelope = await f.service.signedCatalog(child, nonce), options = { publicKey: f.keys.publicKey, serverUrl: f.origin, tenantId: "tenant_a", appId: "cli_fixture", nonce };
   assert.equal(verifyCatalog(envelope, options).skills.length, 1);
   assert.throws(() => verifyCatalog({ ...envelope, signature: "a".repeat(86) }, options));
   assert.throws(() => verifyCatalog(envelope, { ...options, publicKey: signingKeys().publicKey }));

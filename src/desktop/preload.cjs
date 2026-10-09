@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld("idou", Object.freeze({
   onScheduleAuthorization: (handler) => ipcRenderer.on("idou:schedule-authorization", (_event, value) => handler(value)),
   onOpenScheduleRuns: (handler) => ipcRenderer.on("idou:open-schedule-runs", (_event, value) => handler(value)),
   onOpenTask: (handler) => ipcRenderer.on("idou:open-task", (_event, value) => handler(value)),
+  onSitePick: (handler) => ipcRenderer.on("idou:site-pick", (_event, value) => handler(value)),
   onScheduleDraft: (handler) => ipcRenderer.on("idou:schedule-draft", (_event, value) => handler(value)),
   onScheduleDraftWithdrawn: (handler) => ipcRenderer.on("idou:schedule-draft-withdrawn", (_event, value) => handler(value)),
   settleScheduleDraft: invoke("settle-schedule-draft"),
@@ -48,6 +49,7 @@ contextBridge.exposeInMainWorld("idou", Object.freeze({
   onFeishuUnread: (handler) => ipcRenderer.on("idou:feishu-unread", (_event, value) => handler(value)),
   closeLoginView: invoke("close-login-view"), loginViewBounds: invoke("login-view-bounds"), openLoginExternal: invoke("open-login-external"),
   onLoginCallback: (handler) => ipcRenderer.on("idou:login-callback", () => handler()),
+  onPermissionModesChanged: (handler) => ipcRenderer.on("idou:permission-modes-changed", () => handler()),
   onAuthChanged: (handler) => ipcRenderer.on("idou:auth-changed", (_event, value) => handler(value)),
   onConfirm: (handler) => ipcRenderer.on("idou:confirm", (_event, value) => handler(value)),
   onConfirmWithdrawn: (handler) => ipcRenderer.on("idou:confirm-withdrawn", (_event, value) => handler(value)), onMediaPreview: (handler) => ipcRenderer.on("idou:media-preview", (_event, value) => handler(value)), onMediaChanged: (handler) => ipcRenderer.on("idou:media-changed", (_event, value) => handler(value)), confirmResponse: invoke("confirm-response"),
@@ -59,7 +61,7 @@ contextBridge.exposeInMainWorld("idou", Object.freeze({
   onTerminalExit: (handler) => { const listener = (_event, value) => handler(value); ipcRenderer.on("idou:terminal-exit", listener); return () => ipcRenderer.removeListener("idou:terminal-exit", listener); },
   onFlushTaskUi: handler => ipcRenderer.on("idou:flush-task-ui", async () => { try { await handler(); } finally { ipcRenderer.send("idou:task-ui-flushed"); } }),
   setTheme: invoke("set-theme"),
-  searchProjectFiles: invoke("search-project-files"), projectDiff: invoke("project-diff"), reviewTargets: invoke("review-targets"), taskImage: invoke("task-image"), projectCommands: invoke("project-commands"), projectCommand: invoke("project-command"), approvalRules: invoke("approval-rules"), forgetApprovalRule: invoke("forget-approval-rule"), tableDescribe: invoke("table-describe"), sites: invoke("sites"), siteTemplates: invoke("site-templates"), siteCreate: invoke("site-create"), siteRefresh: invoke("site-refresh"), sitePreview: invoke("site-preview"), siteDemo: invoke("site-demo"), siteRestyle: invoke("site-restyle"), siteFromTask: invoke("site-from-task"), siteRename: invoke("site-rename"), siteForget: invoke("site-forget"), sitePublish: invoke("site-publish"), siteShareSet: invoke("site-share-set"), siteUnpublish: invoke("site-unpublish"), siteRepublish: invoke("site-republish"), copyText: invoke("copy-text"), sitePublished: invoke("site-published"),
+  searchProjectFiles: invoke("search-project-files"), projectDiff: invoke("project-diff"), reviewTargets: invoke("review-targets"), taskImage: invoke("task-image"), projectCommands: invoke("project-commands"), projectCommand: invoke("project-command"), approvalRules: invoke("approval-rules"), forgetApprovalRule: invoke("forget-approval-rule"), tableDescribe: invoke("table-describe"), sites: invoke("sites"), siteTemplates: invoke("site-templates"), siteCreate: invoke("site-create"), siteFromMaterial: invoke("site-from-material"), siteMaterialFolder: invoke("site-material-folder"), siteRefresh: invoke("site-refresh"), sitePreview: invoke("site-preview"), siteDemo: invoke("site-demo"), siteRestyle: invoke("site-restyle"), siteFromTask: invoke("site-from-task"), siteRename: invoke("site-rename"), siteForget: invoke("site-forget"), siteDelete: invoke("site-delete"), sitePublish: invoke("site-publish"), siteShareSet: invoke("site-share-set"), siteMemberSearch: invoke("site-member-search"), siteUnpublish: invoke("site-unpublish"), siteRepublish: invoke("site-republish"), siteVersions: invoke("site-versions"), siteVersionPreview: invoke("site-version-preview"), siteRollback: invoke("site-rollback"), siteErase: invoke("site-erase"), siteHide: invoke("site-hide"), siteUnhide: invoke("site-unhide"), siteDownload: invoke("site-download"), siteAddress: invoke("site-address"), siteStats: invoke("site-stats"), siteChatSearch: invoke("site-chat-search"), siteSendToChat: invoke("site-send-to-chat"), copyImage: invoke("copy-image"), saveImage: invoke("save-image"), copyText: invoke("copy-text"), sitePublished: invoke("site-published"),
   send: invoke("send"), enqueueTaskMessage: invoke("enqueue-task-message"), updateQueuedMessage: invoke("update-queued-message"), removeQueuedMessage: invoke("remove-queued-message"), setTaskQueuePaused: invoke("set-task-queue-paused"), searchPeople: invoke("search-people"), stop: invoke("stop"), startBuilding: invoke("start-building"), approve: invoke("approve"), answer: invoke("answer"), steer: invoke("steer"),
   renameTask: invoke("rename-task"), deleteTask: invoke("delete-task"),
   compactTask: invoke("compact-task"), rollbackTask: invoke("rollback-task"),
@@ -112,6 +114,10 @@ contextBridge.exposeInMainWorld("idou", Object.freeze({
     const listener = (_event, snapshot) => callback(snapshot);
     ipcRenderer.on("idou:changed", listener);
     return () => ipcRenderer.removeListener("idou:changed", listener);
+  },
+  onSiteProgress: callback => {
+    const listener = (_event, value) => callback(value); ipcRenderer.on("idou:site-progress", listener);
+    return () => ipcRenderer.removeListener("idou:site-progress", listener);
   },
   onSitesChange: callback => {
     const listener = () => callback(); ipcRenderer.on("idou:sites-changed", listener);

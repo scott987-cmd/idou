@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { SessionRegistry } from "../src/control-plane/sessions.js";
-import { createModelGateway } from "../src/control-plane/model-gateway.js";
+import { createModelGateway, OMITTED_IMAGE } from "../src/control-plane/model-gateway.js";
 
 async function setup(t, options = {}) {
   const sessions = new SessionRegistry();
@@ -89,6 +89,34 @@ test("oversized input is rejected, provider errors do not disclose echoed secret
   const error = await response.text();
   assert.match(error, /provider_request_failed/);
   assert.doesNotMatch(error, /fixture/);
+});
+
+// 2026-10-08: an agent checking a game by its screen took 27 screenshots, and
+// every later request -- the compaction too -- was refused as too large, so the
+// task could neither go on nor be compacted. The oldest pictures give way.
+test("a conversation past the size limit loses its oldest screenshots, not the request", async (t) => {
+  const picture = (n) => ({ type: "input_image", image_url: `data:image/jpeg;base64,${String(n).repeat(3000)}` });
+  const input = [];
+  for (let n = 1; n <= 6; n += 1) {
+    input.push({ type: "message", role: "user", content: [{ type: "input_text", text: `step ${n}` }] });
+    input.push({ type: "function_call_output", call_id: `call_${n}`, output: [{ type: "input_text", text: "Wall time: 0.4 seconds" }, picture(n)] });
+  }
+  const gateway = await setup(t, { maxBodyBytes: 12_000 });
+  const response = await gateway.post({ model: "MiniMax-M3", input });
+  assert.equal(response.status, 200);
+  const omitted = Number(response.headers.get("x-idou-images-omitted"));
+  assert.ok(omitted >= 3 && omitted < 6, `some, not all: ${omitted}`);
+  const sent = JSON.parse(gateway.seen[0].body);
+  assert.ok(Buffer.byteLength(gateway.seen[0].body) <= 12_000, "what goes upstream fits");
+  const pictures = sent.input.flatMap((item) => item.output ?? []).map((part) => part.type === "input_image" ? part.image_url[23] : part.text === OMITTED_IMAGE ? "-" : null).filter(Boolean);
+  assert.deepEqual(pictures, [..."-".repeat(omitted), ..."123456".slice(omitted)], "oldest first, the latest kept");
+  assert.equal(sent.input.filter((item) => item.type === "message").length, 6, "nothing else is touched");
+  assert.equal(gateway.audits.at(-1).imagesOmitted, omitted);
+  // Text alone over the limit is still refused, and so is a body past what is read at all.
+  assert.equal((await gateway.post({ model: "MiniMax-M3", input: "x".repeat(20_000) })).status, 413);
+  const capped = await setup(t, { maxBodyBytes: 12_000, maxReadBytes: 30_000 });
+  assert.equal((await capped.post({ model: "MiniMax-M3", input: [...input, ...input, ...input] })).status, 413);
+  assert.equal(capped.seen.length, 0);
 });
 
 test("SSE remains a live stream and disconnect cancels the upstream fetch", async (t) => {
@@ -677,5 +705,43 @@ test("a person's share cannot exceed the server's, and neither can be zero", () 
   assert.throws(() => createModelGateway({ apiKey: "k", sessions, maxConcurrent: 0 }), /Invalid model gateway maxConcurrent/);
   const server = createModelGateway({ apiKey: "k", sessions });
   assert.deepEqual(server.capacity(), { active: 0, maxConcurrent: 8, maxConcurrentPerUser: 8, requestsPerMinute: 90, people: 0, sessions: 0, requests: 0,
-    rejected: { perMinute: 0, server: 0, person: 0 } }, "unset, it is what the server did before");
+    rejected: { perMinute: 0, server: 0, person: 0, quota: 0 } }, "unset, it is what the server did before");
+});
+
+// docs/service-status.md §2: how each model request ended and how long the
+// model took to start answering, for 服务状态 -- the person stopping it is not
+// the model failing, and nothing refused before authentication is counted.
+test("each model request is counted by how it ended, a refusal by its reason, and a stop as the person's", async (t) => {
+  const recorded = [];
+  const traffic = { record: (entry) => recorded.push(entry) };
+  let mode = "ok";
+  const { post, url, session } = await setup(t, { requestsPerMinute: 6, timeoutMs: 400, traffic, fetchImpl: async (_url, request) => {
+    if (mode === "fail") return new Response("upstream broke", { status: 500 });
+    if (mode === "throttled") return new Response("slow down", { status: 429 });
+    if (mode === "hang") { await once(request.signal, "abort"); throw request.signal.reason; }
+    return new Response(JSON.stringify({ output_text: "fixture reply" }), { headers: { "content-type": "application/json" } });
+  } });
+  assert.equal((await post()).status, 200);
+  assert.equal((await post({ model: "not-configured", input: "x" })).status, 403);
+  mode = "fail";
+  assert.equal((await post()).status, 502);
+  mode = "throttled";
+  assert.equal((await post()).status, 429, "the provider's own limit");
+  mode = "hang";
+  assert.equal((await post()).status, 504, "the server's own time limit: the model did not answer");
+  // The person presses stop while the model has not answered yet.
+  const stop = new AbortController();
+  const stopped = fetch(`${url}/v1/responses`, { method: "POST", signal: stop.signal,
+    headers: { "content-type": "application/json", authorization: `Bearer ${session.token}` }, body: JSON.stringify({ model: "MiniMax-M3", input: "x" }) }).catch(() => null);
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  stop.abort(); await stopped;
+  for (const until = Date.now() + 2000; recorded.length < 6 && Date.now() < until;) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal((await post()).status, 429, "past the minute's requests");
+  assert.equal((await fetch(`${url}/v1/responses`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 401);
+  assert.deepEqual(recorded.map((entry) => [entry.model, entry.outcome, entry.refusal]), [
+    ["MiniMax-M3", "ok", null], ["", "client", null], ["MiniMax-M3", "upstream", null], ["MiniMax-M3", "upstream", null], ["MiniMax-M3", "upstream", null],
+    ["MiniMax-M3", "cancelled", null], ["", "limited", "perMinute"]], "the provider's 429 is its failure; only this server's own refusal is limited; the unauthenticated one is not among them");
+  assert.ok(Number.isFinite(recorded[0].firstMs) && recorded[0].firstMs >= 0, "how long the model took to start answering");
+  assert.ok(recorded.slice(1).every((entry) => entry.firstMs === null));
+  assert.equal(JSON.stringify(recorded).includes("private-prompt-fixture"), false);
 });

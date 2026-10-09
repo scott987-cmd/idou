@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { TableSites } from "../src/application/table-sites.js";
+import { TableSites, makeTableSite } from "../src/application/table-sites.js";
+import { SiteStore } from "../src/application/site-store.js";
+import { SLICE_LIMITS } from "../src/application/table-slice.js";
 import { CONTRACT_DIR, CONTRACT_FILES } from "../src/application/table-contract.js";
 
 const references = {
@@ -120,3 +122,71 @@ test("a spreadsheet is read by the link this deployment writes, not by a bare to
   await bare.build(folder, { kind: "sheet", token: "shtToken001", sheetId: "Sheet1", columns: ["A"], headerRow: 1, rows: 10, refreshSeconds: 300 });
   assert.equal(asked[1].reference, "shtToken001");
 });
+
+test("a table read is left as it was when the table says it has not moved since", async (t) => {
+  const folder = await mkdtemp(path.join(os.tmpdir(), "idou-table-probe-"));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  let state = { rev: 3, count: 1 };
+  const asked = [];
+  const probed = new TableSites({ references, sheets, baseRecords: { ...baseRecords, tableState: async (token, tableId) => { asked.push(tableId); return state; } } });
+  const slice = { kind: "base", token: "SyntheticBaseToken01", tableId: "tblOne", fields: ["fldName"], rows: 10, refreshSeconds: 60 };
+  const built = await probed.build(folder, slice);
+  assert.equal(built.probe, "3:1");
+  assert.match(built.digest, /^[0-9a-f]{64}$/);
+  assert.equal(await probed.unchanged(slice, built.probe), true);
+  state = { rev: 4, count: 1 };
+  assert.equal(await probed.unchanged(slice, built.probe), false, "an edit moves the revision");
+  state = { rev: 3, count: 2 };
+  assert.equal(await probed.unchanged(slice, built.probe), false, "a row added moves the count");
+  assert.equal(await probed.unchanged(slice, null), false, "read before there were probes: read again");
+  state = { rev: null, count: null };
+  assert.equal(await probed.unchanged(slice, "null:null"), false, "a table that says nothing is never unchanged");
+  assert.deepEqual(asked, ["tblOne", "tblOne", "tblOne", "tblOne", "tblOne"]);
+  // Without the part, nothing is skipped.
+  assert.equal(await sites.unchanged(slice, "3:1"), false);
+  const sheetSlice = { kind: "sheet", token: "shtToken001", sheetId: "Sheet1", columns: ["A"], rows: 10, refreshSeconds: 60 };
+  assert.equal(await probed.unchanged(sheetSlice, "3:1"), false);
+  // What was written, as the push will read it back: the same key.
+  state = { rev: 3, count: 1 };
+  const { readContract } = await import("../src/application/table-contract.js");
+  const { contractKey } = await import("../src/application/table-snapshot.js");
+  const written = await readContract(folder);
+  assert.equal(contractKey(written.schema, written.snapshot), built.key, "the key the push compares is the one the read recorded");
+  assert.notEqual((await probed.build(folder, slice, { title: "改了名的看板" })).key, built.key, "the site renamed: its title is what a page shows");
+  assert.equal((await probed.build(folder, slice)).key, built.key, "the same read again: the same key");
+});
+
+// The field list comes in a different order on every call (measured live,
+// 2026-10-06); the picker offers them as the table shows them, so a site's
+// columns -- and its card titles and its timeline's date -- follow the table.
+test("the picker offers the fields in the table's own order", async () => {
+  const ordered = new TableSites({ references, sheets, baseRecords: { ...baseRecords,
+    fields: async () => [{ id: "fldOwner", name: "负责人", type: "user" }, { id: "fldCount", name: "数量", type: "number" }, { id: "fldName", name: "名称", type: "text" }],
+    fieldOrder: async () => ["fldName", "fldCount"] } });
+  assert.deepEqual((await ordered.describe(BASE_URL)).fields.map((field) => field.name), ["名称", "数量", "负责人"], "the primary field first; a hidden one after");
+  const unordered = new TableSites({ references, sheets, baseRecords: { ...baseRecords, fieldOrder: async () => { throw new Error("视图读不到"); } } });
+  assert.deepEqual((await unordered.describe(BASE_URL)).fields.map((field) => field.id), ["fldName", "fldCount", "fldOwner"], "no order: as listed");
+});
+
+// 2026-10-08: recording the second promo left two sites in 文档网站 that no read
+// could ever fill. The site was made before its table was read, and the read
+// failed -- the slice came to 25.7 MB against 24 MB -- after the site existed.
+test("a table site is made only once its table has been read", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "idou-table-site-made-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const store = await SiteStore.open(path.join(root, "sites.json"), path.join(root, "sites"));
+  const slice = { kind: "base", token: "SyntheticBaseToken01", tableId: "tblOne", fields: ["fldName"], rows: 10, refreshSeconds: 60 };
+  const tooBig = new TableSites({ baseRecords: { ...baseRecords, list: async () => ({ records: [{ id: "rec1", values: { fldName: "告".repeat(SLICE_LIMITS.bytes / 3) } }], more: false }) }, sheets, references });
+  await assert.rejects(() => makeTableSite({ store, tables: tooBig, name: "IT 服务监控大屏", slice }), /超过了/);
+  assert.deepEqual(store.list(), [], "no site is left behind by a read that failed");
+  assert.deepEqual(await readdir(path.join(root, "sites")).catch(() => []), [], "and no folder");
+  const made = await makeTableSite({ store, tables: sites, name: "  IT  服务监控  ", slice,
+    template: async (folder) => { await writeFile(path.join(folder, "index.html"), "<p>看板</p>"); return { written: ["index.html"] }; } });
+  assert.equal(store.list().length, 1);
+  assert.equal(made.site.name, "IT 服务监控");
+  assert.deepEqual(made.written, ["index.html"]);
+  assert.equal(made.built.rowCount, 1);
+  const schema = JSON.parse(await readFile(path.join(made.site.folder, CONTRACT_DIR, CONTRACT_FILES.schema), "utf8"));
+  assert.equal(schema.source.title, made.site.name, "read under the name the site was then given");
+});
+

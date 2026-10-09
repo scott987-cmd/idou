@@ -1279,3 +1279,28 @@ for (const kind of KINDS) test(`${kind}: one person's tasks and runs are counted
   assert.deepEqual(await opened.recentRuns(WHO), []);
   assert.equal((await opened.recentRuns(COLLEAGUE)).length, 1);
 });
+
+// The administration console's view (admin-api.js): how many tasks, in which
+// state, whose, and how the last day's runs ended -- never a title or a prompt.
+for (const kind of KINDS) test(`${kind}: the console sees counts and states by person, paged, and nothing a task says`, async (t) => {
+  const { opened, clock } = await store(t, { kind });
+  const B = { tenantId: WHO.tenantId, userId: "person-b", familyId: "login-b" };
+  const running = await opened.create(WHO, daily()), resting = await opened.create(WHO, daily());
+  const lapsed = await opened.create(B, daily());
+  await opened.create(OTHER, daily());
+  await opened.setState(WHO, resting.id, "paused");
+  await opened.suspend(B.tenantId, lapsed.id);
+  for (const outcome of ["completed", "failed"]) { clock.at += 1000; await opened.finish(WHO.tenantId, (await opened.claimNow(running, clock.at)).runId, outcome); }
+  assert.deepEqual(await opened.tenantTotals(WHO.tenantId), { total: 3, owners: 2, active: 1, paused: 1, suspended: 1 }, "the other tenant's task is not counted");
+  const first = await opened.ownersOf(WHO.tenantId, { limit: 1, since: 0 });
+  assert.deepEqual(first.owners.map((row) => [row.userId, row.total, row.active, row.paused, row.suspended, row.runs]),
+    [["person-a", 2, 1, 1, 0, { completed: 1, failed: 1, skipped: 0 }]]);
+  assert.equal(first.owners[0].nextAt, (await opened.get(WHO, running.id)).nextAt, "the next run of a running task, not of the paused one");
+  const second = await opened.ownersOf(WHO.tenantId, { after: first.next, limit: 1, since: 0 });
+  assert.deepEqual(second.owners.map((row) => [row.userId, row.suspended, row.nextAt]), [["person-b", 1, null]]);
+  assert.equal(second.next, null);
+  assert.deepEqual((await opened.ownersOf(WHO.tenantId, { since: clock.at + 1 })).owners[0].runs, { completed: 0, failed: 0, skipped: 0 }, "only runs since then");
+  assert.deepEqual((await opened.ownersOf(WHO.tenantId, { only: ["person-b"] })).owners.map((row) => row.userId), ["person-b"]);
+  const shown = JSON.stringify([first, second]);
+  assert.ok(!shown.includes("每天汇总") && !shown.includes("群消息"), "neither the title nor the prompt");
+});

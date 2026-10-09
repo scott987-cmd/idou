@@ -18,5 +18,6 @@ ExecStart=/usr/local/bin/node --no-warnings /opt/idou/app/bin/backup.js --data /
 #     --data /home/idou/.idou --to /home/idou/backups --keep 14 \
 #     --seal /etc/idou/backup-public.pem --ship /opt/idou/app/bin/backup-ship-feishu.js'
 # With the data in PostgreSQL (§10), its dump and the key its rows are sealed with:
-#   ... --postgres "$IDOU_DATABASE_URL" --also /etc/idou/state.key
+#   ... --postgres-env IDOU_DATABASE_URL --also /etc/idou/state.key
+# (the address read from the environment, so no password is on a command line)
 # (the database address from the deployment file: EnvironmentFile=/etc/idou/idou.env)

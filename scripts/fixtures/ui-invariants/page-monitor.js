@@ -17,6 +17,9 @@
 //   内部标识外露  a send card showed the recipient's open_id, the tenant and an
 //                 identity fingerprint in its body; every frame of the promo
 //                 that held one had to be blurred by hand.
+//   标点重复      a site's state line read 「……删掉手机号。。改好后……」 and a
+//                 content check's reason 「……建议人工复核。。等管理员……」 (.269):
+//                 our sentences set around words that already ended in a stop.
 //   重绘丢状态    the approval card was rebuilt every second: the technical
 //                 details someone opened folded shut, the reason being typed
 //                 into 「拒绝，并告诉它怎么做」 vanished, a connector's menu closed.
@@ -93,7 +96,17 @@ export function installMonitor() {
   const NATIVE_HOSTS = "#preview-area, #media-preview-area, #feishu-native-area, #feishu-chat-area, #feishu-web-area, #login-view-area";
   // Text that is data rather than the application speaking: code, commands,
   // parameters, what someone typed, what a document or the model said.
-  const DATA = "pre, code, kbd, samp, textarea, input, select, script, style, svg, [contenteditable], [translate=no], .approval-technical, details.technical, .xterm, .terminal, .markdown, .message-body, .reply, .user-message, .turn-user, .turn-agent, .agent-text, .step-output, .file-name, .path, [data-content]";
+  // What a person or a model wrote, and what was read out of Feishu, is not the
+  // application speaking: its words and stops are theirs. The classes the
+  // renderer really draws them in -- most of the names after .markdown had no
+  // element at all, so a person's own 「好的。。」 would have failed a smoke
+  // (third review before .270). Not every .message-text: the application's own
+  // notices are drawn as .message.notice .message-text (fourth review).
+  const DATA = "pre, code, kbd, samp, textarea, input, select, script, style, svg, [contenteditable], [translate=no], .approval-technical, details.technical, .xterm, .terminal, "
+    + ".message.user .message-text, .message.assistant .message-text, .coding-text .message-text, .feishu-message-text, .knowledge-excerpt, .source-title, .answer-source-title, "
+    + ".markdown, .message-body, .reply, .user-message, .turn-user, .turn-agent, .agent-text, .step-output, .file-name, .path, [data-content], "
+    // A skill's own document and description, in its author's words (2026-10-03).
+    + ".sd-doc, .sc-desc";
 
   const accessibleName = (node) => {
     const labelled = node.getAttribute("aria-labelledby");
@@ -183,7 +196,32 @@ export function installMonitor() {
         if (child.nodeType !== 3) continue;
         const match = ENGLISH.exec(child.nodeValue);
         if (match && !ALLOWED.test(match[1].trim())) report(found, "英文", place(node), match[1].trim().slice(0, 80));
+        // ？！ and ！！ are said that way on purpose; a stop after a stop is not.
+        const doubled = /[。，；：][。，；：！？]|[！？][。，；：]/u.exec(child.nodeValue);
+        if (doubled) report(found, "标点重复", place(node), child.nodeValue.slice(Math.max(0, doubled.index - 12), doubled.index + 8));
       }
+    }
+
+    // The window itself is never scrolled -- only what is inside it. A pushed
+    // shell cuts off the top bar and leaves a blank band (2026-10-08).
+    for (const node of [document.documentElement, document.body]) {
+      if (node.scrollTop || node.scrollLeft) report(found, "整个窗口被滚动", node === document.body ? "body" : "html", `向下 ${Math.round(node.scrollTop)}px，向右 ${Math.round(node.scrollLeft)}px`);
+    }
+
+    // A list that scrolls, squeezed by what sits around it to less than two of
+    // its own rows. On 2026-10-08 the sidebar's 最近任务 was 84px tall in an
+    // 808px window: one 54px task at a time, and a click at the middle of a
+    // half-shown one landed on the sidebar. A row is a child holding a control;
+    // one taller than 120px is content (a reply, a card), not a row of a list.
+    for (const node of document.body.querySelectorAll("*")) {
+      // A conversation (a live region, a log) is content, not rows: it gives way
+      // to a card on purpose, and its messages are as tall as they are.
+      if (node.closest(NATIVE_HOSTS) || node.matches("textarea, pre, code, [aria-live], [role=log]")) continue;
+      if (!/auto|scroll/.test(css(node).overflowY) || node.scrollHeight - node.clientHeight <= 4) continue;
+      const rows = [...node.children].filter((child) => child.matches(CONTROLS) || child.querySelector(CONTROLS));
+      if (rows.length < 2 || !shown(node)) continue;
+      const row = rect(rows[0]).height;
+      if (row >= 16 && row <= 120 && node.clientHeight < 2 * row - 1) report(found, "列表挤扁", place(node), `能看到 ${node.clientHeight}px，一行 ${Math.round(row)}px，还有 ${node.scrollHeight - node.clientHeight}px 要滚`);
     }
     return found;
   };
@@ -223,6 +261,15 @@ export function installMonitor() {
   addEventListener("focusin", safe((event) => { const node = event.target; if (node?.matches?.("input, textarea, select, [contenteditable]")) remember(node, { focused: true }); }), true);
   addEventListener("focusout", safe((event) => { const row = watched.get(event.target); if (row && event.target.isConnected) row.focused = false; }), true);
   addEventListener("toggle", safe((event) => { const node = event.target; if (node?.tagName === "DETAILS") remember(node, { open: node.open }); }), true);
+  // What the person is about to open, named while it is still in the page: one
+  // replaced before its new state is told can no longer be placed in its card,
+  // and its copy was never matched to it (2026-10-03).
+  for (const type of ["pointerdown", "click"]) addEventListener(type, safe((event) => {
+    const details = event.target?.closest?.("summary")?.parentElement;
+    if (details?.tagName === "DETAILS" && !watched.has(details)) remember(details, {});
+    const control = event.target?.closest?.("[aria-expanded]");
+    if (control && !watched.has(control)) remember(control, {});
+  }), true);
   // After the click has been handled: a microtask would run between this
   // listener and the control's own, before the menu is open.
   addEventListener("click", () => setTimeout(safe(() => { for (const node of document.querySelectorAll("[aria-expanded='true']")) if (!watched.get(node)?.expanded) remember(node, { expanded: true }); }), 0), true);
@@ -231,13 +278,18 @@ export function installMonitor() {
   // rebuilt its card before it -- a redraw in the click's own microtask, or its
   // own timer due first under load -- lost the menu unreported (2026-09-30).
   // Made before the observer below, so in one checkpoint it is told first.
+  // Details the same way: their toggle event is a task of its own after the
+  // click, and a card rebuilt before it lost them unreported (2026-10-03). A
+  // node already gone by the time this is told -- the page's own observer
+  // rebuilt the card first -- is exactly the one to remember.
   new MutationObserver(safe((records) => {
     if (performance.now() - lastInput.at > 1000) return;
     for (const record of records) {
       const node = record.target;
-      if (node.isConnected && node.getAttribute?.("aria-expanded") === "true" && !watched.get(node)?.expanded) remember(node, { expanded: true });
+      if (record.attributeName === "aria-expanded" && node.getAttribute?.("aria-expanded") === "true" && !watched.get(node)?.expanded) remember(node, { expanded: true });
+      if (record.attributeName === "open" && node.tagName === "DETAILS" && node.open && !watched.get(node)?.open) remember(node, { open: true });
     }
-  })).observe(document, { attributes: true, attributeFilter: ["aria-expanded"], subtree: true });
+  })).observe(document, { attributes: true, attributeFilter: ["aria-expanded", "open"], subtree: true });
   const twinOf = (row, tag) => [...document.getElementsByTagName(tag)].find((candidate) => !watched.has(candidate) && signature(candidate) === row.sig) ?? null;
   new MutationObserver(safe(() => {
     for (const [node, row] of watched) {

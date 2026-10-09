@@ -16,7 +16,7 @@ const MAX_CONTENT_BYTES = 64 * 1024;
 
 const USAGE = `用法：node bin/agent.js <操作> [参数]
 
-沙箱之外的事都从这里走：改飞书、把文档发给人、生成图片和视频、存云盘、管理定时任务、启用技能。
+沙箱之外的事都从这里走：改飞书、把文档发给人、生成图片和视频、存云盘、管理定时任务、发布网站、启用技能。
 默认每一次改动都会在应用内弹出确认，由用户本人决定是否执行；被取消时本命令以 “已取消” 结束，不是错误。
 弹出确认后，本命令要等用户点完才结束，可能要几分钟（确认最多保留 5 分钟），用户会来点。
 命令还在运行就接着等它结束，不要先结束这一轮：这一轮一结束，确认就作废，什么都不会做。
@@ -58,6 +58,16 @@ const USAGE = `用法：node bin/agent.js <操作> [参数]
                          --range A1:B2 --cells @cells.json
                   run -- base +record-batch-create --base-token <t> --table-id <t> \\
                          --json @records.json
+                从零建一张多维表格：先建空的多维表格，再建数据表，再补字段——
+                  run -- base +base-create --name <名称> --time-zone Asia/Shanghai
+                  run --argv-file table.json （base +table-create --base-token <t>
+                         --name <表名> --fields <字段 JSON 数组>）
+                  run --argv-file field.json （base +field-create --base-token <t>
+                         --table-id <t> --json <字段 JSON>；公式字段先读 CLI 的公式
+                         说明，再加 --i-have-read-guide）
+                +base-create 不要带 --table-name / --fields：那会发四个请求，其中一个
+                删除默认表，会被拒绝。多维表格、数据表、字段都只能新建，删除、改名、
+                改类型都不在允许范围内。记录一次最多 200 条，多了分批、同一张表串行写。
                 带 JSON 参数时用 --argv-file：把整条命令写成一个字符串数组的
                 JSON 文件，完全绕开 shell 引号。例如 cmd.json 内容为
                   ["sheets","+cells-set","--spreadsheet-token","<t>",
@@ -180,6 +190,20 @@ const USAGE = `用法：node bin/agent.js <操作> [参数]
   schedule-delete   --id <任务 id>   删除任务（红色删除确认）；它的运行记录留在「运行记录」里。
   schedule-run-now  --id <任务 id>   现在运行一次，会调用模型（计费），不改变下次执行时间。
 
+文档网站
+
+  site-publish  [--dir <任务文件夹里网站的目录，默认 .>] [--name <网站名字>] [--scope invited|tenant|anyone]
+                把你在任务文件夹里做好的网站（目录里要有 index.html）发布出去，返回链接。
+                目录还不在「文档网站」里会先收进去。没发布过的弹「确认发布」，
+                --scope 是谁能打开：invited 仅邀请的人（默认）、tenant 组织内获得链接的人、
+                anyone 互联网上获得链接的人（要管理员开放）。用户没说给谁看就用默认，不要自己放宽。
+                已经在线的网站再发布就是更新线上（会覆盖线上的页面，弹「确认更新」），
+                谁能打开不变，也不接受 --scope：改范围是用户在「分享设置」里的事。
+                公开的网站要先过服务端的内容检查，可能要几分钟，还可能要等管理员审核：
+                返回里 offline 为 true、review 有值时如实告诉用户，不要说已经上线。
+
+  site-list     列出用户自己的网站：名字、链接、在不在线、在不在这台电脑上。只读。
+
 技能
 
   skill-enable  --dir <任务文件夹里的技能目录> [--for cowork|coding|cowork,coding]
@@ -217,12 +241,14 @@ const SPECS = {
   "schedule-delete": { id: "string" },
   "schedule-run-now": { id: "string" },
   "skill-enable": { dir: "string", for: "string?" },
+  "site-publish": { dir: "string?", name: "string?", scope: "string?" },
+  "site-list": {},
 };
 // The bridge names each field the way the application's own write intents do.
 const FIELDS = { doc: "doc", "pattern-file": "pattern", "content-file": "content",
   kind: "kind", aspect: "aspect", job: "job", folder: "folder", "prompt-file": "prompt",
   query: "query", around: "around", match: "match", recipient: "recipient", mention: "mention", "note-file": "note", "event-id": "eventId", "task-id": "taskId",
-  "draft-file": "draft", id: "id", dir: "dir", for: "for" };
+  "draft-file": "draft", id: "id", dir: "dir", for: "for", name: "name", scope: "scope" };
 
 function parse(argv) {
   const action = argv[0];

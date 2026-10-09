@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>培训手册</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<!-- 一本按章节读的手册：左边目录，右边正文，读到哪一章目录就标到哪一章。
+     下面的内容是示例。加一章：在正文里加一个 <section class="prose" id="…">，再在目录里加一行指向它的链接。
+     换个样子：把 site.css 换成别的风格（简约 / 科技 / 立体）。 -->
+<main class="wrap">
+  <header class="head">
+    <div class="head-text">
+      <p class="eyebrow">新同事入职 · 示例</p>
+      <h1>第一周要知道的事</h1>
+    </div>
+    <p class="stamp">读完约 10 分钟</p>
+  </header>
+
+  <div class="handbook">
+    <nav class="toc" aria-label="目录">
+      <ol>
+        <li><a href="#day-one">第一天</a></li>
+        <li><a href="#tools">常用工具</a></li>
+        <li><a href="#people">找谁</a></li>
+        <li><a href="#rules">几条规矩</a></li>
+      </ol>
+    </nav>
+
+    <div class="chapters">
+      <section class="prose" id="day-one">
+        <h2>第一天</h2>
+        <p>上午 9:30 到前台领工牌和电脑，行政会带你认座位。下午和导师见面，他会把这一周的安排过一遍。</p>
+        <ol>
+          <li>登录飞书，加入部门群和「新人答疑」群</li>
+          <li>在电脑上装好 i豆，用飞书账号登录</li>
+          <li>看完这本手册的其余三章</li>
+        </ol>
+      </section>
+      <section class="prose" id="tools">
+        <h2>常用工具</h2>
+        <p>日常沟通都在飞书：消息、文档、日程、审批。写周报、查数据可以直接问 i豆。</p>
+        <p class="note">报销、请假走飞书审批；单笔超过 5000 元的报销要先在群里和主管说一声。</p>
+        <h3>文件放哪里</h3>
+        <p>团队的文件放在「部门共享」文件夹，按项目分子文件夹。自己的草稿放在「我的空间」，写好了再挪过去。</p>
+      </section>
+      <section class="prose" id="people">
+        <h2>找谁</h2>
+        <ul>
+          <li><b>电脑、账号、网络</b>：IT 服务台，飞书搜「IT 服务台」</li>
+          <li><b>工牌、工位、会议室</b>：行政部</li>
+          <li><b>工资、社保、合同</b>：人力资源部</li>
+        </ul>
+        <p>不知道找谁的，先问导师。</p>
+      </section>
+      <section class="prose" id="rules">
+        <h2>几条规矩</h2>
+        <ul>
+          <li>客户资料不发到外部群、不存到个人网盘</li>
+          <li>对外发布的内容先过一遍主管</li>
+          <li>周五下午 4 点前交周报</li>
+        </ul>
+        <blockquote>有拿不准的事，宁可多问一句。</blockquote>
+      </section>
+    </div>
+  </div>
+
+  <footer class="foot">内容是示例。改成你们自己的；也可以把现有的文档交给编程任务，让它按章节排进来。</footer>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

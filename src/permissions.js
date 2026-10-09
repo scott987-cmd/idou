@@ -40,6 +40,14 @@ export function executionPermissionForTask(task) {
 // coding task that is still planning has permission `plan` and merely
 // remembers `full` in executionPermission, so it cannot use this path early;
 // new tasks cannot inherit full (TaskService enforces that separately).
+//
+// And only while the administrators allow it (control-plane/policy.js, asked by
+// the desktop every few minutes): turned off, every card comes back at once,
+// even in a task already set to full, and no task can be set to full.
+let fullAccessAllowed = true;
+export function setFullAccessAllowed(allowed) { fullAccessAllowed = allowed !== false; }
+export function fullAccessAllowedNow() { return fullAccessAllowed; }
+export const FULL_ACCESS_WITHHELD = "管理员关闭了「完全访问」：任务只能用标准或只读模式，对外的动作都先请你确认。";
 export function permitsUnattendedActions(task) {
-  return task?.permission === "full";
+  return fullAccessAllowed && task?.permission === "full";
 }

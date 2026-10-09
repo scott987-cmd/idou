@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>内部导航</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<!-- 团队常用的入口放在一页：能搜、能按分类筛，点开在新窗口里打开。
+     下面的链接是示例。加一个：复制一张 <a class="card"> 改掉文字、链接和 data-category。
+     换个样子：把 site.css 换成别的风格（简约 / 科技 / 立体）。 -->
+<main class="wrap">
+  <header class="head">
+    <div class="head-text">
+      <p class="eyebrow">产品部 · 示例</p>
+      <h1>常用入口</h1>
+    </div>
+  </header>
+
+  <section class="panel">
+    <div class="panel-head">
+      <label class="search"><span class="sr-only">搜索入口</span><input type="search" id="find" placeholder="搜名字或说明"></label>
+      <p class="count" id="count" aria-live="polite"></p>
+    </div>
+    <div class="facet" id="facet" aria-label="按分类筛"></div>
+  </section>
+
+  <section class="cards" id="links">
+    <a class="card" data-category="文档" href="https://example.com/handbook" target="_blank" rel="noopener"><h2>产品手册</h2><p>功能说明、常见问题、版本记录</p></a>
+    <a class="card" data-category="文档" href="https://example.com/roadmap" target="_blank" rel="noopener"><h2>路线图</h2><p>这个季度和下个季度要做的事</p></a>
+    <a class="card" data-category="数据" href="https://example.com/dashboard" target="_blank" rel="noopener"><h2>业务看板</h2><p>日活、留存、转化，每小时更新</p></a>
+    <a class="card" data-category="数据" href="https://example.com/feedback" target="_blank" rel="noopener"><h2>用户反馈</h2><p>工单和应用商店评论汇总</p></a>
+    <a class="card" data-category="流程" href="https://example.com/release" target="_blank" rel="noopener"><h2>发版流程</h2><p>提测、灰度、全量的检查单</p></a>
+    <a class="card" data-category="流程" href="https://example.com/oncall" target="_blank" rel="noopener"><h2>值班表</h2><p>本周谁值班、出了问题找谁</p></a>
+  </section>
+  <p class="empty" id="none" hidden>没有找到匹配的入口。</p>
+
+  <footer class="foot">链接都是示例。换成你们自己的入口；分类写在每张卡的 data-category 上，筛选条会自己出来。</footer>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

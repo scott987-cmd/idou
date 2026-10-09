@@ -60,10 +60,12 @@ export class MediaService {
   // `capacity`: generations under way on the whole server (the pilot's four),
   // and the hourly spend caps for the whole server, which stay the pilot's
   // unless an operator raises them -- they are money, not machine.
-  constructor({ sessions, provider = null, providers = {}, allowDevelopment = false, now = Date.now, audit = () => {}, capacity: { running = 4, perHour = 20, speechPerHour = 400 } = {} }) {
+  // `policy` (policy.js): whether the administrators let this person make
+  // pictures, or video. Asked before a token to make one is given.
+  constructor({ sessions, provider = null, providers = {}, allowDevelopment = false, now = Date.now, audit = () => {}, policy = null, capacity: { running = 4, perHour = 20, speechPerHour = 400 } = {} }) {
     if (![running, perHour, speechPerHour].every((value) => Number.isSafeInteger(value) && value >= 1)) throw new Error("Invalid media capacity");
     this.capacity = Object.freeze({ running, perHour, speechPerHour });
-    Object.assign(this, { sessions, allowDevelopment, now, audit });
+    Object.assign(this, { sessions, allowDevelopment, now, audit, policy });
     this.providers = { image: provider, video: provider, speech: provider, ...providers };
     this.jobs = new Map(); this.pending = new Set(); this.salt = randomBytes(32); this.instanceId = randomUUID(); this.closed = false;
     this.timer = setInterval(() => this.prune(), 60000); this.timer.unref();
@@ -139,6 +141,8 @@ export class MediaService {
       if (req.url === "/auth/media-token") {
         exact(body, ["kind"]);
         if (identity.audience !== "codex-model-gateway" || !["image", "video", "speech"].includes(body.kind)) throw new MediaRequestError(403, "media_scope_required");
+        const feature = { image: "mediaImage", video: "mediaVideo" }[body.kind];
+        if (feature && this.policy && !(await this.policy.permits(identity, feature))) throw new MediaRequestError(403, "media_not_allowed_by_policy");
         // What would make it, said before anything is made: the card the person
         // confirms is built from this, and the job must name the same model.
         const offer = this.providerFor(body.kind).offer(body.kind);
@@ -181,6 +185,7 @@ export class MediaService {
             || this.pending.size >= this.capacity.running) throw new MediaRequestError(429, "media_budget_limit");
         const job = { id: randomUUID(), key, digest, owner, kind: input.kind, model, createdAt: this.now(), state: "running", nextPollAt: this.now() + 10000, busy: true, controller: new AbortController() };
         this.jobs.set(job.id, job);
+        this.audit({ event: "media-submitted", job: job.id, kind: job.kind, model }, { who: identity });
         this.background(job, () => provider.submit(input, job.controller.signal), true);
         send(res, 202, this.snapshot(job)); return true;
       }

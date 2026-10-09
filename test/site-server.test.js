@@ -33,13 +33,6 @@ async function serving(t, { share = { scope: "invited" }, source = null, ...opti
 
 // Signing a visitor cookie the way the server does, so a test can be a visitor
 // without walking through Feishu.
-// The console's, as the admin listener seals it: its own name and a key made from the sites' one.
-async function asAdmin(root, visitor) {
-  const { createHmac } = await import("node:crypto");
-  const key = createHmac("sha256", await siteCookieKey(root)).update("idou admin console cookie v1").digest();
-  const payload = Buffer.from(JSON.stringify({ u: visitor.userId, t: visitor.tenantId, e: Date.now() + 3_600_000 })).toString("base64url");
-  return `idou_admin=${payload}.${createHmac("sha256", key).update(payload).digest("base64url")}`;
-}
 async function asVisitor(root, visitor, name = "mydoubao_site") {
   const { createHmac } = await import("node:crypto");
   const key = await siteCookieKey(root);
@@ -127,7 +120,7 @@ test("somebody the site was not shared with is refused, and told what to do", as
   const text = await answer.text();
   assert.match(text, /向分享给你的人申请/);
   assert.equal(text.includes("ou_owner"), false, "拒绝页不泄露任何标识符");
-  assert.deepEqual(audit.filter((event) => event.event === "site-access").at(-1), { event: "site-access", siteId: site.id, allowed: false, reason: "not_shared", anonymous: false });
+  assert.deepEqual(audit.filter((event) => event.event === "site-access").at(-1), { event: "site-access", siteId: site.id, allowed: false, reason: "not_shared", anonymous: false, counted: "refused" });
 });
 
 test("a site that follows its table asks Feishu about this visitor, and reuses that answer briefly", async (t) => {
@@ -145,6 +138,39 @@ test("a site that follows its table asks Feishu about this visitor, and reuses t
   assert.equal(refused.status, 403);
   assert.match(await refused.text(), /在飞书的表格里设置/);
   assert.deepEqual(asked, ["ou_allowed", "ou_denied"]);
+});
+
+// Found in the 2026-10-03 benchmark: the visitor's Feishu credential was held
+// in memory only, and once it ran out (about two hours) or the server
+// restarted, the visitor was told they had no permission on the table -- when
+// nobody had asked Feishu at all (docs/sites-phase0.md §0.3).
+test("following a table, a visitor without a live Feishu credential is asked to sign in again, never refused for it", async (t) => {
+  const answers = { ou_expired: "relogin", ou_flaky: "unavailable" };
+  const oauth = { authorizationUrl: ({ state }) => `https://feishu.example/authorize?state=${state}`, probeIdentity: async () => null,
+    redeemVisitor: async () => ({ identity: { userId: "ou_fresh", tenantId: "t1" }, token: "u-token", expiresAt: Date.now() + 3_600_000 }) };
+  const { base, site, root } = await serving(t, { share: { scope: "invited", inherit: true }, source: { kind: "base", token: "bascnABCDEFGHIJ", tableId: "tblOne" }, oauth,
+    readsSource: async ({ visitor, credential }) => (credential ? answers[visitor.userId] ?? true : "relogin") });
+  // Signed in, with no credential held here (run out, or a restart): sent to sign in.
+  const stale = await fetch(`${base}/s/${site.id}/`, { headers: { cookie: await asVisitor(root, { userId: "ou_stale", tenantId: "t1" }) }, redirect: "manual" });
+  assert.equal(stale.status, 302);
+  assert.match(stale.headers.get("location"), /^https:\/\/feishu\.example\/authorize/);
+  // Signed in again: a credential is held, Feishu is asked, the visitor is let in.
+  const state = new URL(stale.headers.get("location")).searchParams.get("state");
+  const back = await fetch(`${base}/_auth/callback?state=${state}&code=abc`, { redirect: "manual" });
+  const cookie = back.headers.get("set-cookie").split(";")[0];
+  const entered = await fetch(`${base}/s/${site.id}/`, { headers: { cookie }, redirect: "manual" });
+  assert.equal(entered.status, 302);
+  assert.match(entered.headers.get("location"), new RegExp(`^/s/${site.id}/~`));
+  // Feishu says the token is no longer good: sign in again, not "no permission".
+  const relogin = await fetch(`${base}/s/${site.id}/`, { headers: { cookie: await asVisitor(root, { userId: "ou_expired", tenantId: "t1" }) }, redirect: "manual" });
+  assert.match(relogin.headers.get("location") ?? "", /feishu\.example/);
+  // Just signed in and still nothing to ask with: said plainly, not a loop of sign-ins.
+  const { createHmac } = await import("node:crypto");
+  const key = await siteCookieKey(root);
+  const fresh = Buffer.from(JSON.stringify({ u: "ou_new", t: "t1", e: Date.now() + 3_600_000, i: Date.now() })).toString("base64url");
+  const looped = await fetch(`${base}/s/${site.id}/`, { headers: { cookie: `idou_site=${fresh}.${createHmac("sha256", key).update(fresh).digest("base64url")}` }, redirect: "manual" });
+  assert.equal(looped.status, 503);
+  assert.match(await looped.text(), /暂时没能向飞书确认/);
 });
 
 test("组织内 and 互联网 behave as they are named", async (t) => {
@@ -229,10 +255,12 @@ test("a visitor signed in under either spelling of the product's name stays sign
   const { base, site, root } = await serving(t);
   for (const name of ["idou_site", "mydoubao_site"]) {
     const answer = await fetch(`${base}/s/${site.id}/`, { headers: { cookie: await asVisitor(root, { userId: "ou_owner", tenantId: "t1" }, name) }, redirect: "manual" });
-    assert.equal(answer.status, 200, name);
+    assert.equal(answer.status, 302, name);
+    assert.match(answer.headers.get("location"), new RegExp(`^/s/${site.id}/~`), `${name}: let in, under a capability`);
   }
   const forged = await fetch(`${base}/s/${site.id}/`, { headers: { cookie: "idou_site=e30.x" }, redirect: "manual" });
-  assert.notEqual(forged.status, 200, "a cookie under the new spelling is checked like the old one");
+  assert.notEqual(forged.status, 200, "a forged cookie opens nothing");
+  assert.doesNotMatch(forged.headers.get("location") ?? "", /~/, "a cookie under the new spelling is checked like the old one");
   const out = await fetch(`${base}/_auth/logout`, { redirect: "manual" });
   const cleared = out.headers.getSetCookie();
   assert.deepEqual(cleared.map((line) => line.split("=")[0]).sort(), ["idou_site", "mydoubao_site"]);
@@ -342,79 +370,259 @@ test("an address outside the allowlist learns nothing at all", async (t) => {
   assert.deepEqual(audit.filter((event) => ["site-access", "site-demo", "site-login"].includes(event.event)), []);
 });
 
-const consoleFor = (verdict, seen = []) => ({
-  decide: async (visitor) => { seen.push(visitor.userId); return verdict; },
-  refusal: (v) => `拒绝：${v.reason}`,
-  state: async () => ({ deployment: { anonymous: true }, models: [], sites: [], audit: [], notYet: [] }),
-  page: (state, who) => `<!doctype html><p>${who.userId}</p><p>${JSON.stringify(state)}</p>`,
-});
-
-test("the console is asked again on every request, not trusted from a cookie", async (t) => {
-  const asked = [];
-  const { base, root } = await serving(t, { role: "admin", console: consoleFor({ admin: true, reason: "chat-member" }, asked),
-    oauth: { authorizationUrl: ({ state }) => `https://accounts.example/a?state=${state}`,
-      probeIdentity: async () => ({ userId: "ou_boss", tenantId: "t1" }) } });
-  // Signed out: the console sends them to sign in, asking for no scopes -- it
-  // reads this server, never the visitor's Feishu.
-  const out = await fetch(`${base}/admin`, { redirect: "manual" });
-  assert.equal(out.status, 302);
-
-  const cookie = await asAdmin(root, { userId: "ou_boss", tenantId: "t1" });
-  const page = await fetch(`${base}/admin`, { headers: { cookie } });
-  assert.equal(page.status, 200);
-  assert.match(await page.text(), /ou_boss/);
-  const json = await fetch(`${base}/admin/state.json`, { headers: { cookie } });
-  assert.equal(json.headers.get("content-type"), "application/json; charset=utf-8");
-  assert.deepEqual((await json.json()).deployment, { anonymous: true });
-  // Being removed in Feishu has to take effect without waiting for a cookie to
-  // expire, so the question is put again each time.
-  assert.deepEqual(asked, ["ou_boss", "ou_boss"]);
-});
-
-test("somebody who is not an administrator is told which, and sees nothing", async (t) => {
-  const { base, root, audit } = await serving(t, { role: "admin", console: consoleFor({ admin: false, reason: "not-in-chat" }),
-    oauth: { authorizationUrl: ({ state }) => `https://accounts.example/a?state=${state}`,
-      probeIdentity: async () => ({ userId: "ou_nobody", tenantId: "t1" }) } });
-  const cookie = await asAdmin(root, { userId: "ou_nobody", tenantId: "t1" });
-  for (const at of ["/admin", "/admin/state.json"]) {
-    const answer = await fetch(`${base}${at}`, { headers: { cookie } });
-    assert.equal(answer.status, 403, at);
-    const said = await answer.text();
-    assert.match(said, /not-in-chat/);
-    assert.equal(said.includes("anonymous"), false, "拒绝页不该带上部署情况");
-  }
-  assert.deepEqual(audit.filter((event) => event.event === "admin-access").map((event) => event.allowed), [false, false]);
-});
-
-test("a deployment with no console does not have one", async (t) => {
-  const { base } = await serving(t);
-  assert.equal((await fetch(`${base}/admin`)).status, 404);
-  assert.equal((await fetch(`${base}/admin/state.json`)).status, 404);
-});
-
 // Found in the security review of 2026-09-27: the console was served beside the
 // sites, and a published page is script its author wrote -- opened by an
-// administrator, it could read /admin/state.json as them. Now each has a
-// listener of its own, and neither serves the other or takes the other's cookie.
-test("the console and the sites never share an origin, a route or a sign-in", async (t) => {
+// administrator, it could read the console as them. The console has a listener
+// of its own now (admin-server.js, test/admin-server.test.js); this one refuses
+// its paths and refuses to be given one.
+test("the sites listener serves no console, and will not be given one", async (t) => {
   const sites = await serving(t);
-  const admin = await serving(t, { role: "admin", console: consoleFor({ admin: true, reason: "chat-member" }) });
-  assert.throws(() => createSiteServer({ registry: sites.registry, origin: "https://sites.example", cookieKey: Buffer.alloc(32, 1), console: consoleFor({ admin: true }) }),
+  assert.throws(() => createSiteServer({ registry: sites.registry, origin: "https://sites.example", cookieKey: Buffer.alloc(32, 1), console: {} }),
     /不能和发布的网站同源/, "a console beside the sites is refused outright");
-  assert.equal((await fetch(`${sites.base}/admin`)).status, 404);
-  assert.equal((await fetch(`${sites.base}/admin/state.json`)).status, 404);
-  assert.equal((await fetch(`${admin.base}/s/${admin.site.id}/`)).status, 404, "the console serves no site");
-  assert.equal((await fetch(`${admin.base}/demo`)).status, 404);
-  assert.equal((await fetch(`${admin.base}/`, { redirect: "manual" })).headers.get("location"), "/admin");
-  // A visitor's sign-in is not the console's, even for an administrator, and the other way round.
-  const visitor = await asVisitor(admin.root, { userId: "ou_boss", tenantId: "t1" });
-  for (const name of ["idou_site", "mydoubao_site", "idou_admin"]) {
-    const borrowed = visitor.replace(/^[^=]+=/, `${name}=`);
-    const answer = await fetch(`${admin.base}/admin/state.json`, { headers: { cookie: borrowed }, redirect: "manual" });
-    assert.notEqual(answer.status, 200, name);
+  for (const at of ["/admin", "/admin/state.json", "/admin/api/me", "/admin/assets/app.js"]) {
+    assert.equal((await fetch(`${sites.base}${at}`)).status, 404, at);
   }
-  assert.equal((await fetch(`${admin.base}/admin/state.json`, { headers: { cookie: await asAdmin(admin.root, { userId: "ou_boss", tenantId: "t1" }) } })).status, 200);
-  const adminCookie = await asAdmin(sites.root, { userId: "ou_owner", tenantId: "t1" });
-  assert.notEqual((await fetch(`${sites.base}/s/${sites.site.id}/`, { headers: { cookie: adminCookie.replace(/^idou_admin=/, "idou_site=") }, redirect: "manual" })).status, 200,
-    "nor is the console's sign-in a visitor's");
+});
+
+// docs/sites-phase0.md §0.4: a site shared with a group lets in the people the
+// bot reads in that group, and asks only about the groups the site names.
+test("a site shared with a group lets in its members, and nobody else", async (t) => {
+  const asked = [];
+  const { base, site, root } = await serving(t, {
+    share: { scope: "invited", members: [{ type: "chat", id: "oc_sales", name: "销售群" }] },
+    memberships: async (visitor, chats) => { asked.push(chats); return { chats: visitor.userId === "ou_member" ? chats.filter((id) => id === "oc_sales") : [], departments: [] }; },
+  });
+  const member = await fetch(`${base}/s/${site.id}/`, { headers: { cookie: await asVisitor(root, { userId: "ou_member", tenantId: "t1" }) } });
+  assert.equal(member.status, 200);
+  const outsider = await fetch(`${base}/s/${site.id}/`, { headers: { cookie: await asVisitor(root, { userId: "ou_outsider", tenantId: "t1" }) } });
+  assert.equal(outsider.status, 403);
+  assert.ok(asked.every((chats) => chats.length === 1 && chats[0] === "oc_sales"), "asked about this site's groups only");
+});
+
+// Found reviewing phase 0 (2026-10-03): a group the bot could not read just
+// then told everybody in it "not shared", and kept saying so for 90 seconds.
+test("a group that cannot be read is no answer, not a refusal, and is asked again", async (t) => {
+  let readable = false;
+  const { base, site, root } = await serving(t, {
+    share: { scope: "invited", members: [{ type: "chat", id: "oc_sales", name: "销售群" }] },
+    memberships: async (visitor, chats) => (readable ? { chats, departments: [] } : { chats: [], departments: [], unknown: true }),
+  });
+  const cookie = await asVisitor(root, { userId: "ou_member", tenantId: "t1" });
+  const unread = await fetch(`${base}/s/${site.id}/`, { headers: { cookie } });
+  assert.equal(unread.status, 503);
+  assert.match(await unread.text(), /暂时没能向飞书确认你在不在分享给的群或部门里/);
+  readable = true;
+  assert.equal((await fetch(`${base}/s/${site.id}/`, { headers: { cookie } })).status, 200, "read now: let in, nothing kept from the failure");
+});
+
+// Found reviewing phase 0 (2026-10-03): a capability address copied out of a
+// visitor's address bar served their pages to anything that did not say it
+// was a browser fetching for a page -- curl, a chat's link preview -- for
+// twelve hours. Now only a page's own fetches go by the capability alone.
+test("a capability address opens nothing for somebody else, browser or not; a page's own fetches go by it alone", async (t) => {
+  const { base, site, root } = await serving(t, { share: { scope: "tenant" } });
+  const cookie = await asVisitor(root, { userId: "ou_viewer", tenantId: "t1" }, "idou_site");
+  const at = (await fetch(`${base}/s/${site.id}/`, { headers: { cookie }, redirect: "manual" })).headers.get("location");
+  assert.match(at, new RegExp(`^/s/${site.id}/~`));
+  // The page reads its own address: who opened it is not written there.
+  assert.doesNotMatch(Buffer.from(at.split("~")[1].split(".")[0], "base64url").toString("latin1"), /ou_viewer/, "the visitor is sealed in, not spelled out");
+  // The visitor's own browser, opening it: the page.
+  assert.equal((await fetch(`${base}${at}`, { headers: { cookie, "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" }, redirect: "manual" })).status, 200);
+  // Pasted elsewhere: a link preview or curl says nothing; another browser, or another person, is opening a page.
+  const other = await asVisitor(root, { userId: "ou_other", tenantId: "t1" }, "idou_site");
+  for (const headers of [{}, { "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" }, { cookie: other }, { cookie: other, "sec-fetch-mode": "cors" }]) {
+    const copied = await fetch(`${base}${at}`, { headers, redirect: "manual" });
+    assert.equal(copied.status, 302, JSON.stringify(Object.keys(headers)));
+    assert.equal(copied.headers.get("location"), `/s/${site.id}/`, "sent the normal way in");
+  }
+  // What the sandboxed page itself fetches carries no cookie: the capability is enough.
+  const fetched = await fetch(`${base}${at}`, { headers: { "sec-fetch-mode": "no-cors", "sec-fetch-dest": "script" }, redirect: "manual" });
+  assert.equal(fetched.status, 200);
+  assert.match(fetched.headers.get("content-security-policy"), /; sandbox allow-scripts/, "and sandboxed, whatever it is");
+});
+
+// Found reviewing phase 0 (2026-10-03): Feishu refusing a credential made
+// moments ago sent the visitor to sign in again, which made another credential
+// just like it -- round and round until the browser gave up on redirects. And
+// Feishu giving no answer was asked again by every file of the page, each
+// waiting out its timeout.
+test("a credential refused right after signing in ends in a plain answer, and no answer is not asked again by every file", async (t) => {
+  const asked = [], arriving = ["ou_refused", "ou_flaky"];
+  const oauth = { authorizationUrl: ({ state }) => `https://feishu.example/authorize?state=${state}`, probeIdentity: async () => null,
+    redeemVisitor: async () => ({ identity: { userId: arriving.shift(), tenantId: "t1" }, token: "u-token", expiresAt: Date.now() + 3_600_000 }) };
+  const { base, site, root } = await serving(t, { share: { scope: "invited", inherit: true }, source: { kind: "base", token: "bascnABCDEFGHIJ", tableId: "tblOne" }, oauth,
+    readsSource: async ({ visitor, credential }) => { asked.push(visitor.userId); return !credential ? "relogin" : visitor.userId === "ou_refused" ? "relogin" : "unavailable"; } });
+  const signIn = async () => {
+    const start = await fetch(`${base}/s/${site.id}/`, { redirect: "manual" });
+    const state = new URL(start.headers.get("location")).searchParams.get("state");
+    return (await fetch(`${base}/_auth/callback?state=${state}&code=abc`, { redirect: "manual" })).headers.get("set-cookie").split(";")[0];
+  };
+  const refused = await signIn();
+  const again = await fetch(`${base}/s/${site.id}/`, { headers: { cookie: refused }, redirect: "manual" });
+  assert.equal(again.status, 503, "not another round of signing in");
+  assert.doesNotMatch(again.headers.get("location") ?? "", /feishu\.example/);
+  // No answer: the page and its files are one question for a few seconds.
+  const flaky = await signIn();
+  asked.length = 0;
+  for (let at = 0; at < 3; at += 1) assert.equal((await fetch(`${base}/s/${site.id}/`, { headers: { cookie: flaky }, redirect: "manual" })).status, 503);
+  assert.deepEqual(asked, ["ou_flaky"], "asked once, not once a file");
+});
+
+// docs/sites-phase1.md §1.6: an address name leads on to the site, where
+// signing in and the capability go as always.
+test("a site's address name leads to it, an old name too, and an unknown one says what a missing site says", async (t) => {
+  const { base, site, registry } = await serving(t, { share: { scope: "tenant" } });
+  await registry.setAddress(site.id, { ownerId: "ou_owner", address: "客户看板" });
+  const named = await fetch(`${base}/s/${encodeURIComponent("客户看板")}/page.html?from=qr`, { redirect: "manual" });
+  assert.equal(named.status, 302);
+  assert.equal(named.headers.get("location"), `/s/${site.id}/page.html?from=qr`);
+  await registry.setAddress(site.id, { ownerId: "ou_owner", address: "客户总览" });
+  assert.equal((await fetch(`${base}/s/${encodeURIComponent("客户看板")}/`, { redirect: "manual" })).headers.get("location"), `/s/${site.id}/`, "the old name still leads there");
+  const unknown = await fetch(`${base}/s/${encodeURIComponent("没有这个")}/`, { redirect: "manual" });
+  await registry.withdraw(site.id, { ownerId: "ou_owner" });
+  const down = await fetch(`${base}/s/${encodeURIComponent("客户总览")}/`, { redirect: "manual" });
+  assert.deepEqual([unknown.status, down.status], [404, 404]);
+  assert.equal(await unknown.text(), await down.text(), "a name nobody uses and a site taken down read the same");
+  assert.equal((await fetch(`${base}/s/%E0%A4%A/`, { redirect: "manual" })).status, 404, "a broken encoding is no name");
+});
+
+// Found building visit numbers (docs/sites-phase1.md §1.5): since sites were
+// opened under a capability, every opening was two -- the way in and the page --
+// and both were counted.
+test("an opening is counted once, with where it came from; a refusal once too", async (t) => {
+  const views = [];
+  const { base, site, root, audit } = await serving(t, { share: { scope: "tenant" }, onView: (view) => views.push(view) });
+  const cookie = await asVisitor(root, { userId: "ou_viewer", tenantId: "t1" }, "idou_site");
+  const entered = await fetch(`${base}/s/${site.id}/?from=qr`, { headers: { cookie }, redirect: "manual" });
+  await fetch(`${base}${entered.headers.get("location")}`, { headers: { cookie, "sec-fetch-mode": "navigate", "sec-fetch-dest": "document", "user-agent": "Mozilla/5.0 Lark/7.1" }, redirect: "manual" });
+  // What the page loads is not another opening.
+  await fetch(`${base}${entered.headers.get("location")}`, { headers: { "sec-fetch-mode": "no-cors", "sec-fetch-dest": "script" }, redirect: "manual" });
+  await new Promise((resolve) => setImmediate(resolve));
+  const counted = audit.filter((event) => event.event === "site-access" && event.counted);
+  assert.deepEqual(counted.map((event) => event.counted), ["visit"]);
+  assert.deepEqual(views.map((view) => [view.site.id, view.visitor, view.source]), [[site.id, { tenantId: "t1", userId: "ou_viewer" }, "qr"]]);
+  const outsider = await asVisitor(root, { userId: "ou_x", tenantId: "t2" }, "idou_site");
+  await fetch(`${base}/s/${site.id}/`, { headers: { cookie: outsider }, redirect: "manual" });
+  assert.deepEqual(audit.filter((event) => event.event === "site-access" && event.counted).map((event) => event.counted), ["visit", "refused"]);
+});
+
+// Found 2026-10-04 (a table site of thousands of rows loading slowly): its data
+// was rebuilt for every request, sent uncompressed and never cached -- 4 MB
+// for 5000 rows, again on every reload. Now the same bytes for every visitor,
+// wrapped and compressed once per change, and not sent again while unchanged.
+test("a table site's data is sent compressed, the same for everyone, and not again until it changes", async (t) => {
+  const { base, site, root, registry } = await serving(t, { share: { scope: "tenant" }, source: { kind: "base", token: "bascnABCDEFGHIJ", tableId: "tblOne" } });
+  const rows = Array.from({ length: 400 }, (_, n) => ({ id: `r${n}`, values: { f1: { kind: "text", text: `第 ${n} 行的客户名称`, value: `第 ${n} 行的客户名称` } } }));
+  await registry.putData(site.id, { schema: { fields: [{ id: "f1", name: "客户", kind: "text" }] }, snapshot: { rows, digest: "a1", readAt: 1 } });
+  const capabilityOf = async (userId) => (await fetch(`${base}/s/${site.id}/`, { headers: { cookie: await asVisitor(root, { userId, tenantId: "t1" }, "idou_site") }, redirect: "manual" })).headers.get("location");
+  const asSubresource = { "sec-fetch-mode": "no-cors", "sec-fetch-dest": "script", "accept-encoding": "gzip, deflate, br" };
+  const first = await fetch(`${base}${await capabilityOf("ou_a")}data/table-data.js`, { headers: asSubresource });
+  const second = await fetch(`${base}${await capabilityOf("ou_b")}data/table-data.js`, { headers: asSubresource });
+  assert.equal(first.status, 200);
+  const [one, two] = [Buffer.from(await first.arrayBuffer()), Buffer.from(await second.arrayBuffer())];
+  assert.equal(one.equals(two), true, "the same bytes for every visitor");
+  assert.equal(first.headers.get("etag"), second.headers.get("etag"));
+  // fetch has already undone the compression; what went over the wire was smaller.
+  const raw = await fetch(`${base}${await capabilityOf("ou_a")}data/table-data.js`, { headers: asSubresource });
+  assert.equal(raw.headers.get("content-encoding"), "gzip");
+  assert.ok(Number(raw.headers.get("content-length")) < one.length / 3, `${raw.headers.get("content-length")} of ${one.length}`);
+  assert.match(one.toString(), /currentScript/, "where to ask again comes from the script's own address");
+  assert.doesNotMatch(one.toString(), /~/, "no visitor's capability in what everybody gets");
+  // Unchanged: nothing sent. Changed: sent again, under a new tag.
+  const again = await fetch(`${base}${await capabilityOf("ou_a")}data/table-data.js`, { headers: { ...asSubresource, "if-none-match": first.headers.get("etag") } });
+  assert.equal(again.status, 304);
+  await registry.putData(site.id, { schema: { fields: [{ id: "f1", name: "客户", kind: "text" }] }, snapshot: { rows: rows.slice(1), digest: "a2", readAt: 2 } });
+  const moved = await fetch(`${base}${await capabilityOf("ou_a")}data/table-data.js`, { headers: { ...asSubresource, "if-none-match": first.headers.get("etag") } });
+  assert.equal(moved.status, 200);
+  assert.notEqual(moved.headers.get("etag"), first.headers.get("etag"));
+  // The data the page asks for when told the table changed: the same treatment.
+  const data = await fetch(`${base}${await capabilityOf("ou_a")}_data`, { headers: { "sec-fetch-mode": "cors", "sec-fetch-dest": "empty", "accept-encoding": "gzip" } });
+  assert.equal(data.headers.get("content-encoding"), "gzip");
+  assert.equal((await data.json()).snapshot.digest, "a2");
+  assert.equal((await fetch(`${base}${await capabilityOf("ou_a")}_data`, { headers: { "sec-fetch-mode": "cors", "sec-fetch-dest": "empty", "if-none-match": data.headers.get("etag") } })).status, 304);
+  // A published file too: its version is its tag.
+  const pageAt = `${base}${await capabilityOf("ou_a")}`;
+  const opened = await fetch(pageAt, { headers: { cookie: await asVisitor(root, { userId: "ou_a", tenantId: "t1" }, "idou_site"), "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" } });
+  assert.equal(opened.status, 200);
+  const cached = await fetch(pageAt, { headers: { cookie: await asVisitor(root, { userId: "ou_a", tenantId: "t1" }, "idou_site"), "sec-fetch-mode": "navigate", "sec-fetch-dest": "document", "if-none-match": opened.headers.get("etag") } });
+  assert.equal(cached.status, 304);
+  assert.match(opened.headers.get("content-security-policy"), /sandbox/, "still sandboxed");
+});
+
+test("a visitor's request does not read the data: it is read and compressed once per write, and kept compressed only", async (t) => {
+  const { base, site, root, registry } = await serving(t, { share: { scope: "tenant" }, source: { kind: "base", token: "bascnABCDEFGHIJ", tableId: "tblOne" } });
+  let reads = 0;
+  const real = registry.dataBytes.bind(registry);
+  registry.dataBytes = async (id) => { reads += 1; return real(id); };
+  // Past the size kept plain as well: 5,000 rows of a long text.
+  const rows = Array.from({ length: 5000 }, (_, n) => ({ id: `r${n}`, values: { f1: { kind: "text", text: `第 ${n} 行的客户名称和一段说明`.padEnd(120, "。") } } }));
+  const table = (digest, list = rows) => ({ schema: { fields: [{ id: "f1", name: "客户", kind: "text" }] }, snapshot: { rows: list, digest, readAt: 1 } });
+  await registry.putData(site.id, table("a1"));
+  const capabilityOf = async (userId) => (await fetch(`${base}/s/${site.id}/`, { headers: { cookie: await asVisitor(root, { userId, tenantId: "t1" }, "idou_site") }, redirect: "manual" })).headers.get("location");
+  const script = { "sec-fetch-mode": "no-cors", "sec-fetch-dest": "script", "accept-encoding": "gzip" };
+  const bodies = [];
+  for (const who of ["ou_a", "ou_b", "ou_c"]) {
+    const answer = await fetch(`${base}${await capabilityOf(who)}data/table-data.js`, { headers: script });
+    assert.equal(answer.status, 200);
+    bodies.push(Buffer.from(await answer.arrayBuffer()));
+  }
+  assert.equal(reads, 1, "three visitors, one read of the data");
+  assert.ok(bodies[0].length > 1024 * 1024, `${bodies[0].length} bytes: past what is kept plain`);
+  // A client that takes no gzip still gets the whole of it, inflated for it.
+  const plain = await fetch(`${base}${await capabilityOf("ou_a")}data/table-data.js`, { headers: { ...script, "accept-encoding": "identity" } });
+  assert.equal(plain.headers.get("content-encoding"), null);
+  const plainBody = Buffer.from(await plain.arrayBuffer());
+  assert.equal(plainBody.equals(bodies[0]), true);
+  assert.equal(Number(plain.headers.get("content-length")), plainBody.length);
+  const head = await fetch(`${base}${await capabilityOf("ou_a")}data/table-data.js`, { method: "HEAD", headers: { ...script, "accept-encoding": "identity" } });
+  assert.equal(Number(head.headers.get("content-length")), plainBody.length);
+  assert.equal(reads, 1, "nor for that");
+  // A new write is read again, once, and served.
+  await registry.putData(site.id, table("a2", rows.slice(1)));
+  const moved = await fetch(`${base}${await capabilityOf("ou_a")}data/table-data.js`, { headers: script });
+  assert.notEqual(Buffer.from(await moved.arrayBuffer()).equals(bodies[0]), true);
+  await fetch(`${base}${await capabilityOf("ou_b")}data/table-data.js`, { headers: script }).then((answer) => answer.arrayBuffer());
+  assert.equal(reads, 2);
+});
+
+test("the same visitor opening a site again is given the same address, so the browser's cache can answer", async (t) => {
+  // Measured on a real 20,000-row Base (2026-10-06): a new capability at every
+  // opening was a new address for every file, and the table's 737 KB went again each time.
+  let clock = Date.parse("2026-10-06T01:00:00Z");
+  const { base, site, root } = await serving(t, { share: { scope: "tenant" }, source: { kind: "base", token: "bascnABCDEFGHIJ", tableId: "tblOne" }, now: () => clock });
+  const { createHmac } = await import("node:crypto");
+  const key = await siteCookieKey(root);
+  const cookieFor = (userId, until) => {
+    const payload = Buffer.from(JSON.stringify({ u: userId, t: "t1", e: until })).toString("base64url");
+    return `idou_site=${payload}.${createHmac("sha256", key).update(payload).digest("base64url")}`;
+  };
+  const week = clock + 7 * 86_400_000;
+  const entry = async (cookie) => (await fetch(`${base}/s/${site.id}/`, { headers: { cookie }, redirect: "manual" })).headers.get("location");
+  const first = await entry(cookieFor("ou_a", week));
+  assert.match(first, new RegExp(`^/s/${site.id}/~`));
+  clock += 60_000;
+  assert.equal(await entry(cookieFor("ou_a", week)), first, "a minute later: the same address");
+  assert.notEqual(await entry(cookieFor("ou_b", week)), first, "somebody else's is their own");
+  // A sign-in ending sooner ends the capability with it -- and is as stable.
+  const soon = clock + 3_600_000;
+  const short = await entry(cookieFor("ou_a", soon));
+  assert.notEqual(short, first);
+  clock += 60_000;
+  assert.equal(await entry(cookieFor("ou_a", soon)), short);
+  // Past the step, a new one: an address does not stay valid for ever because it was once asked for.
+  clock += 6 * 3_600_000;
+  assert.notEqual(await entry(cookieFor("ou_a", week)), first);
+  // The address it was given still opens the page, for its own visitor only.
+  const page = await fetch(`${base}${first}`, { headers: { cookie: cookieFor("ou_a", week), "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" }, redirect: "manual" });
+  assert.equal(page.status, 200);
+});
+
+test("capabilities end on a step of their own, never after the sign-in", async () => {
+  const { capabilityUntil } = await import("../src/control-plane/site-server.js");
+  const now = Date.parse("2026-10-06T01:23:45Z");
+  const until = capabilityUntil(now);
+  assert.equal(until % (6 * 3_600_000), 0, "on a six-hour boundary");
+  assert.ok(until > now + 6 * 3_600_000 - 1 && until <= now + 12 * 3_600_000, new Date(until).toISOString());
+  assert.equal(capabilityUntil(now + 60_000), until, "the same for a minute later");
+  assert.equal(capabilityUntil(now, now + 3_600_000), now + 3_600_000, "the sign-in's end when it comes first");
 });

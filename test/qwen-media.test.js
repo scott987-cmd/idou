@@ -162,7 +162,11 @@ test("why Qwen refused or gave up is in the server log as its code, never its me
   const made = await f.create(token, { model: "happyhorse-1.1-t2v" }); await f.settle();
   f.advance(10000); await f.post("/v1/media/job", token, { id: made.body.id }); await f.settle();
   assert.equal((await f.post("/v1/media/job", token, { id: made.body.id })).body.state, "failed");
-  assert.deepEqual(events, [
+  // Each paid job's start is a line too (for the administration console's
+  // trail): which job, which model -- never the prompt.
+  assert.deepEqual(events.filter((event) => event.event === "media-submitted").map((event) => [event.job, event.model]),
+    [[refused.body.id, "happyhorse-1.1-t2v"], [made.body.id, "happyhorse-1.1-t2v"]]);
+  assert.deepEqual(events.filter((event) => event.event !== "media-submitted"), [
     { event: "media-submit-failed", job: refused.body.id, kind: "video", code: "media_provider_rejected", state: "failed", providerCode: "InvalidApiKey" },
     { event: "media-failed", job: made.body.id, kind: "video", code: "media_provider_rejected", providerCode: "InvalidParameter" },
   ]);

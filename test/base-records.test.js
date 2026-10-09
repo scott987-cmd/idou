@@ -117,3 +117,15 @@ test("控制面：按记录 ID 读是一个具名读取——只认记录 ID 列
     assert.equal(read(path, { record_id_list: ["rec1a"] }), "not a read", path);
   }
 });
+
+test("数据表的版本号和行数一次读出，只认数字；读不到这张表就说没找到", async () => {
+  const f = fakeBase();
+  assert.deepEqual(await f.records.tableState(BASE, TABLE), { rev: 3, count: 3 });
+  const asked = f.calls.filter(argv => argv[0] === "base");
+  assert.deepEqual(asked.map(argv => argv[1]), ["+table-list"], "一次调用，不读记录");
+  assert.ok(asked[0].includes("--as") && asked[0].includes("user"), "以本人身份");
+  const odd = fakeBase({ answer: data => data.tables ? { ...data, tables: data.tables.map(table => ({ ...table, rev: "3", records_count: -1 })) } : data });
+  assert.deepEqual(await odd.records.tableState(BASE, TABLE), { rev: null, count: null }, "说不清的就当没说");
+  await assert.rejects(() => f.records.tableState(BASE, "tblSomeOther0001"), /未找到这张数据表/);
+  await assert.rejects(() => f.records.tableState(BASE, "not-a-table"), /数据表标识无效/);
+});

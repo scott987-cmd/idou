@@ -16,10 +16,21 @@ export const APP_CONTENT_TYPES = Object.freeze({
   ".svg": "image/svg+xml", ".woff2": "font/woff2", ".mp4": "video/mp4", ".webm": "video/webm",
 });
 const VIDEO = /\.(mp4|webm)$/i;
+// What a folder holds that its version leaves out, without refusing it: a name
+// starting with "." (.git, .DS_Store) or node_modules -- a package install, not
+// the page, and never within a version's limits -- anywhere in its path, and
+// Markdown, which is notes about the site (a README, a plan) rather than part
+// of it. Refused, a README.md once sent a coding task to write the notes into
+// i豆's own data beside the site (2026-10-08). vendor/ is not left out: it is
+// where a page keeps its own copy of a library, and three.js put there was
+// missing from the version while the page asked for it (2026-10-08). The local
+// preview serves by the same rule (workspace-files.js).
+export const appLeftOutName = (name) => name.startsWith(".") || name === "node_modules";
+export const APP_NOTES_PATTERN = /\.(md|markdown)$/i;
 export function appPath(value) {
   const shown = typeof value === "string" ? value.slice(0, 120) : String(value).slice(0, 120);
   if (typeof value !== "string" || !value || value.length > 200 || /[\\\u0000-\u001f\u007f:?#%]/.test(value)) throw new Error(`文件名不能用在网站里：${shown}`);
-  if (value.split("/").some((part) => !part || part.startsWith(".") || ["node_modules", "vendor"].includes(part))) throw new Error(`这个位置不会被发布：${shown}`);
+  if (value.split("/").some((part) => !part || appLeftOutName(part))) throw new Error(`这个位置不会被发布：${shown}`);
   if (!APP_FILE_PATTERN.test(value)) throw new Error(`网站里不能包含这种文件：${shown}（只支持 ${APP_FILE_TYPES}）`);
   return value;
 }
@@ -34,15 +45,25 @@ export const appFileLimit = (file) => VIDEO.test(String(file)) ? APP_LIMITS.vide
 // asked to put a video on the product page copied an .mp4 and wrote a faq.md
 // into the site, and publishing failed at the end on files it had been asked
 // to add. Told up front, it converts or leaves out what cannot be published.
-export function siteRulesInstruction(name) {
+// `owned`: the folder is one i豆 made in its own data (site-store.js
+// ownedFolder), beside the person's other sites. Told only to keep what could
+// not be published "outside this folder", a task under 完全访问 put its notes
+// and an npm install right there (2026-10-08); it is told where scratch goes.
+export function siteRulesInstruction(name, { owned = false } = {}) {
   const site = typeof name === "string" && name.trim() ? `"${name.trim().slice(0, 80)}"` : "a website";
   const mib = (bytes) => `${bytes / 1024 / 1024} MiB`;
   return `This working directory is the folder of ${site}, which i豆 publishes as a static website for other people to open. `
-    + `Publishing takes every file in this folder except names that start with "." and the node_modules and vendor folders, and it refuses the whole version if any of those files breaks these rules: `
+    + `Publishing leaves out names that start with ".", node_modules folders and Markdown (.md) files -- notes about the site, such as a README or a plan, may stay here as Markdown and are not published. `
+    + `It takes every other file, and refuses the whole version if any of them breaks these rules: `
     + `only ${APP_FILE_TYPES} files (also htm); at most ${mib(APP_LIMITS.videoBytes)} for an mp4 or webm video and ${mib(APP_LIMITS.fileBytes)} for any other file, ${APP_LIMITS.files} files and ${mib(APP_LIMITS.totalBytes)} in all; no symbolic links. `
-    + `A video goes in as a <video> of its own file, compressed to fit (H.264 mp4 plays everywhere). Audio, Markdown, plain text, GIF, mov and every other type cannot be published. `
-    + `Do not add such files to this folder: convert what the page needs into an allowed type (notes into the HTML itself, a GIF into a WebP or an mp4) or keep it outside this folder, `
-    + `and tell the person what you converted or left out and why.`;
+    + `It also refuses a page that refers to a file it leaves out, which would be missing once published: a library the page loads (three.js, say) is copied into a folder that is published, such as vendor/ or lib/, never loaded from node_modules. `
+    + `A video goes in as a <video> of its own file, compressed to fit (H.264 mp4 plays everywhere). Audio, plain text, GIF, mov and every other type cannot be published. `
+    + `Do not add such files to this folder: convert what the page needs into an allowed type (a GIF into a WebP or an mp4) or leave it out, and tell the person what you converted or left out and why. `
+    + `Unless the person names a place, anything that is not part of the site -- downloads, a package installed to copy a file out of, scratch files -- goes in a temporary folder of your own (mktemp -d), never beside this folder`
+    + (owned ? `: the folder that contains this one is i豆's own data, holding the person's other sites, and nothing may be written there. ` : `. `)
+    // docs/sites-phase0.md §0.2: a published page is sandboxed in the browser.
+    + `Once published, every page runs sandboxed in the visitor's browser: refer to the site's own files only by relative paths (never "/s/..."), load nothing from any other address, `
+    + `and treat localStorage, sessionStorage, IndexedDB and cookies as unavailable -- wrap any use of them in try/catch so the page still works without them.`;
 }
 export function appManifest(value) {
   if (!value || Object.keys(value).some((key) => !["schemaVersion", "runtime", "network", "entry", "files"].includes(key)) || value.schemaVersion !== 1 || value.runtime !== "static" || value.network !== "none" || !Array.isArray(value.files) || !value.files.length || value.files.length > APP_LIMITS.files || !/\.html?$/.test(value.entry)) throw new Error("应用版本清单无效");

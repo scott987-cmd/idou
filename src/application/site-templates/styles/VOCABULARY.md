@@ -42,11 +42,16 @@
 | `.facet` / `.facet-chip` | 看板、名单、进度、时间线 | 分类筛选条和它的标签，选中的是 `[aria-pressed="true"]` |
 | `.tiles` / `.tile`（内含 `b` 和 `span`） | 看板 | 概览数字 |
 | `.chart` / `.chart-title` / `.bar-row` / `.bar-label` / `.bar-track` / `.bar-fill` / `.bar-value` | 看板 | 按分类汇总的条形图，没有图表库 |
-| `table` / `th .sort` / `th .arrow` / `td.num` / `td.blank` | 看板 | 明细表，表头可点排序 |
+| `table` / `th .sort` / `th .arrow` / `td.num` / `td.blank` / `td .clip` | 看板 | 明细表，表头可点排序；`.clip` 让一格只占一行、太长的截断 |
 | `.cards` / `.card` / `.card dl` / `dt` / `dd` | 名单 | 卡片列表 |
 | `.board` / `.column` / `.column-head` / `.column-count` / `.ticket` / `.ticket-title` / `.ticket-meta` | 进度 | 按状态分列的看板 |
 | `.timeline` / `.period` / `.period-label` / `.event` / `.event-when` / `.event-body` / `.event-title` | 时间线 | 一条线和线上的事件 |
 | `.hero` / `.hero-text` / `.hero-figure` / `.features` / `.feature` / `.cta` | 介绍页 | 主视觉、卖点、行动按钮 |
+| `.section` / `.section-title` | 活动页 | 一节内容和它的小标题 |
+| `.list` | 周报 | 卡片里的条目列表 |
+| `a.card`（内含 `h2`、`p`） | 内部导航 | 整张卡是一个链接；`[hidden]` 的卡不显示 |
+| `.handbook` / `.toc` / `.toc a[aria-current]` / `.chapters` / `.prose` / `.note` | 培训手册 | 目录加正文；`.prose` 里的 `h2 h3 p ul ol blockquote code` 都要有样子 |
+| `.more` | 所有接表格的场景 | 「再显示 N 条」按钮：一次只画一页，在面板里、卡片列表下、看板的列里都要好看 |
 | `.cell-chip` / `.cell-person` / `[data-kind="link"] a` | 所有接表格的场景 | 单选多选画成标签、人员画成名字、链接画成链接 |
 
 ## 两条硬规矩

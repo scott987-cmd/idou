@@ -79,6 +79,11 @@ const GROUPS = [
   // Base read on 2026-09-13 was refused with base:field:read.
   { need: "读多维表格（Agent）", scopes: [["base:app:read", "named-by-feishu"], ["base:table:read", "named-by-feishu"],
     ["base:field:read", "named-by-feishu"], ["base:record:read", "granted-elsewhere"]] },
+  // A table site lays its columns out as the table's first view does
+  // (`+view-get-visible-fields`, table-snapshot.js fieldOrder): the field list
+  // comes in a different order on every call. Without this scope that read is
+  // refused and the site falls back to the order the slice was picked in.
+  { need: "按表格视图排列网站的列", scopes: [["base:view:read", "granted-elsewhere"]] },
   // 日程与任务. Taken from the same working identity on this tenant (see the
   // sheets/Base note above), and limited to what the Agent is being given:
   // reading the agenda and free/busy, creating and updating events, replying to
@@ -91,6 +96,11 @@ const GROUPS = [
   { need: "读任务（Agent）", scopes: [["task:task:read", "granted-elsewhere"], ["task:tasklist:read", "granted-elsewhere"]] },
   { need: "建改、完成任务（Agent）", scopes: [["task:task:write", "granted-elsewhere"]] },
   { need: "写多维表格记录（Agent）", scopes: [["base:record:create", "granted-elsewhere"], ["base:record:update", "granted-elsewhere"]] },
+  // Building a table from nothing: a new Base, a data table in it, a field.
+  // Creation only -- nothing here deletes, renames, retypes or shares
+  // (cli-write-plan.js base.create / base.table.create / base.field.create).
+  { need: "新建多维表格、数据表、字段（Agent）", scopes: [["base:app:create", "granted-elsewhere"], ["base:table:create", "granted-elsewhere"],
+    ["base:field:create", "granted-elsewhere"]] },
   // Deletion (the cli.delete action). Only the two that have their own scope:
   // deleting a task is task:task:write, clearing or deleting sheet content is
   // sheets:spreadsheet:write_only, and deleting document blocks is docx:document,

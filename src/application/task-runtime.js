@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { siteRulesInstruction } from "../apps/manifest.js";
 import { secretValues } from "./redact-secrets.js";
 import { fileURLToPath } from "node:url";
+import { fullAccessAllowedNow } from "../permissions.js";
 
 // Writing a .docx or .pptx by hand means installing packages and writing a
 // throwaway script, which in practice does not finish inside one turn. The
@@ -71,7 +72,10 @@ export async function createTaskRuntime(config, task) {
   // moment they say 开始做 -- planning never silently widens it, and 只读计划 is
   // narrower than every other option, so this can only ever reduce what a turn
   // may do.
-  const permission = task.stage === "planning" ? getPermission("plan") : getPermission(task.permission);
+  // A task left in full after the administrators withheld it runs this turn
+  // as standard: sandboxed, and asking first (permissions.js).
+  const permission = task.stage === "planning" ? getPermission("plan")
+    : getPermission(task.permission === "full" && !fullAccessAllowedNow() ? "standard" : task.permission);
   // The connection check builds a runtime for something that is not a task: it
   // has a mode, a throwaway directory and a connection, but no identity. The
   // Agent bridge binds one task id per shell, so it has nothing to bind here --
@@ -123,7 +127,7 @@ export async function createTaskRuntime(config, task) {
   }
   // A coding task on a site's own folder (config.site, found by the desktop) is
   // told what publishing will accept before it adds anything.
-  if (mode.id === "coding" && config.site) developerParts.push(siteRulesInstruction(config.site.name));
+  if (mode.id === "coding" && config.site) developerParts.push(siteRulesInstruction(config.site.name, { owned: config.site.owned === true }));
   developerParts.push(permission.instruction);
   if (mode.id !== "coding") {
     if (task.knowledgeScope) developerParts.push(knowledgeScopeInstruction({ command: bridge ? agentCommand : null }));

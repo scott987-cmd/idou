@@ -18,7 +18,8 @@
 // /healthz stays what it was: the desktop reads which model this server runs
 // from it, and it is answered by every replica, most of which know nothing of
 // the coordinator's certificates or runs.
-import { statfs } from "node:fs/promises";
+import { readFile, statfs } from "node:fs/promises";
+import path from "node:path";
 import { connect as connectTls } from "node:tls";
 import { LASTING_REASONS } from "./model-health.js";
 
@@ -36,10 +37,11 @@ const day = (at, timeZone) => new Intl.DateTimeFormat("zh-CN", { timeZone, year:
 export class HealthMonitor {
   // `checks`: [{ name, label, run }] -- `run` answers { level, summary, value }.
   // `notify(text)` reaches the administrators and says whether anybody got it.
-  constructor({ checks, notify = null, now = Date.now, repeatMs = DAY_MS, log = () => {} }) {
+  // `record(status)` keeps each sweep's answers (process-status.js StatusHistory).
+  constructor({ checks, notify = null, record = null, now = Date.now, repeatMs = DAY_MS, log = () => {} }) {
     if (!Array.isArray(checks) || !checks.length) throw new Error("健康检查需要至少一项检查");
     for (const check of checks) if (!/^[a-z][a-z0-9_]*$/.test(check?.name ?? "") || typeof check.run !== "function") throw new Error(`健康检查无效：${check?.name}`);
-    Object.assign(this, { checks, notify, now, repeatMs, log });
+    Object.assign(this, { checks, notify, record, now, repeatMs, log });
     this.results = new Map();
     this.memory = new Map(checks.map((check) => [check.name, { seen: null, streak: 0, told: "ok", toldAt: 0 }]));
     this.sweeping = null;
@@ -65,6 +67,16 @@ export class HealthMonitor {
       this.results.set(check.name, { name: check.name, label: check.label, level: result.level, summary: result.summary, value: Number.isFinite(result.value) ? result.value : null, at: this.now() });
       await this.#tell(check, result);
     }));
+    // Kept for the page's history; a sweep is not undone by failing to keep it.
+    // Bounded like a check: a database that hangs must not stop the sweeps
+    // that would report it.
+    if (this.record) {
+      let timer;
+      await Promise.race([Promise.resolve().then(() => this.record(this.status())),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${CHECK_TIMEOUT_MS / 1000} 秒没有写完`)), CHECK_TIMEOUT_MS); timer.unref?.(); })])
+        .catch((error) => this.log(JSON.stringify({ component: "health", event: "history-not-kept", message: said(error) })))
+        .finally(() => clearTimeout(timer));
+    }
     return this.status();
   }
 
@@ -83,7 +95,7 @@ export class HealthMonitor {
     this.log(JSON.stringify({ component: "health", check: check.name, level: result.level, summary: result.summary }));
     if (typeof this.notify !== "function") { memory.told = result.level; memory.toldAt = this.now(); return; }
     // Not marked as told unless somebody was: the next sweep tries again.
-    const reached = await Promise.resolve().then(() => this.notify(text)).catch(() => false);
+    const reached = await Promise.resolve().then(() => this.notify(text, { level: result.level, check: check.name })).catch(() => false);
     if (reached) { memory.told = result.level; memory.toldAt = this.now(); }
   }
 
@@ -247,12 +259,46 @@ export function modelCheck({ health, defaultModel }) {
   } };
 }
 
+// The last backup, as bin/backup.js wrote it in its directory (status.json):
+// a day and a half without one that worked is a warning, three days or one
+// that failed is critical. The file says when, how big, whether a sealed copy
+// was made and sent; nothing of what is in it.
+export const BACKUP_STATUS = "status.json";
+// No database address with its credentials goes on from here, whatever wrote the file.
+const withoutCredentials = (text) => String(text ?? "").replace(/\b(postgres(?:ql)?:\/\/)[^\s"']*/gi, "$1…");
+export async function readBackupStatus(dir) {
+  let text;
+  try { text = await readFile(path.join(dir, BACKUP_STATUS), "utf8"); }
+  catch (error) { if (error?.code === "ENOENT") return null; throw error; }
+  let status;
+  try { status = JSON.parse(text); } catch { throw Object.assign(new Error("备份记录损坏，不是有效的 JSON"), { code: "ECORRUPT" }); }
+  for (const entry of [status?.last, status?.lastSuccess]) if (entry?.error) entry.error = withoutCredentials(entry.error).slice(0, 300);
+  return status;
+}
+export function backupCheck({ dir, now = Date.now, read = readBackupStatus, warnMs = 36 * 3600_000, criticalMs = 72 * 3600_000 }) {
+  return { name: "backup", label: "备份", run: async () => {
+    const status = await read(dir);
+    const at = now();
+    if (!status?.last) return { level: "warning", summary: `${dir} 里还没有备份记录：备份没有运行过，或者服务器上的备份程序还是不写记录的旧版。`, value: null };
+    const success = status.lastSuccess ? Date.parse(status.lastSuccess.endedAt) : NaN;
+    const age = Number.isFinite(success) ? at - success : Infinity;
+    const when = Number.isFinite(success) ? `最近一次成功是 ${Math.max(0, Math.floor(age / 3600_000))} 小时前` : "还没有成功过";
+    const value = Number.isFinite(age) ? Math.round(age / 1000) : null;
+    const why = withoutCredentials(status.last.error ?? "原因不明").slice(0, 200);
+    if (status.last.ok === false) return { level: "critical", summary: `最近一次备份失败了（${why}），${when}。`, value };
+    if (age >= criticalMs) return { level: "critical", summary: `${when}：超过 3 天没有备份，看备份定时器有没有在跑。`, value };
+    if (age >= warnMs) return { level: "warning", summary: `${when}：备份每天一次，已经超过一天半。`, value };
+    const sealed = status.lastSuccess.sealed ? (status.lastSuccess.shipped ? "，加密副本已送出" : "，加密副本留在本机") : "，没有加密副本";
+    return ok(`${when}，${status.lastSuccess.files} 个文件，${(status.lastSuccess.bytes / 1048576).toFixed(1)} MB${sealed}。`, value);
+  } };
+}
+
 // What the coordinator checks, from what this server has: its data disk and
 // public addresses always; the egress certificate, sandbox, runs, pushes and
 // suspensions with scheduled tasks; the ledger, the shared database and the
 // model upstreams where there are any.
 export function coordinatorChecks({ dataDirectory, origins = [], scheduled = null, tally = null, ledger = null, capacity = null,
-  database = null, models = null, defaultModel = null, now = Date.now }) {
+  database = null, models = null, defaultModel = null, backupDir = null, processes = null, now = Date.now }) {
   const checks = [diskCheck({ path: dataDirectory })];
   const served = new Set(origins.filter((origin) => typeof origin === "string" && origin.startsWith("https:")).map((origin) => new URL(origin).origin));
   for (const origin of served) checks.push(publicCertificateCheck({ origin, now }));
@@ -269,19 +315,25 @@ export function coordinatorChecks({ dataDirectory, origins = [], scheduled = nul
   if (ledger && capacity) checks.push(ledgerCheck({ size: () => ledger.size(), capacity }));
   if (database) checks.push(databaseCheck({ ping: () => database.query("SELECT 1") }));
   if (models && defaultModel) checks.push(modelCheck({ health: models, defaultModel }));
+  if (backupDir) checks.push(backupCheck({ dir: backupDir, now }));
+  if (processes) checks.push(processes);
   return checks;
 }
 
 // Each administrator, through the bot, one at a time (feishu-bot.js takes open
 // ids only). True when anybody got it; who did not, and why, goes to the log.
-export function alertAdministrators({ directory, bot, log = () => {} }) {
-  return async (text) => {
+// `sent({ text, level, recipients, reached })` hears of every alert, for the
+// page's list of what was sent.
+export function alertAdministrators({ directory, bot, sent = null, log = () => {} }) {
+  return async (text, { level = "warning" } = {}) => {
     let reached = 0;
-    for (const openId of await directory.recipients()) {
+    const recipients = await directory.recipients();
+    for (const openId of recipients) {
       const answer = await bot.sendText({ openId, text }).catch((error) => ({ sent: false, reason: said(error) }));
       if (answer.sent) reached += 1;
       else log(JSON.stringify({ component: "health", event: "alert-not-sent", reason: answer.reason ?? null }));
     }
+    if (sent) await Promise.resolve().then(() => sent({ text, level, recipients: recipients.length, reached })).catch(() => {});
     return reached > 0;
   };
 }

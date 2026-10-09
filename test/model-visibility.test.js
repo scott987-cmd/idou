@@ -95,3 +95,20 @@ test("group membership is asked once a minute, and a refusal is held just as lon
   await assert.rejects(() => membership.has("oc_x", "ou_a"), /down/);
   assert.equal(reads, 4);
 });
+
+// Found reviewing phase 0 (2026-10-03): every group asked about once was held
+// for as long as the process ran -- sharing a site with groups made the bot
+// read them, and requests naming new ones grew the server without end.
+test("group membership is held for at most so many groups", async () => {
+  let clock = 0, reads = 0;
+  const membership = chatMembership({ now: () => clock, cacheMs: 60_000, maxEntries: 3, readChatMembers: async (id) => { reads += 1; return [`ou_${id}`]; } });
+  for (const id of ["a", "b", "c", "d", "e"]) await membership.members(id);
+  assert.equal(reads, 5);
+  await membership.members("e");
+  assert.equal(reads, 5, "the newest are still held");
+  await membership.members("a");
+  assert.equal(reads, 6, "the oldest went to make room");
+  clock = 120_000;
+  for (const id of ["f", "g"]) await membership.members(id);
+  assert.equal(reads, 8);
+});

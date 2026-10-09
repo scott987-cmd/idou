@@ -111,6 +111,15 @@ test("a model replica serves the coordinator's tokens the model and nothing else
   await admin.connect(); server.closeFirst(() => admin.end());
   const counted = Number((await admin.query("SELECT COALESCE(SUM(requests), 0) AS n FROM idou_model_usage")).rows[0].n);
   assert.ok(counted >= 2, `the replica's two answers are in the ledger (${counted})`);
+  // 服务状态 (docs/service-status.md): its answers in the traffic, by model;
+  // stopped cleanly, it is marked stopped; the coordinator runs on.
+  // Kept per time bucket: two answers either side of a bucket's end are two
+  // rows of one each (seen under load, 2026-10-06), so they are added up.
+  const traffic = (await admin.query("SELECT model, counts FROM idou_admin_traffic")).rows;
+  const ok = traffic.filter((row) => row.model === slug).reduce((sum, row) => sum + JSON.parse(row.counts).ok, 0);
+  assert.ok(ok >= 2, JSON.stringify(traffic));
+  assert.deepEqual((await admin.query("SELECT role, state FROM idou_admin_processes ORDER BY role")).rows.map((row) => [row.role, JSON.parse(row.state).stopped === true]),
+    [["api", true], ["coordinator", false]], "the replica stopped, and said so");
   // Its stopping revoked nothing: the coordinator's token still works there.
   const still = await fetch(`${/Development gateway: (http:\/\/127\.0\.0\.1:\d+)/.exec(coordinator.output)[1]}/v1/responses`, { method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ model: slug, input: "fixture question" }) });

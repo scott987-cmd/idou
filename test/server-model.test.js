@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { EventEmitter, once } from "node:events";
-import { fetchServerModel, modelFields, modelRefused, probeServerModel, ServerModel, MODEL_UNCONFIRMED, modelProblem, turnRefused } from "../src/providers/codex/server-model.js";
+import { fetchServerModel, modelFields, modelRefused, probeServerModel, ServerModel, MODEL_UNCONFIRMED, modelProblem, taskModelFields, turnRefused } from "../src/providers/codex/server-model.js";
 import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { DocumentProposalModel } from "../src/application/document-proposal-model.js";
@@ -260,6 +260,33 @@ test("the server's record of the person's model decides, and a choice is kept th
   assert.equal(await known.requestModel(), "GLM-5.3");
   assert.equal((await known.choose(null)).choice, null, "and back to following the default");
   assert.deepEqual(sent, ["GLM-5.3", null]);
+});
+
+// The composer's model chip says what the next turn will ask for. On
+// 2026-10-08 it read the server's default instead: a person who had picked
+// GLM-5.3 saw MiniMax-M3 beside the send button while their turns ran on GLM.
+test("the composer names the model the next turn asks for, whichever way it was chosen", async () => {
+  const both = { model: "MiniMax-M3", models: ["MiniMax-M3", "GLM-5.3"] };
+  let record = { available: ["MiniMax-M3", "GLM-5.3"], default: "MiniMax-M3", choice: null, current: "MiniMax-M3", unavailable: [] };
+  const remote = { options: async () => record, choose: async (model) => { record = { ...record, choice: model, current: model ?? record.default }; return record; } };
+  const kept = new ServerModel({ serverUrl: async () => "https://gateway.example", probe: async () => both, now: () => 0, remote });
+  kept.learn(); await kept.current();
+  const says = async (scope) => { const known = await scope.current(); return { default: modelFields(known).model, chip: taskModelFields(scope.options()).taskModelLabel, asks: await scope.requestModel() }; };
+  assert.deepEqual(await says(kept), { default: "MiniMax-M3", chip: "MiniMax-M3", asks: "MiniMax-M3" }, "following the default");
+  await kept.choose("GLM-5.3");
+  assert.deepEqual(await says(kept), { default: "MiniMax-M3", chip: "GLM-5.3", asks: "GLM-5.3" }, "picked: the chip follows the pick, the default stays the default");
+  // A pick the server passes over: the work goes to the model that answers, and so does the chip.
+  record = { ...record, current: "MiniMax-M3", unavailable: [{ model: "GLM-5.3", reason: "subscription" }] };
+  const lapsed = new ServerModel({ serverUrl: async () => "https://gateway.example", probe: async () => both, now: () => 0, remote });
+  lapsed.learn(); await lapsed.current();
+  assert.deepEqual(await says(lapsed), { default: "MiniMax-M3", chip: "MiniMax-M3", asks: "MiniMax-M3" });
+  // An older server: the desktop's own pick.
+  const older = new ServerModel({ serverUrl: async () => "https://gateway.example", probe: async () => both, now: () => 0, choice: "GLM-5.3",
+    remote: { options: async () => null, choose: async () => null } });
+  older.learn(); await older.current();
+  assert.deepEqual(await says(older), { default: "MiniMax-M3", chip: "GLM-5.3", asks: "GLM-5.3" });
+  // Nothing confirmed: no name at all, so the composer keeps 模型未确认.
+  assert.deepEqual(taskModelFields({ current: null }), {}); assert.deepEqual(taskModelFields({ current: "gpt-5" }), {}); assert.deepEqual(taskModelFields(undefined), {});
 });
 
 test("a model the server passes over is named, with why, in the person's words", async () => {

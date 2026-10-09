@@ -7,9 +7,10 @@
 // at all (`Cannot access 'auditTail' before initialization`, 2026-09-21). The
 // wiring had no test because every test wrote its own.
 //
-// So this one runs `node bin/server.js` as a process, with 文档网站 switched on
-// and an administrator configured, and asks the listener for the things that
-// block only exists to serve. It is cheap and it fails in seconds.
+// So this one runs `node bin/server.js` as a process, with 文档网站 and the
+// administration console switched on and an administrator configured, and asks
+// each listener for the things that block only exists to serve. It is cheap
+// and it fails in seconds.
 import "../src/adopt-legacy-env.js";
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -27,8 +28,8 @@ const freePort = () => new Promise((resolve, reject) => {
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-server-boot-"));
 let child = null;
 try {
-  const port = await freePort();
-  const origin = `http://127.0.0.1:${port}`;
+  const port = await freePort(), adminPort = await freePort();
+  const origin = `http://127.0.0.1:${port}`, adminOrigin = `http://127.0.0.1:${adminPort}`;
   // A model policy, read at startup against the models this server offers.
   const policyFile = path.join(directory, "models.json");
   await writeFile(policyFile, JSON.stringify([{ who: { kind: "everyone" }, models: ["MiniMax-M3"] }]));
@@ -46,7 +47,7 @@ try {
       IDOU_SITES: "1", IDOU_SITES_URL: origin, IDOU_SITES_PORT: String(port),
       IDOU_SITES_DIR: path.join(directory, "sites"),
       IDOU_SITES_ALLOW: "10.0.0.0/8",
-      IDOU_ADMIN_USERS: "ou_boss",
+      IDOU_ADMIN_USERS: "ou_boss", IDOU_ADMIN_URL: adminOrigin, IDOU_ADMIN_PORT: String(adminPort),
       IDOU_MODEL_POLICY_FILE: policyFile,
       IDOU_MEDIA_ENABLED: "1", QWEN_TOKEN_PLAN_KEY_FILE: videoKeyFile,
       IDOU_DESKTOP_DATA_DIR: path.join(directory, "data") },
@@ -64,13 +65,16 @@ try {
     if (!ready) await new Promise((resolve) => setTimeout(resolve, 250));
   }
   assert.ok(ready, `控制面没有起来：\n${said.slice(-1200)}`);
+  // The sites listener can answer before the rest has said where it is: the
+  // admin console's line came after the first answer once in three runs
+  // (2026-10-04), and the check below read the startup before it was over.
+  while (Date.now() < until && !said.includes("[exited") && !/管理后台在 /.test(said)) await new Promise((resolve) => setTimeout(resolve, 100));
 
   // The block this is here to cover. Each of these is a different piece of the
   // wiring, and any of them throwing at startup would have stopped the server.
   assert.match(said, /sites-listening/, "站点监听器应当报告自己起来了");
-  assert.match(said, /服务端管理台在 .*\/admin/, "管理台应当在启动时说清它在哪");
-  assert.match(said, /另有 1 个写在配置里的管理员/);
-  assert.match(said, /模型可见性已开启（1 条规则/, "模型策略应当在启动时被读到并说出来");
+  assert.match(said, new RegExp(`管理后台在 ${adminOrigin.replace(/[.]/g, "\\.")}/admin（超级管理员 1 人在配置文件里`), "管理后台应当在启动时说清它在哪、谁能进");
+  assert.match(said, /部署配置文件里有 1 条模型规则（IDOU_MODEL_POLICY_FILE）/, "模型策略应当在启动时被读到并说出来");
   // Where pictures and video are made, as configured. With a Token Plan key,
   // video is Qwen's -- and for a day the startup line went on saying "image and
   // video stay on MiniMax" (read in the server's log, 2026-09-24).
@@ -86,9 +90,15 @@ try {
   const gallery = await demos.text();
   assert.match(gallery, /登录/);
   assert.equal((await fetch(`${origin}/demo/kanban-tech/`, { redirect: "manual" })).status, 401);
-  const admin = await fetch(`${origin}/admin`, { redirect: "manual" });
-  assert.equal(admin.status, 401, "管理台的路由应当接上并自己做判断");
+  // The console, on its own listener: it answers, and decides for itself that
+  // a deployment with no Feishu login cannot sign anybody in.
+  const admin = await fetch(`${adminOrigin}/admin`, { redirect: "manual" });
+  assert.equal(admin.status, 401, "管理后台的路由应当接上并自己做判断");
   assert.match(await admin.text(), /请先登录/);
+  const me = await fetch(`${adminOrigin}/admin/api/me`);
+  assert.equal(me.status, 401, "管理后台的接口不登录不答");
+  // And never on the sites' origin, where a published page's script could read it.
+  assert.equal((await fetch(`${origin}/admin`, { redirect: "manual" })).status, 404, "文档网站的来源上不能有管理后台");
   // Not wired would look like this, and does not:
   assert.equal((await fetch(`${origin}/nothing-here`)).status, 404);
 

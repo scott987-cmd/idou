@@ -94,8 +94,8 @@ function describe(found) {
   lines.push(found.credential ? `  无人值守授权 1 份（${found.credential.state === "active" ? "有效" : "已结束"}） → 删除` : "  无人值守授权：没有");
   lines.push(found.model ? `  模型偏好：${found.model} → 删除` : "  模型偏好：没有");
   lines.push(found.reservations === null ? "  云盘额度账本：这个服务端没有开，或不管这个企业" : `  云盘额度账本 ${found.reservations} 条 → 删除（他在云盘里的文件归飞书处理）`);
-  const online = found.sites.filter((site) => !site.offline);
-  lines.push(found.sites.length ? `  发布的网站 ${found.sites.length} 个，其中在线 ${online.length} 个 → 下线，文件保留：${found.sites.map((site) => `「${site.name}」`).join("")}` : "  发布的网站：没有");
+  const online = found.sites.filter((site) => site.withdrawn ?? !site.offline);
+  lines.push(found.sites.length ? `  发布的网站 ${found.sites.length} 个，其中要下线的 ${online.length} 个 → 下线，文件保留：${found.sites.map((site) => `「${site.name}」`).join("")}` : "  发布的网站：没有");
   lines.push("  用量计数 → 保留（企业的账目）");
   return lines.join("\n");
 }

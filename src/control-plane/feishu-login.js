@@ -2,6 +2,7 @@ import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify } fro
 import { validateServerUrl } from "./client-session.js";
 import { loginProofMessage, loginReturnPort, loginReturnUrl } from "./login-proof.js";
 import { openResume, resumeDigest, resumeProofMessage, sealResume } from "./resume-credential.js";
+import { AccessRefused } from "./access-list.js";
 import { EITHER, WRITTEN } from "../product-names.js";
 
 const OAUTH_COOKIE = new RegExp(`^${EITHER}_oauth=(.*)$`, "s");
@@ -23,6 +24,7 @@ const CALLBACK_PAGES = Object.freeze({
   granted: [200, "已为定时任务单独授权，可以关闭这个页面。"],
   no_refresh: [403, "飞书没有签发长效凭据，没有开启。请返回应用查看原因。"],
   grant_failed: [403, "授权没有保存下来，请返回应用重试。"],
+  disabled: [403, "你的 i豆 账号已被管理员停用，无法登录。需要恢复请联系管理员。"],
 });
 // A dedicated authorization lives as long as a sign-in does.
 const GRANT_MS = 300_000, GRANTS_PER_WINDOW = 5;
@@ -57,10 +59,16 @@ export const LOGIN_FLOWS_MAX = 20_000;
 export const RESUME_CHALLENGES_MAX = 20_000;
 
 export class FeishuLoginService {
-  constructor({ origin, provider, sessions, allowedTenants, now = Date.now, capacity: { perMinute = 1200 } = {} }) {
+  // `access`: who an administrator has disabled or signed out (access-list.js).
+  // `audit`: where sign-ins, resumes and their refusals are recorded for the
+  // console -- who and how it ended, never a token.
+  // `seen(identity, client)`: a sign-in, resume or renewal went through from
+  // desktop build `client` -- for the console's list of people.
+  constructor({ origin, provider, sessions, allowedTenants, access = null, audit = () => {}, seen = () => {}, now = Date.now, capacity: { perMinute = 1200 } = {} }) {
     this.origin = validateServerUrl(origin); this.redirectUri = `${this.origin}/auth/feishu/callback`;
     if (!Array.isArray(allowedTenants) || !allowedTenants.length || allowedTenants.some((id) => typeof id !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(id))) throw new Error("Explicit Feishu tenant allowlist is required");
     this.allowedTenants = new Set(allowedTenants); this.provider = provider; this.sessions = sessions; this.now = now;
+    this.access = access; this.audit = audit; this.seen = seen;
     if (!Number.isSafeInteger(perMinute) || perMinute < 1) throw new Error("Invalid login rate");
     this.loginsPerMinute = perMinute;
     this.flows = new Map(); this.starts = []; this.closed = false;
@@ -253,6 +261,14 @@ export class FeishuLoginService {
         throw new Error("Tenant not allowed");
       }
       if (!identity.userId || !Number.isFinite(identity.expiresAt) || identity.expiresAt <= this.now()) throw new Error("User not allowed");
+      // Said here, on the page the browser is looking at, rather than as a
+      // failure the desktop has to explain afterwards.
+      if (this.access?.isDisabled(identity.tenantId, identity.userId)) {
+        this.#record("auth.sign-in", identity, "refused", { reason: "account_disabled" });
+        this.discard(identity); identity = null;
+        flow.status = "disabled";
+        return { status: "disabled" };
+      }
       // Kept as a digest; the secret itself goes only into the redirect.
       const secret = random();
       flow.identity = identity; flow.completionHash = digest(secret); flow.status = "authorized";
@@ -272,6 +288,7 @@ export class FeishuLoginService {
   // answered, and nothing legitimate ever sends another.
   complete(flowId, signature, secret) {
     const flow = this.prove(flowId, signature, "complete");
+    if (flow.status === "disabled") { this.flows.delete(flowId); throw new LoginError(403, "account_disabled"); }
     if (["failed", "denied"].includes(flow.status)) { this.flows.delete(flowId); throw new LoginError(403, "feishu_login_denied_or_failed"); }
     if (secret !== undefined && secret !== null && !(flow.status === "authorized" && opaque(secret) && timingSafeEqual(Buffer.from(digest(secret)), Buffer.from(flow.completionHash)))) {
       flow.controller?.abort(); this.discard(flow.identity); this.flows.delete(flowId);
@@ -290,8 +307,14 @@ export class FeishuLoginService {
       this.provider.sourceAccess?.bind(flow.identity, issued);
       this.provider.renewal?.bind(flow.identity, issued, flow.key);
     }
-    catch { if (issued) this.sessions.revoke(issued.token); throw new LoginError(403, "feishu_source_authorization_failed"); }
+    catch (error) {
+      if (issued) this.sessions.revoke(issued.token);
+      // Disabled between Feishu's answer and this poll: the same refusal as at the callback.
+      if (error instanceof AccessRefused) { this.#record("auth.sign-in", flow.identity, "refused", { reason: error.code }); throw new LoginError(403, error.code); }
+      throw new LoginError(403, "feishu_source_authorization_failed");
+    }
     finally { this.discard(flow.identity); }
+    this.#record("auth.sign-in", issued, "ok", { device: String(issued.deviceId).slice(0, 12) });
     // The device key travels with the sealed credential so a later resume can be
     // required to come from this same device.
     return this.authenticated({ ...issued, devicePublicKey: flow.key.export({ type: "spki", format: "pem" }) });
@@ -330,7 +353,8 @@ export class FeishuLoginService {
     try {
       return renewal.sealRefresh(issued.id, ({ refreshToken, notAfter }) => sealResume(key, {
         appId: issued.appId, tenantId: issued.tenantId, userId: issued.userId,
-        deviceId: issued.deviceId, devicePublicKey: issued.devicePublicKey, refreshToken, notAfter }));
+        deviceId: issued.deviceId, devicePublicKey: issued.devicePublicKey, refreshToken, notAfter,
+        ...(Number.isSafeInteger(issued.issuedAt) ? { issuedAt: issued.issuedAt } : {}) }));
     } catch { return null; }
   }
   resumeChallenge() {
@@ -353,6 +377,11 @@ export class FeishuLoginService {
     let record; try { record = openResume(key, credential); } catch { throw new LoginError(403, "resume_credential_unreadable"); }
     if (record.notAfter <= this.now()) throw new LoginError(403, "resume_expired");
     if (!this.allowedTenants.has(record.tenantId) || record.appId !== this.provider.appId) throw new LoginError(403, "resume_tenant_not_allowed");
+    // Before Feishu's refresh token is spent: a disabled person, or a
+    // credential from before an administrator signed them out, stops here. This
+    // is the one place that can refuse a credential the desktop keeps.
+    const refused = this.access?.refusal(record.tenantId, record.userId, record.issuedAt ?? 0);
+    if (refused) { this.#record("auth.resume", record, "refused", { reason: refused }); throw new LoginError(403, refused); }
     let publicKey;
     try { publicKey = createPublicKey(record.devicePublicKey); } catch { throw new LoginError(403, "resume_device_key_invalid"); }
     if (publicKey.asymmetricKeyType !== "ed25519") throw new LoginError(403, "resume_device_key_invalid");
@@ -377,21 +406,33 @@ export class FeishuLoginService {
       if (ttlMs < 1) throw new LoginError(403, "resume_expired");
       let issued;
       try {
-        issued = this.sessions.issue({ ...identity, deviceId: record.deviceId, ttlMs, authProvider: "feishu", deviceProof: "ed25519-login" });
+        issued = this.sessions.issue({ ...identity, deviceId: record.deviceId, ttlMs, authProvider: "feishu", deviceProof: "ed25519-login", purpose: "resume" });
         this.provider.sourceAccess?.bind(identity, issued);
         renewal.bind(identity, issued, publicKey);
+        this.#record("auth.resume", issued, "ok", { device: String(issued.deviceId).slice(0, 12) });
         return this.authenticated({ ...issued, devicePublicKey: record.devicePublicKey });
       } catch (cause) {
         if (issued) this.sessions.revoke(issued.token);
+        if (cause instanceof AccessRefused) { this.#record("auth.resume", identity, "refused", { reason: cause.code }); throw new LoginError(403, cause.code); }
         throw cause instanceof LoginError ? cause : new LoginError(403, "resume_refused_sign_in_again");
       }
     } finally { this.discard(identity); }
+  }
+  // One line for the console's audit trail (audit-log.js): who, and how it
+  // ended. The person's name as Feishu gave it at sign-in, never a token.
+  #record(action, who, outcome, detail) {
+    try {
+      this.audit({ category: "auth", action, outcome, tenant: who?.tenantId ?? "", source: "login",
+        actor: { kind: "person", id: who?.userId ?? "", name: who?.displayName ?? who?.name ?? "" }, target: {}, detail });
+    } catch { /* an audit line must never decide a sign-in */ }
   }
   identity(session) { return { provider: session.authProvider, tenantId: session.tenantId, userId: session.userId, appId: session.appId,
     displayName: session.displayName, deviceId: session.deviceId, deviceProof: session.deviceProof, ...(session.cliIdentityChecks === true ? { cliIdentityChecks: true } : {}), ...(session.cliBridge === true ? { cliBridge: true } : {}), ...(session.cliDocumentWrites === true ? { cliDocumentWrites: true } : {}), ...(session.cliMessageWrites === true ? { cliMessageWrites: true } : {}), ...(session.cliDriveWrites === true ? { cliDriveWrites: true } : {}), ...(session.cliDestructiveWrites === true ? { cliDestructiveWrites: true } : {}) }; }
   cancel(flowId, signature) { const flow = this.prove(flowId, signature, "cancel"); flow.controller?.abort(); this.discard(flow.identity); this.flows.delete(flowId); return { status: "cancelled" }; }
   async handle(req, res) {
     const url = new URL(req.url, this.origin); if (!ROUTES.has(url.pathname)) return false;
+    const client = /^[0-9A-Za-z._-]{1,64}$/.test(String(req.headers["x-idou-client"] ?? "")) ? req.headers["x-idou-client"] : "";
+    const saw = (result) => { try { if (result?.identity?.userId && client) this.seen(result.identity, client); } catch { /* never decides a sign-in */ } return result; };
     try {
       if (req.headers.origin || this.closed) throw new LoginError(403, "native_client_required");
       if (["/auth/feishu/launch", "/auth/feishu/callback", "/auth/session"].includes(url.pathname) ? req.method !== "GET" : req.method !== "POST") throw new LoginError(405, "method_not_allowed");
@@ -422,7 +463,7 @@ export class FeishuLoginService {
             const renewed = url.pathname.endsWith("renew-begin") ? null : await this.provider.renewal.renew(this.origin, token, value);
             result = renewed ? this.authenticated({ ...renewed, devicePublicKey: this.provider.renewal.devicePublicKey?.(renewed.id) ?? undefined }) : this.provider.renewal.begin(token);
           } catch { throw new LoginError(403, "renewal_unavailable_sign_in_again"); }
-          send(res, 200, await this.shared(result));
+          send(res, 200, await this.shared(saw(result)));
           return true;
         }
         if (url.pathname === "/auth/feishu/web-identity/begin") { await body(req); send(res, 200, this.beginWebIdentity(session)); return true; }
@@ -430,14 +471,14 @@ export class FeishuLoginService {
         // Awaited: by the time the desktop hears "logged_out", the other
         // replicas have been told too (or, if the store is away, it is being
         // retried and the session ends at its expiry at the latest).
-        if (url.pathname === "/auth/logout") await this.sessions.revoke(token);
+        if (url.pathname === "/auth/logout") { await this.sessions.revoke(token); this.#record("auth.sign-out", session, "ok", {}); }
         send(res, 200, url.pathname === "/auth/logout" ? { status: "logged_out" } : { identity: this.identity(session), expiresAt: session.expiresAt, ...this.provider.renewal?.metadata(session) });
       } else {
         const value = await body(req, url.pathname === "/auth/feishu/resume" ? MAX_RESUME_BODY_BYTES : MAX_BODY_BYTES);
         if (url.pathname === "/auth/feishu/begin") send(res, 200, this.begin(value.publicKey, value.returnPort));
-        else if (url.pathname === "/auth/feishu/complete") send(res, 200, await this.shared(this.complete(value.flowId, value.signature, value.secret)));
+        else if (url.pathname === "/auth/feishu/complete") send(res, 200, await this.shared(saw(this.complete(value.flowId, value.signature, value.secret))));
         else if (url.pathname === "/auth/feishu/resume-challenge") send(res, 200, this.resumeChallenge());
-        else if (url.pathname === "/auth/feishu/resume") send(res, 200, await this.shared(await this.resume(value.resume, value.nonce, value.signature)));
+        else if (url.pathname === "/auth/feishu/resume") send(res, 200, await this.shared(saw(await this.resume(value.resume, value.nonce, value.signature))));
         else send(res, 200, this.cancel(value.flowId, value.signature));
       }
     } catch (error) { if (!res.headersSent) send(res, error instanceof LoginError ? error.status : 502, { error: error instanceof LoginError ? error.message : "login_unavailable" }); req.resume(); }

@@ -6,8 +6,14 @@
 // name. A private deployment ships different parts, and this is the seam where
 // that has to hold (docs/table-driven-sites.md, 2.7).
 import { parseSlice, sliceId } from "./table-slice.js";
-import { readBaseSlice, readSheetSlice, columnLetter } from "./table-snapshot.js";
+import { READER, contractKey, probeBaseSlice, readBaseSlice, readSheetSlice, columnLetter } from "./table-snapshot.js";
 import { writeContract } from "./table-contract.js";
+import { siteName } from "./site-store.js";
+
+// A slice is read in full at least this often, whatever its table says of
+// itself (`unchanged`): a formula, or a lookup into another table, can change
+// what is shown with neither the revision nor the row count moving.
+export const TABLE_FULL_READ_MS = 60 * 60_000;
 
 // How many columns a spreadsheet picker offers. Beyond this the person is
 // choosing from a list nobody reads; the slice's own field cap is the limit
@@ -49,6 +55,10 @@ export class TableSites {
       const table = tables.find((item) => item.id === wanted) ?? tables[0];
       if (!table) throw new Error("这个多维表格里没有数据表");
       const fields = await this.#baseRecords.fields(token, table.id, signal);
+      // Offered in the order the table shows them (table-snapshot.js fieldOrder).
+      const order = typeof this.#baseRecords.fieldOrder === "function" ? await this.#baseRecords.fieldOrder(token, table.id, signal).catch((error) => { if (signal?.aborted) throw error; return []; }) : [];
+      const rank = new Map(order.map((id, index) => [id, index]));
+      fields.sort((a, b) => (rank.get(a.id) ?? rank.size) - (rank.get(b.id) ?? rank.size));
       return { kind, token, title: table.name, tableId: table.id,
         tables: tables.map((item) => ({ id: item.id, name: item.name })),
         fields: fields.map((field) => ({ id: field.id, name: field.name, type: field.type })) };
@@ -85,18 +95,52 @@ export class TableSites {
   // site should show: which files, how many rows, and when it was read.
   // `title` is what the site is called: the page's own heading, so a template
   // does not have to make one out of the column names.
-  async build(folder, input, { signal, now = Date.now, title = "" } = {}) {
+  // Reading and writing apart, so that a site is made only once its table has
+  // been read: made first, a read that failed -- a slice over its size, the
+  // identity changing mid-read -- left a site no later read could fill
+  // (2026-10-08, main.js site-create).
+  async read(input, { signal, now = Date.now, title = "" } = {}) {
     const slice = parseSlice(input);
     const before = await this.#who(signal);
-    const { schema, snapshot } = slice.kind === "base"
+    const { schema, snapshot, probe = null } = slice.kind === "base"
       ? await readBaseSlice(slice, this.#baseRecords, { signal, now, title, renderCell: this.#renderCell })
       : await readSheetSlice(slice, this.#sheets, { signal, now, reference: this.#reference(slice), title });
     const after = await this.#who(signal);
     if (before && (before.principal !== after?.principal || before.tenantKey !== after?.tenantKey)) {
       throw new Error("读取期间飞书身份已变化，未写入任何数据；请重新读取。");
     }
+    return { slice, schema, snapshot, probe };
+  }
+
+  async write(folder, { slice, schema, snapshot, probe = null }) {
     const paths = await writeContract(folder, { schema, snapshot });
     return { sliceId: sliceId(slice), paths, rowCount: snapshot.rowCount, truncated: snapshot.truncated, readAt: snapshot.readAt,
-      fields: schema.fields.map((field) => field.name) };
+      digest: snapshot.digest, key: contractKey(schema, snapshot), probe, reader: READER, fields: schema.fields.map((field) => field.name) };
   }
+
+  async build(folder, input, options = {}) {
+    return this.write(folder, await this.read(input, options));
+  }
+
+  // Whether a slice read before, when the table said `probe`, can be left as it
+  // was: one call instead of a hundred pages. Only a Base can say; anything it
+  // cannot say -- no probe then, none now -- means read it again.
+  async unchanged(input, probe, { signal } = {}) {
+    if (typeof probe !== "string" || !probe) return false;
+    const slice = parseSlice(input);
+    if (slice.kind !== "base") return false;
+    return await probeBaseSlice(slice, this.#baseRecords, { signal, probe }) === probe;
+  }
+}
+
+// A table site, made after the person's card (main.js site-create): its table
+// read first, then the site. Made first, a read that failed -- a slice over its
+// size limit, the identity changing mid-read -- left a site in the list that no
+// later read could fill; recording the second promo made two (2026-10-08).
+// `template(folder)` writes the chosen template's files, when there is one.
+export async function makeTableSite({ store, tables, name, title = "", slice, template = null }) {
+  const read = await tables.read(slice, { title: siteName(name, title) });
+  const site = await store.create({ name, slice, title });
+  const files = template ? await template(site.folder) : { written: [] };
+  return { site, built: await tables.write(site.folder, read), written: files.written ?? [] };
 }

@@ -39,7 +39,10 @@ export class SkillRegistry {
     this.state = { revision: 1, tenants: new Map() };
     this.queue = Promise.resolve();
   }
-  administers(identity) { return Boolean(identity?.userId) && this.administrators.has(identity.userId); }
+  // The server's configured administrators, and those the console adds
+  // (skill-governance.js, set as `alsoAdministers` once the database is open).
+  administers(identity) { return Boolean(identity?.userId) && (this.administrators.has(identity.userId) || this.alsoAdministers?.(identity) === true); }
+  configuredAdministrator(userId) { return this.administrators.has(userId); }
   // Serialised so two publishes cannot interleave a read-modify-write.
   serial(operation) {
     const next = this.queue.then(operation, operation);
@@ -68,9 +71,27 @@ export class SkillRegistry {
   list(tenantId) { return (this.state.tenants.get(requireTenant(tenantId)) ?? []).map(skill => ({ ...skill, digest: skillDigest(skill) })); }
 
   async publish(identity, value) {
+    if (!this.administers(identity)) throw new RegistryError(403, "skill_publish_not_permitted");
+    return this.place(identity.tenantId, value);
+  }
+  // What a publish checks of the skill itself, before anything is decided:
+  // for a version submitted for review, which does not touch the shelf.
+  admissible(tenantId, value) {
+    const tenant = requireTenant(tenantId);
+    let skill; try { skill = normalizeSkill(value); } catch (error) { throw new RegistryError(400, `invalid_skill: ${String(error?.message ?? error).slice(0, 120)}`); }
+    if (!skill.id.startsWith("enterprise-")) throw new RegistryError(400, "enterprise_skill_id_required");
+    const current = this.state.tenants.get(tenant) ?? [];
+    const existing = current.find(item => item.id === skill.id);
+    if (existing && existing.version === skill.version && skillDigest(existing) === skillDigest(skill)) throw new RegistryError(409, "skill_already_published");
+    if (!existing && current.length >= MAX_TENANT_SKILLS) throw new RegistryError(409, "skill_shelf_full");
+    return skill;
+  }
+  // On the shelf, from whoever already decided it may be: a skill
+  // administrator's publish (above), or the console approving a version that
+  // waited, or going back to an earlier one (admin-api.js).
+  async place(tenantId, value) {
     return this.serial(async () => {
-      if (!this.administers(identity)) throw new RegistryError(403, "skill_publish_not_permitted");
-      const tenantId = requireTenant(identity.tenantId);
+      tenantId = requireTenant(tenantId);
       let skill; try { skill = normalizeSkill(value); } catch (error) { throw new RegistryError(400, `invalid_skill: ${String(error?.message ?? error).slice(0, 120)}`); }
       // The signed catalogue carries enterprise skills only; a locally imported
       // folder is admitted by its own person's confirmation, never by a server
@@ -87,12 +108,18 @@ export class SkillRegistry {
     });
   }
   async unpublish(identity, id) {
+    if (!this.administers(identity)) throw new RegistryError(403, "skill_publish_not_permitted");
+    return this.withdraw(identity.tenantId, id);
+  }
+  // Off the shelf. From a skill administrator's desktop (above), or from the
+  // administration console, which has already decided who may
+  // (admin-api.js); the desktops drop it on their next catalogue read.
+  async withdraw(tenantId, id) {
     return this.serial(async () => {
-      if (!this.administers(identity)) throw new RegistryError(403, "skill_publish_not_permitted");
-      const tenantId = requireTenant(identity.tenantId);
-      const current = this.state.tenants.get(tenantId) ?? [];
+      const tenant = requireTenant(tenantId);
+      const current = this.state.tenants.get(tenant) ?? [];
       if (!current.some(item => item.id === id)) throw new RegistryError(404, "skill_not_published");
-      await this.commit(tenantId, current.filter(item => item.id !== id));
+      await this.commit(tenant, current.filter(item => item.id !== id));
       return { id, revision: this.state.revision };
     });
   }

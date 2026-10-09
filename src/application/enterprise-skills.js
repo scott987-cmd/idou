@@ -67,6 +67,9 @@ export class EnterpriseSkillsClient {
     const result = await this.manage("/v1/skills/publish", { skill: bundle }); this.revision = 0; return result;
   }
   async unpublish(id) { const result = await this.manage("/v1/skills/unpublish", { id }); this.revision = 0; return result; }
+  // A task started with an enterprise skill: told to the server once, for the
+  // console's 使用情况 (docs/enterprise-skill-governance.md §5). Nothing else is sent.
+  used(id, version) { return this.manage("/v1/skills/used", { id: String(id), version: String(version ?? "") }); }
 
   metadata(skill) {
     const { files, ...metadata } = skill;
@@ -86,11 +89,13 @@ export class EnterpriseSkillsClient {
 // listed is surfaced as-is rather than smoothed over into a wrong explanation.
 export function shelfMessage(code) {
   return {
-    skill_publish_not_permitted: "当前账号不在企业技能管理员名单里，不能上架或下架。名单由服务端的 IDOU_SKILL_ADMINS 决定。",
+    skill_publish_not_permitted: "当前账号不在企业技能上架人名单里，不能上架或下架。请管理员在管理后台「企业技能 → 谁能上架」里加上你。",
     skill_registry_not_configured: "服务端还没有开启企业技能货架。需要管理员配置 IDOU_SKILL_REGISTRY_FILE 与签名密钥。",
     skill_already_published: "这个技能的这个版本已经在货架上了，内容也没有变化。",
     skill_not_published: "货架上没有这个技能，可能已被别人下架。",
     skill_shelf_full: "本企业货架已满，请先下架不再使用的技能。",
     enterprise_skill_id_required: "只有企业技能能上架；本机技能需要先转换身份。",
+    skill_submissions_waiting: "你已经有 10 个版本在等管理员审核：等管理员处理后再提交。",
+    skill_review_queue_full: "等待审核的版本已经有 100 个：请管理员先处理，再提交。",
   }[code] || `企业技能货架拒绝了这次操作：${String(code).slice(0, 120)}`;
 }

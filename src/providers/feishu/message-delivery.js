@@ -73,6 +73,31 @@ export class SaasMessageDelivery {
     if (!sameSender(identity, await this.cli.documentIdentity())) throw new Error("读取群成员期间飞书身份已变化");
     return { group, members, partial: data.has_more || Boolean(data.truncations?.length), excluded: listed.length - members.length };
   }
+  // A link to a page this deployment publishes, into a group, as the person
+  // (docs/sites-phase1.md §1.4): its title, the link as a hyperlink, their
+  // note -- static post nodes, nothing that could become markup or an @all.
+  // The group is read again first: still of this organisation, as chosen.
+  async sendLink({ identity, recipient: target, title, url, note = "", idempotencyKey }, beforeDispatch) {
+    let parsed = null;
+    try { parsed = new URL(url); } catch { /* refused below */ }
+    if (target?.kind !== "group" || !CHAT_ID.test(target?.id) || !parsed || !["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password || parsed.href !== url || url.length > 2000
+      || typeof title !== "string" || !title.trim() || title.length > 200 || UNSAFE_TEXT.test(title) || /[\n\t]/.test(title)
+      || typeof note !== "string" || note.length > 1000 || UNSAFE_TEXT.test(note) || !/^[A-Za-z0-9-]{1,50}$/.test(idempotencyKey)) throw new Error("消息发送参数无效");
+    if (!sameSender(identity, await this.cli.documentIdentity({ fresh: true }))) throw new Error("飞书发送身份已变化，未发送");
+    await this.groupMembers(target, identity);
+    const content = [[{ tag: "text", text: `${title}\n` }, { tag: "a", href: url, text: url }], ...(note.trim() ? [[{ tag: "text", text: note.trim() }]] : [])];
+    const wireContent = JSON.stringify({ zh_cn: { content } });
+    if (!sameSender(identity, await this.cli.documentIdentity({ fresh: true }))) throw new Error("飞书发送身份已变化，未发送");
+    await beforeDispatch();
+    try {
+      const sent = payload(await this.cli.invoke(["im", "+messages-send", "--chat-id", target.id, "--msg-type", "post", "--content", wireContent, "--idempotency-key", idempotencyKey, "--as", "user", "--format", "json"], {
+        timeoutMs: 30_000, maxOutputBytes: 256 * 1024,
+        feishuWriteIntent: { action: "message.send", operationId: randomUUID(), receiveIdType: "chat_id", receiveId: target.id, msgType: "post", contentHash: hash(wireContent), idempotencyKey },
+      }));
+      if (!/^om_[A-Za-z0-9_-]{1,128}$/.test(sent.message_id) || sent.chat_id !== target.id) throw new Error("missing or mismatched receipt");
+      return { messageId: sent.message_id, chatId: sent.chat_id };
+    } catch { throw new Error("消息可能已发送，但回执未确认。请到飞书核查；本应用不会重试这次发送。"); }
+  }
   async send({ identity, recipient: target, text, sourceUrl, idempotencyKey, mentions = [] }, beforeDispatch) {
     const group = target?.kind === "group";
     if (!(group ? CHAT_ID : USER_ID).test(target?.id) || typeof text !== "string" || !text || text.length > 4000 || UNSAFE_TEXT.test(text) || !/^[A-Za-z0-9-]{1,50}$/.test(idempotencyKey) || !Array.isArray(mentions) || mentions.length > 10 || !group && mentions.length || mentions.some(user => !USER_ID.test(user?.id)) || new Set(mentions.map(user => user.id)).size !== mentions.length) throw new Error("消息发送参数无效");

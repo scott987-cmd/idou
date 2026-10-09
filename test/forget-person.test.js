@@ -20,6 +20,8 @@ import { SiteRegistry } from "../src/control-plane/site-registry.js";
 import { DriveBudget } from "../src/control-plane/drive-budget.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
 import { appHash } from "../src/apps/manifest.js";
+import { offboardLive } from "../src/control-plane/person-data.js";
+import { SessionRegistry } from "../src/control-plane/sessions.js";
 
 const run = promisify(execFile);
 const tool = fileURLToPath(new URL("../bin/forget-person.js", import.meta.url));
@@ -80,7 +82,7 @@ test("it lists what there is, refuses to apply while the coordinator answers, th
   assert.match(listed.stdout, /无人值守授权 1 份（有效） → 删除/);
   assert.match(listed.stdout, /模型偏好：GLM-5\.3 → 删除/);
   assert.match(listed.stdout, /云盘额度账本 2 条 → 删除/);
-  assert.match(listed.stdout, /发布的网站 1 个，其中在线 1 个 → 下线，文件保留：「离职者的看板」/);
+  assert.match(listed.stdout, /发布的网站 1 个，其中要下线的 1 个 → 下线，文件保留：「离职者的看板」/);
   assert.match(listed.stdout, /用量计数 → 保留/);
   assert.match(listed.stdout, /加 --apply 执行/);
 
@@ -117,7 +119,7 @@ test("it lists what there is, refuses to apply while the coordinator answers, th
 
   const again = await forget(f);
   assert.match(again.stdout, /定时任务 0 个，运行记录 0 条/);
-  assert.match(again.stdout, /发布的网站 1 个，其中在线 0 个/);
+  assert.match(again.stdout, /发布的网站 1 个，其中要下线的 0 个/, "taken down already: nothing more to take down");
 });
 
 test("a malformed person or tenant is refused before anything is opened", async (t) => {
@@ -127,4 +129,39 @@ test("a malformed person or tenant is refused before anything is opened", async 
     assert.equal(result.code, 1);
     assert.match(result.stderr, /用法：node bin\/forget-person\.js/);
   }
+});
+
+// The same from the administration console, while the server runs: through
+// the live objects, so nothing held in memory writes the data back -- and the
+// person's runs stopped, their authorization revoked through its consent, every
+// session of theirs ended, the pages on their sites closed.
+test("from the console: the same, through the live stores, with their runs stopped and every session of theirs ended", async (t) => {
+  const f = await server(t);
+  const store = new ScheduleStore({ databaseFile: path.join(f.scheduled, "schedules.db") });
+  t.after(() => store.close());
+  const credentials = await UnattendedCredentialStore.open({ directory: path.join(f.scheduled, "unattended") });
+  const preferences = await ModelPreferences.open({ file: path.join(f.home, ".idou", "model-preferences.json") });
+  const registry = await SiteRegistry.open(f.sites);
+  const ledger = await DriveBudget.fromConfig(f.driveConfig, SAAS_FEISHU);
+  t.after(() => ledger.close());
+  const cancelled = [], closedPages = [], revokedConsent = [];
+  const scheduled = { store, scheduler: { cancel: (tenant, id) => cancelled.push([tenant, id]) },
+    unattended: { store: credentials, revoke: async (who) => { revokedConsent.push(who.userId); return credentials.remove(who.tenantId, who.userId); } } };
+  const sessions = new SessionRegistry();
+  const leaverSession = sessions.issue({ ...LEAVER, deviceId: "d1", authProvider: "feishu", appId: APP, deviceProof: "ed25519-login" });
+  const colleagueSession = sessions.issue({ ...COLLEAGUE, deviceId: "d2", authProvider: "feishu", appId: APP, deviceProof: "ed25519-login" });
+  const done = await offboardLive({ who: { ...LEAVER, appId: APP }, scheduled, sessions, preferences, sites: registry, ledger,
+    siteServer: { forgetSite: (id) => closedPages.push(id) } });
+  assert.deepEqual({ tasks: done.tasks, credential: done.credential, model: done.model, reservations: done.reservations, sites: done.sitesOffline.map((site) => site.name), sessions: done.sessions },
+    { tasks: { schedules: 1, runs: 2 }, credential: true, model: true, reservations: 2, sites: ["离职者的看板"], sessions: 1 });
+  assert.equal(cancelled.length, 1, "the leaver's task was stopped if running");
+  assert.deepEqual(revokedConsent, [LEAVER.userId]);
+  assert.equal(sessions.verify(leaverSession.token), null);
+  assert.ok(sessions.verify(colleagueSession.token), "the colleague is still signed in");
+  assert.deepEqual(closedPages, [done.sitesOffline[0].id]);
+  assert.deepEqual(store.ownerData(TENANT, COLLEAGUE.userId), { schedules: 1, runs: 1 });
+  assert.equal(preferences.get(COLLEAGUE), "GLM-5.3");
+  assert.equal((await credentials.read(TENANT, COLLEAGUE.userId)).state, "active");
+  assert.deepEqual(Object.fromEntries(registry.list().map((site) => [site.name, site.offline])), { 离职者的看板: true, 同事的看板: false });
+  await assert.rejects(offboardLive({ who: LEAVER }), /会话注册表/);
 });

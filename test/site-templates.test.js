@@ -13,7 +13,7 @@ const folder = async (t, prefix = "idou-template-") => {
 };
 
 test("every template ships the files it claims, and they are static", async (t) => {
-  assert.deepEqual(SITE_TEMPLATES.map((template) => template.id), ["dashboard", "directory", "kanban", "timeline", "landing", "game"]);
+  assert.deepEqual(SITE_TEMPLATES.map((template) => template.id), ["dashboard", "directory", "kanban", "timeline", "weekly", "event", "handbook", "links", "landing", "game"]);
   assert.deepEqual(SITE_STYLES.map((style) => style.id), ["clean", "tech", "depth"]);
   for (const template of SITE_TEMPLATES) {
     const directory = await folder(t, `mydoubao-template-${template.id}-`);

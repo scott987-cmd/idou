@@ -5,7 +5,9 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, readdir, symlink, realpath } f
 import { once } from "node:events";
 import os from "node:os";
 import path from "node:path";
-import { AppCandidates, sitePublishProblems, snapshotApp } from "../src/application/app-candidates.js";
+import { AppCandidates, sitePublishProblems, sitePublishSkip, siteVersion, snapshotApp, writeSiteVersion } from "../src/application/app-candidates.js";
+import { writeContract } from "../src/application/table-contract.js";
+import { createArtifactServer } from "../src/application/workspace-files.js";
 import { AppCatalog, AppCatalogService } from "../src/control-plane/app-catalog.js";
 import { APP_LIMITS, appManifest } from "../src/apps/manifest.js";
 import { SessionRegistry } from "../src/control-plane/sessions.js";
@@ -162,6 +164,14 @@ test("what a site's folder lists as unpublishable is exactly what stops a publis
     deep: { "index.html": page, "a/b/c/d/e/f/g/h/i/x.html": page },
     many: { "index.html": page, ...Object.fromEntries(Array.from({ length: APP_LIMITS.files }, (_, i) => [`p${i}.html`, "x"])) },
     linked: { "index.html": page },
+    // What a version leaves out (manifest.js appLeftOutName, Markdown notes) is
+    // refused only when a page names it -- and then listed with that page.
+    vendored: { "index.html": '<script type="module" src="vendor/three.module.js"></script>', "vendor/three.module.js": "export const REVISION = '0';" },
+    fromNodeModules: { "index.html": '<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js"}}</script>', "node_modules/three/build/three.module.js": "x" },
+    fromScript: { "index.html": '<script type="module" src="src/main.js"></script>', "src/main.js": 'import * as THREE from "../node_modules/three/build/three.module.js";', "node_modules/three/build/three.module.js": "x" },
+    fromStyle: { "index.html": '<link rel="stylesheet" href="css/site.css">', "css/site.css": "@font-face{src:url(../.fonts/a.woff2)}", ".fonts/a.woff2": "x" },
+    toNotes: { "index.html": '<a href="README.md?x=1">说明</a>', "README.md": "# 说明" },
+    mentionsOnly: { "index.html": '<p>see README.md and node_modules/three</p><a href="node_modules/gone.js">gone</a><script>document.querySelector(".hidden")</script>', "README.md": "#", "node_modules/three/x.js": "x", ".hidden/x.js": "x" },
   };
   for (const [name, files] of Object.entries(cases)) {
     const folder = path.join(base, name);
@@ -173,7 +183,17 @@ test("what a site's folder lists as unpublishable is exactly what stops a publis
     assert.equal(problems.length === 0, takes, `${name}: listed ${JSON.stringify(problems)} but snapshotApp ${takes ? "took it" : "refused it"}`);
   }
   // And what is listed names the file and what is wrong with it.
-  assert.deepEqual(await sitePublishProblems(path.join(base, "markdown")), [{ path: "faq.md", reason: "不能发布这种文件" }]);
+  // Markdown is notes about the site, left out of its version rather than refused
+  // (2026-10-08: a README.md refused sent a coding task to put it in i豆's own data).
+  assert.deepEqual(await sitePublishProblems(path.join(base, "markdown")), []);
+  assert.deepEqual(await sitePublishProblems(path.join(base, "vendored")), []);
+  assert.deepEqual(await sitePublishProblems(path.join(base, "fromNodeModules")), [{ path: "index.html", reason: "用到的 node_modules/three/build/three.module.js 不会发布" }]);
+  assert.deepEqual(await sitePublishProblems(path.join(base, "fromScript")), [{ path: "src/main.js", reason: "用到的 node_modules/three/build/three.module.js 不会发布" }]);
+  assert.deepEqual(await sitePublishProblems(path.join(base, "fromStyle")), [{ path: "css/site.css", reason: "用到的 .fonts/a.woff2 不会发布" }]);
+  assert.deepEqual(await sitePublishProblems(path.join(base, "toNotes")), [{ path: "index.html", reason: "用到的 README.md 不会发布" }]);
+  await assert.rejects(snapshotApp(path.join(base, "fromNodeModules"), "index.html"), /index\.html 用到的 node_modules\/three\/build\/three\.module\.js 不会发布/);
+  // A sentence that names a file, a class selector, a file that is not there: none of them is a page asking for it.
+  assert.deepEqual(await sitePublishProblems(path.join(base, "mentionsOnly")), []);
   // A video may be larger than any other file (appFileLimit), within the same version total.
   assert.deepEqual(await sitePublishProblems(path.join(base, "video")), []);
   assert.deepEqual(await sitePublishProblems(path.join(base, "quicktime")), [{ path: "media/intro.mov", reason: "不能发布这种文件" }]);
@@ -182,4 +202,113 @@ test("what a site's folder lists as unpublishable is exactly what stops a publis
   assert.deepEqual(await sitePublishProblems(path.join(base, "noHome")), [{ path: "index.html", reason: "首页不存在或是空的" }]);
   assert.deepEqual(await sitePublishProblems(path.join(base, "linked")), [{ path: "copy.html", reason: "是符号链接" }]);
   assert.deepEqual(await sitePublishProblems(path.join(base, "gone")), [{ path: "", reason: "找不到网站目录" }]);
+});
+
+// 2026-10-08: a coding task building a three.js game was told to put three in
+// vendor/, and vendor/ was left out of the version and hidden from the preview
+// alike -- the page could not load it anywhere but from a server of its own.
+// vendor/ is part of the page; what is left out is a dot name or node_modules.
+// And the preview serves exactly what a version holds, no more and no less.
+test("a page's own copy of a library in vendor/ is published, and the preview serves just what a version holds", async (t) => {
+  const folder = await realpath(await mkdtemp(path.join(os.tmpdir(), "idou-site-vendor-")));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const files = {
+    "index.html": '<!doctype html><script type="module" src="vendor/three.module.js"></script>',
+    "vendor/three.module.js": "export const REVISION = '0';", "vendor/addons/controls.js": "export {};", "lib/game.js": "export {};", "lib/vendor/x.css": "p{}",
+    "node_modules/three/build/three.module.js": "x", "a/node_modules/c.js": "x", ".cache/x.js": "x", "sub/.hidden.js": "x",
+    "README.md": "# 说明", "docs/PLAN.md": "# 计划", "vendor/three/README.md": "# three",
+  };
+  for (const [file, content] of Object.entries(files)) { await mkdir(path.dirname(path.join(folder, file)), { recursive: true }); await writeFile(path.join(folder, file), content); }
+  const held = (await snapshotApp(folder, "index.html")).manifest.files.map((file) => file.path).sort();
+  assert.deepEqual(held, ["index.html", "lib/game.js", "lib/vendor/x.css", "vendor/addons/controls.js", "vendor/three.module.js"]);
+  assert.deepEqual(await sitePublishProblems(folder), []);
+  const server = await createArtifactServer(folder);
+  t.after(() => server.close());
+  for (const file of Object.keys(files)) {
+    const response = await fetch(server.url(file)); await response.body?.cancel();
+    assert.equal(response.status === 200, held.includes(file), `${file}: the preview ${response.status === 200 ? "serves" : "does not serve"} it, and a version ${held.includes(file) ? "holds" : "leaves out"} it`);
+  }
+});
+
+// 2026-10-08: a README.md and a PLAN.md in a site's folder stopped it from being
+// published ("不能发布这种文件"), so a coding task moved them out -- into i豆's own
+// data beside the site. Notes about a site may stay with it: they are left out
+// of its version, wherever they are, and never served (a manifest still cannot
+// name one).
+test("notes about a site stay in its folder and out of its version", async (t) => {
+  const folder = await realpath(await mkdtemp(path.join(os.tmpdir(), "idou-site-notes-")));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  for (const [file, content] of Object.entries({ "index.html": "<!doctype html><h1>机房</h1>", "README.md": "# 机房守卫", "PLAN.md": "# 计划", "docs/notes.markdown": "x", "assets/CHANGELOG.MD": "x" })) {
+    await mkdir(path.dirname(path.join(folder, file)), { recursive: true }); await writeFile(path.join(folder, file), content);
+  }
+  assert.deepEqual(await sitePublishProblems(folder), []);
+  const { manifest } = await snapshotApp(folder, "index.html");
+  assert.deepEqual(manifest.files.map((file) => file.path), ["index.html"]);
+  const one = manifest.files[0];
+  assert.throws(() => appManifest({ ...manifest, files: [one, { ...one, path: "README.md" }] }), /不能包含这种文件/);
+  // Anything else that is not a page's type still stops a publish, and says so.
+  await writeFile(path.join(folder, "notes.txt"), "x");
+  assert.deepEqual(await sitePublishProblems(folder), [{ path: "notes.txt", reason: "不能发布这种文件" }]);
+});
+
+// 2026-10-08: a 20,000-row table site could not be published from the desktop.
+// Its data file went into the version, and at 20 MB it was over the 2 MiB a
+// version's file may be. The server serves its own copy of the data under that
+// name anyway (site-server.js LIVE_DATA_FILE), so a read table site sends the
+// data beside the version and leaves the file out -- and what the folder lists
+// as unpublishable still matches what stops a publish.
+test("a read table site publishes its data beside the version, however large", async (t) => {
+  const folder = await realpath(await mkdtemp(path.join(os.tmpdir(), "idou-table-site-")));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  await writeFile(path.join(folder, "index.html"), "<!doctype html><title>看板</title><script src=\"data/table-data.js\"></script>");
+  const schema = { version: 1, sliceId: "slice-synthetic", source: { kind: "base", token: "SyntheticBaseToken01", tableId: "tblSynthetic", title: "看板" },
+    fields: [{ id: "fldText", name: "摘要", type: "text" }], rows: { limit: 20000, truncated: false } };
+  const rows = Array.from({ length: 3000 }, (_, i) => ({ id: `rec${i}`, values: { fldText: `告警 ${i} ${"x".repeat(900)}` } }));
+  await writeContract(folder, { schema, snapshot: { sliceId: "slice-synthetic", readAt: 1, truncated: false, rowCount: rows.length, rows, digest: "synthetic-digest" } });
+  // As before for a folder of files: the data file is over a version's file limit.
+  assert.deepEqual(await sitePublishProblems(folder), [{ path: "data/table-data.js", reason: "超过 2 MiB" }]);
+  await assert.rejects(() => siteVersion(folder, { table: false }), /2 MiB.*data\/table-data\.js/);
+  // As a table site that has been read: the version without it, the data beside.
+  const { data, snapshot } = await siteVersion(folder, { table: true });
+  assert.equal(data.snapshot.rowCount, 3000);
+  assert.deepEqual(snapshot.manifest.files.map((file) => file.path).sort(), ["data/schema.json", "data/table.js", "index.html"]);
+  const skip = sitePublishSkip(true);
+  assert.deepEqual(await sitePublishProblems(folder, "index.html", { skip }), []);
+  assert.equal(await snapshotApp(folder, "index.html", { skip }).then(() => true, () => false), true);
+  // A table site not read yet has no data to send, and keeps its (small) file.
+  const unread = await realpath(await mkdtemp(path.join(os.tmpdir(), "idou-table-site-unread-")));
+  t.after(() => rm(unread, { recursive: true, force: true }));
+  await writeFile(path.join(unread, "index.html"), "<!doctype html><title>看板</title>");
+  await mkdir(path.join(unread, "data")); await writeFile(path.join(unread, "data", "table-data.js"), "globalThis.__IDOU_TABLE__ = {};\n");
+  const empty = await siteVersion(unread, { table: true });
+  assert.equal(empty.data, null);
+  assert.ok(empty.snapshot.manifest.files.some((file) => file.path === "data/table-data.js"));
+});
+
+// A kept version of a published site, written back into a folder of this
+// machine's to be looked at (docs/sites-phase0.md §0.6): what was taken out by
+// snapshotApp comes back byte for byte, and nothing the manifest does not
+// vouch for is written -- not a file it does not name, not bytes that do not
+// hash, not over a file already there.
+test("a version sent back by the server is written only as its manifest vouches for it", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "idou-site-version-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const source = path.join(root, "source");
+  await mkdir(path.join(source, "data"), { recursive: true });
+  await writeFile(path.join(source, "index.html"), "<!doctype html><h1>一版</h1>");
+  await writeFile(path.join(source, "data", "table-data.js"), "globalThis.__IDOU_TABLE__ = {};");
+  const snapshot = await snapshotApp(source, "index.html");
+  const copy = path.join(root, "copy"); await mkdir(copy);
+  assert.deepEqual(await writeSiteVersion(copy, snapshot), { entry: "index.html", files: 2 });
+  assert.equal(await readFile(path.join(copy, "index.html"), "utf8"), "<!doctype html><h1>一版</h1>");
+  assert.equal(await readFile(path.join(copy, "data", "table-data.js"), "utf8"), "globalThis.__IDOU_TABLE__ = {};");
+
+  const fresh = async () => { const folder = path.join(root, randomUUID()); await mkdir(folder); return folder; };
+  const altered = { ...snapshot, blobs: snapshot.blobs.map((blob) => blob.path === "index.html" ? { ...blob, base64: Buffer.from("<h1>被换过</h1>").toString("base64") } : blob) };
+  await assert.rejects(writeSiteVersion(await fresh(), altered), /不完整：index.html/);
+  await assert.rejects(writeSiteVersion(await fresh(), { ...snapshot, blobs: snapshot.blobs.slice(1) }), /不完整/);
+  const outside = { ...snapshot.manifest, files: [...snapshot.manifest.files, { path: "../outside.html", bytes: 1, sha256: "0".repeat(64) }] };
+  await assert.rejects(writeSiteVersion(await fresh(), { manifest: outside, blobs: snapshot.blobs }), /不会被发布|不能用在网站里/);
+  assert.deepEqual((await readdir(root)).includes("outside.html"), false);
+  await assert.rejects(writeSiteVersion(copy, snapshot), /EEXIST/, "nothing written over a file already there");
 });

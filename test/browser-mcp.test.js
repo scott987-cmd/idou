@@ -89,3 +89,76 @@ test("speaks MCP over stdio and refuses internal targets / no-page calls without
     assert.equal(byId[6].result.isError, true);
   } finally { server.kill(); }
 });
+
+// A WebGL game the agent was testing took the headless browser down on
+// 2026-10-08, and every later call answered "Target page, context or browser
+// has been closed" for twenty minutes. A crashed page and a lost browser are
+// now dropped, and the next call opens a fresh one.
+test("after its page crashes or its browser dies, the next call opens a fresh one", { timeout: 90_000 }, async (t) => {
+  const { createServer } = await import("node:http");
+  const { execFileSync } = await import("node:child_process");
+  const site = createServer((req, res) => {
+    if (req.url !== "/PREVIEW-SECRET/index.html") { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end("<!doctype html><title>机房守卫</title><script>console.log('loaded')</script><p>ready</p>");
+  });
+  await new Promise((resolve) => site.listen(0, "127.0.0.1", resolve));
+  t.after(() => site.close());
+  const base = `http://127.0.0.1:${site.address().port}/PREVIEW-SECRET/`;
+  const server = spawn(process.execPath, [fileURLToPath(new URL("../bin/mcp/browser.js", import.meta.url)), "--preview-base", base], { stdio: ["pipe", "pipe", "inherit"] });
+  t.after(() => server.kill());
+  const replies = new Map();
+  let buffer = "", next = 1;
+  server.stdout.on("data", (chunk) => {
+    buffer += chunk.toString("utf8");
+    let index;
+    while ((index = buffer.indexOf("\n")) >= 0) { const line = buffer.slice(0, index); buffer = buffer.slice(index + 1); if (line.trim()) { const reply = JSON.parse(line); replies.set(reply.id, reply); } }
+  });
+  const call = async (name, args = {}) => {
+    const id = next++;
+    server.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } })}\n`);
+    const deadline = Date.now() + 40_000;
+    while (!replies.has(id) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.ok(replies.has(id), `${name} answered`);
+    return replies.get(id).result;
+  };
+  // The browser's processes under this server: the browser itself, and each page's renderer.
+  const processes = () => {
+    const rows = execFileSync("ps", ["-A", "-o", "pid=,ppid=,command="], { encoding: "utf8" }).split("\n").map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean)
+      .map(([, pid, ppid, command]) => ({ pid: Number(pid), ppid: Number(ppid), command }));
+    const mine = new Set([server.pid]);
+    for (let grew = true; grew;) { grew = false; for (const row of rows) if (mine.has(row.ppid) && !mine.has(row.pid)) { mine.add(row.pid); grew = true; } }
+    return rows.filter((row) => mine.has(row.pid) && row.pid !== server.pid);
+  };
+  const killed = async (pick) => {
+    const targets = processes().filter(pick);
+    assert.ok(targets.length, "found the process to stop");
+    for (const row of targets) { try { process.kill(row.pid, "SIGKILL"); } catch { /* already gone */ } }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  };
+  const opened = await call("browser_preview", { path: "index.html" });
+  if (opened.isError && /Executable doesn't exist|browserType\.launch/.test(opened.content[0].text)) { t.skip("no browser installed for Playwright"); return; }
+  assert.equal(opened.isError, undefined, opened.content[0].text);
+  assert.match(opened.content[0].text, /机房守卫/);
+  // Screenshots go back with every later request, so they are JPEG and small.
+  const shot = await call("browser_screenshot");
+  assert.equal(shot.content[0].mimeType, "image/jpeg");
+  assert.ok(Buffer.from(shot.content[0].data, "base64").length < 150 * 1024, "a plain page is well under 150 KB");
+
+  // The page's renderer dies: the page crashed, the browser is fine.
+  await killed((row) => /--type=renderer/.test(row.command));
+  const afterCrash = await call("browser_preview", { path: "index.html" });
+  assert.equal(afterCrash.isError, undefined, afterCrash.content[0].text);
+  assert.match(afterCrash.content[0].text, /机房守卫/);
+  assert.match((await call("browser_console")).content[0].text, /页面崩溃，已重新打开浏览器/);
+
+  // The whole browser dies.
+  await killed((row) => row.ppid === server.pid);
+  const read = await call("browser_read");
+  assert.equal(read.isError, true);
+  assert.match(read.content[0].text, /浏览器意外退出.*重新打开/, "a call on the page says why, rather than failing the same way forever");
+  const afterLoss = await call("browser_preview", { path: "index.html" });
+  assert.equal(afterLoss.isError, undefined, afterLoss.content[0].text);
+  assert.match(afterLoss.content[0].text, /机房守卫/);
+  assert.match((await call("browser_console")).content[0].text, /浏览器意外退出，已重新打开浏览器/);
+});

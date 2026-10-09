@@ -32,7 +32,7 @@ docker save <镜像> | gzip | ssh <服务器> 'gunzip | docker load'
 | 模型副本 | `idou-api@.service`，实例 1、2，`--role api`，只跑模型网关和指标；端口和指标端口在 `api-N.env`（3043/9465、3044/9466） | 同上，`/etc/idou/api-N.env` |
 | 执行节点 | `idou-worker@.service`，`--role worker`，从共享库的队列领定时任务，在本机沙箱里运行。独立账号，见 §11 | 同上，`/etc/idou-worker/` |
 | 文档网站 | 协调副本里的另一个监听，`IDOU_SITES_PORT`（默认 3042），经 nginx 对外 | `IDOU_SITES_URL` |
-| 管理台 | 自己的监听 `IDOU_ADMIN_PORT`（默认 3045）和自己的来源 `IDOU_ADMIN_URL`，必须和文档网站不同源：发布的网页是脚本，同源就能读到管理台。不设就没有管理台 | [server-administration.md](server-administration.md) |
+| 管理后台 | 自己的监听 `IDOU_ADMIN_PORT`（默认 3045）和自己的来源 `IDOU_ADMIN_URL`，必须和文档网站不同源：发布的网页是脚本，同源就能读到管理后台。不需要开文档网站。成员、下线和停用、角色、审计日志存在管理库里：配了 `IDOU_DATABASE_URL` 就在共享数据库（每个模型副本都要知道谁被停用），否则在 `<数据目录>/admin.sqlite`。审计保留 `IDOU_AUDIT_RETENTION_DAYS` 天（默认 180）。不设 `IDOU_ADMIN_URL` 就没有管理后台，但停用和下线照样生效。组织架构（按部门筛和设策略、离职自动停用）要给飞书应用开通四项通讯录权限并设通讯录权限范围，见 admin-console.md §8；没开通时协调进程每天试一次，后台照实显示缺什么 | [admin-console.md](admin-console.md) |
 | PostgreSQL | 只监听本机，服务账号经本地套接字按系统身份认证（peer），没有密码。会话等状态加密后才进库，密钥 `IDOU_STATE_KEY_FILE` 不进库 | `postgresql:///idou?host=/var/run/postgresql` |
 | LiteLLM（可选） | 对话模型走 GLM 时用，监听 `127.0.0.1:4000` | [chat-models.md](chat-models.md) |
 | Docker + gVisor | `/etc/docker/daemon.json` 登记 `runsc`；没有 `/dev/kvm` 时用默认平台 | |
@@ -186,16 +186,16 @@ IDOU_SANDBOX_GATEWAY=172.30.0.1           # 出口代理只监听这个地址
 | 共享数据库（设了 `IDOU_DATABASE_URL` 时） | — | 连不上 |
 | 模型上游 | 某个模型被停用 | 默认模型被停用 |
 
-结论在监控端口的 `/metrics`（`idou_health_check`，0 正常、1 告警、2 严重；`idou_health_check_value` 是背后的数字）和 `GET /health`（JSON，有严重问题时返回 503，给本机的看门狗用），也在管理台的「服务状态」里。设 `IDOU_ADMIN_ALERTS=1`，机器人还会私聊每位管理员（`IDOU_ADMIN_USERS` 里的人和 `IDOU_ADMIN_CHAT` 群的成员）：同一结论连续两次才算数；变坏时说一次，没修好每天再说一次，恢复时说一次。告警只有检查结论和数字：定时任务失败只报次数，不带任何人的运行内容。
+结论在监控端口的 `/metrics`（`idou_health_check`，0 正常、1 告警、2 严重；`idou_health_check_value` 是背后的数字）和 `GET /health`（JSON，有严重问题时返回 503，给本机的看门狗用），也在管理台的「服务状态」里（[service-status.md](service-status.md)）：那里还有每个进程的心跳、各模型近 24 小时的请求、出错和开始回答用时、每项自检最近 24 小时的色条、近 7 天的故障时间线、发过的告警，以及「发送测试告警」。设了 `IDOU_BACKUP_DIR`（备份的 `--to` 目录）多一项「备份」检查：最近一次成功超过 36 小时告警，超过 72 小时或最近一次失败严重。另有「服务进程」检查：某个进程 1 分钟没心跳告警，3 分钟严重；正常停止后 3 分钟没有同名进程接替（新版本起不来）告警；两个在线进程同名告警。设 `IDOU_ADMIN_ALERTS=1`，机器人还会私聊每位管理员（`IDOU_ADMIN_USERS` 里的人和 `IDOU_ADMIN_CHAT` 群的成员）：同一结论连续两次才算数；变坏时说一次，没修好每天再说一次，恢复时说一次。告警只有检查结论和数字：定时任务失败只报次数，不带任何人的运行内容。
 
 `/healthz` 不变：它回答的是「这个进程活着，默认用哪个模型」，桌面端靠它认模型，每个副本都答，而多数副本不知道协调副本的证书和运行情况。
 
 **备份**。`bin/backup.js` 由 `idou-backup.timer` 每天 03:30 以 `idou` 身份运行（模板在 `deploy/server/`）：
 
-- 每份备份是 `/home/idou/backups/idou-<时间>/`，目录 0700；只保留最近 14 份。
+- 每份备份是 `/home/idou/backups/idou-<时间>/`，目录 0700；只保留最近 14 份。每次运行（成功或失败）在备份目录写 `status.json`：时间、成败、文件数、大小、有没有加密副本、送没送出、失败原因，不含任何数据；部署配置设 `IDOU_BACKUP_DIR=/home/idou/backups` 后服务端检查它。
 - SQLite 用 `VACUUM INTO` 做一致快照并通过 `quick_check`（只复制主文件会丢掉 WAL 里的数据，实测过）；其余文件原样复制，保留权限；`backup.json` 记着每个文件的 sha256。
 - **备份和数据在同一块盘上**，防误操作和损坏，防不了盘坏。里面有机密（无人值守凭据和旁边的密钥）：带出这台机器的只能是加密副本（下面的 `--seal`）。
-- 数据进了 PostgreSQL（§10）以后，加 `--postgres "$IDOU_DATABASE_URL"`：`pg_dump`（custom 格式）进同一份备份，并用 `pg_restore --list` 读回一遍才算完成。库里的内容是用状态密钥封存的，没有密钥只能恢复出密文，所以同时加 `--also /etc/idou/state.key`（可以写多次，文件放进备份的 `extra/`）。`pg_dump` 不在 PATH 上时用 `--pg-bin` 指向它的目录。
+- 数据进了 PostgreSQL（§10）以后，加 `--postgres-env IDOU_DATABASE_URL`（从环境变量读地址，密码不上任何命令行；也可以 `--postgres <地址>`）：`pg_dump`（custom 格式）进同一份备份，并用 `pg_restore --list` 读回一遍才算完成。库里的内容是用状态密钥封存的，没有密钥只能恢复出密文，所以同时加 `--also /etc/idou/state.key`（可以写多次，文件放进备份的 `extra/`）。`pg_dump` 不在 PATH 上时用 `--pg-bin` 指向它的目录。
 
 **加密副本与异地**（`.264` 起）。在**你自己的电脑上**生成一对密钥，私钥不要放到服务器上：
 
@@ -268,7 +268,7 @@ node bin/backup.js --open /绝对路径/idou-20261001T033000123Z.idou-backup --k
 - **只给它用得上的配置。** `/etc/idou-worker`（`root:idou_worker` 0750）里是 `worker.env`、`worker-N.env` 和队列密钥，只有三样：数据库地址（角色 `idou_worker`）、队列密钥文件、沙箱设置。它不读 `idou.env`，也进不去 `/etc/idou`。
 - **拿到不该有的就拒绝启动。** 执行节点只要拿到封存密钥、飞书应用密钥、模型密钥等任何一项，就拒绝启动，报错里只写配置名、不写值（名单是 `WORKER_WITHHELD`，有测试保证服务端读取的每个密钥类配置都在名单上）。不按生产隔离运行（`IDOU_SANDBOX_MODE=production`）也拒绝启动。
 - **队列密钥**从封存密钥单向派生，拿着它推不出封存密钥：`node bin/run-queue-key.js <封存密钥文件> <输出文件>`，已存在时不覆盖。
-- **数据库角色 `idou_worker`**（`deploy/server/worker-role.sql`，测试用的是同一份）：只能读写队列表里执行节点需要的那几列；读不到会话、飞书授权、定时任务、长效凭据，也读不到别的运行交回的结果；不能建表、插入、删除。表由协调副本建，执行节点启动时表还不存在就说明原因后退出，systemd 5 秒后重试。
+- **数据库角色 `idou_worker`**（`deploy/server/worker-role.sql`，测试用的是同一份）：只能读写队列表里执行节点需要的那几列；读不到会话、飞书授权、定时任务、长效凭据，也读不到别的运行交回的结果；不能建表，不能在队列表里插入或删除。另外能在心跳表（`idou_run_worker_beats`，服务状态用）里插入一行、改时间和状态，删不了行，读不到别的执行节点的状态；执行节点共用这个角色，所以一个被攻破的节点能改别的节点那一行（页面只取符合格式的内容）。心跳表由新版协调副本建：升级后**再执行一次** worker-role.sql，执行节点才开始上报（没执行时照常工作，管理台显示「执行节点没有上报心跳」）。改名前建的服务器上有 `mydoubao_worker` 角色时，脚本授给它，不另建 `idou_worker`。表由协调副本建，执行节点启动时表还不存在就说明原因后退出，systemd 5 秒后重试。
 
 **安装**：
 

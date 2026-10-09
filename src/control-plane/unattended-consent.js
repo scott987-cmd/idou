@@ -52,7 +52,7 @@ export class UnattendedConsent {
   #key(tenantId, userId) { return `${tenantId}\n${userId}`; }
 
   #record({ kind, tenantId, userId, ...rest }) {
-    this.audit(Object.freeze({ kind, at: this.now(), tenantHash: digest(tenantId), userHash: digest(userId), ...rest }));
+    this.audit(Object.freeze({ kind, at: this.now(), tenantHash: digest(tenantId), userHash: digest(userId), ...rest }), { tenantId, userId });
   }
 
   // The credential comes from its own Feishu authorization (see
@@ -67,6 +67,7 @@ export class UnattendedConsent {
     if (appId !== this.provider.appId) throw new Error("授权来自另一个应用");
     if (this.allowedTenants && !this.allowedTenants.has(tenantId)) throw new Error("这个租户不在允许范围内");
     if (typeof refreshToken !== "string" || !refreshToken) throw new Error("这次授权没有拿到飞书的长效凭据");
+    if (this.sessions.access?.isDisabled(tenantId, userId)) throw new Error("你的 i豆 账号已被管理员停用，不能授权无人值守运行");
     const notAfter = this.now() + this.provider.longSessionMs;
     const sealed = this.store.seal({ appId, tenantId, userId, refreshToken, notAfter });
     // Absolute, and stored in the clear beside the seal. The sealed `notAfter` is
@@ -148,6 +149,12 @@ export class UnattendedConsent {
   }
 
   async #mint(tenantId, userId, key) {
+    // Before anything is read or spent. Not a terminal mark on the credential:
+    // enabled again, the person resumes their tasks and they run on it.
+    if (this.sessions.access?.isDisabled(tenantId, userId)) {
+      this.#record({ kind: "unattended_refused", tenantId, userId, reason: "account_disabled" });
+      return { ok: false, retry: false, reason: "你的 i豆 账号已被管理员停用，定时任务已暂停。恢复后到「定时任务」里重新开启。" };
+    }
     const record = await this.store.read(tenantId, userId);
     if (!record) return { ok: false, retry: false, reason: "没有开启无人值守运行，这个任务只能在你登录时执行，已暂停。到「定时任务」里开启后会自动恢复。" };
     // Marked records answer from disk: the second schedule due in the same tick
@@ -193,7 +200,7 @@ export class UnattendedConsent {
         // run's own Feishu calls and its result push are refused by the CLI
         // proxy, in words that point nowhere near this line.
         issued = this.sessions.issue({ ...identity, deviceId: this.store.deviceId, ttlMs,
-          authProvider: "feishu", deviceProof: "ed25519-login" });
+          authProvider: "feishu", deviceProof: "ed25519-login", purpose: "unattended" });
         this.provider.sourceAccess?.bind(identity, issued);
         this.provider.renewal.bind(identity, issued, this.store.publicKey);
       } catch (error) { if (issued) this.sessions.revoke(issued.token); throw error; }

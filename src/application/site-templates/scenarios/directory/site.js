@@ -61,15 +61,30 @@
     });
   }
 
-  function draw() {
+  // A page at a time: thousands of rows drawn at once took a second and more,
+  // and every keystroke drew them all again (2026-10-04). 显示更多 draws the
+  // next page; a new search, filter or sort starts from the first.
+  var PAGE = 60, shown = PAGE, waiting = null;
+  var more = document.createElement("button"); more.type = "button"; more.className = "more"; more.hidden = true;
+  more.addEventListener("click", function () { shown += PAGE; draw(true); });
+  function drawMore(total, after) {
+    var rest = total - shown;
+    more.hidden = rest <= 0;
+    more.textContent = rest > 0 ? "再显示 " + Math.min(PAGE, rest) + " 条（还有 " + rest + " 条）" : "";
+    if (more.parentNode !== after.parentNode || more.previousSibling !== after) after.parentNode.insertBefore(more, after.nextSibling);
+  }
+  function typed() { clearTimeout(waiting); waiting = setTimeout(function () { draw(); }, 150); }
+
+  function draw(keep) {
+    if (!keep) shown = PAGE;
     var needle = (q.value || "").trim().toLowerCase();
     var rows = Table.rows().filter(function (row) {
       if (facet && picked && row.text(facet.field.name).trim() !== picked) return false;
       if (!needle) return true;
-      return fields.some(function (field) { return row.text(field.name).toLowerCase().indexOf(needle) >= 0; });
+      return row.matches(needle);
     });
     cards.replaceChildren();
-    rows.forEach(function (row) {
+    rows.slice(0, shown).forEach(function (row) {
       var card = make("article", undefined, "card");
       card.append(make("h2", row.text(fields[0].name) || "（无名）"));
       var list = document.createElement("dl");
@@ -88,6 +103,7 @@
       cards.append(card);
     });
     empty.hidden = rows.length > 0;
+    drawMore(rows.length, cards);
     text(document.getElementById("count"),
       rows.length === Table.rowCount() ? "共 " + Table.rowCount() + " 条" : rows.length + " / " + Table.rowCount() + " 条");
   }
@@ -106,10 +122,10 @@
       ? "只显示了表格的前 " + Table.rowCount() + " 条；要看更多，在「文档网站」里把行数上限调大。"
       : "数据来自飞书表格，改表格这里就会跟着变。");
     drawChips();
-    draw();
+    draw(true);
   }
 
-  q.addEventListener("input", draw);
+  q.addEventListener("input", typed);
   Table.onChange(redraw);
   redraw();
 })();

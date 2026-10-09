@@ -149,6 +149,31 @@ test("压缩没完成时如实报错，不会假装压过", async (t) => {
   assert.equal(f.service.get(f.task.id).compactedAt, undefined);
 });
 
+// 2026-10-08: compacting a conversation full of screenshots was itself refused
+// as too large, and the banner showed the gateway's raw English with its URL.
+test("压缩被模型网关拒绝时，说人话、不露地址", async (t) => {
+  const f = await setup(t, { compactCompletes: false });
+  await f.service.send(f.task.id, "第一句");
+  await finished(f.service, f.task.id);
+  const factory = f.service.runtimeFactory;
+  f.service.runtimeFactory = async (...args) => {
+    const runtime = await factory(...args);
+    const request = runtime.client.request;
+    runtime.client.request = async (method, params) => {
+      const result = await request(method, params);
+      if (method === "thread/compact/start") queueMicrotask(() => runtime.client.emit("notification", { method: "turn/completed", params: { threadId: "codex-thread", turn: { id: "compact", status: "failed",
+        error: { message: "unexpected status 413 Payload Too Large: request_too_large, url: https://gateway.example/v1/responses, request id: e5fdef28-0000-4000-8000-000000000000" } } } }));
+      return result;
+    };
+    return runtime;
+  };
+  const refused = await f.service.compact(f.task.id).then(() => null, (error) => error.message);
+  assert.match(refused, /^压缩未完成：这段对话里的截图太多/);
+  assert.match(refused, /新开一个任务/);
+  assert.doesNotMatch(refused, /https|request id|Payload/);
+  assert.equal(f.service.get(f.task.id).compactedAt, undefined);
+});
+
 test("回退同时退掉 Codex 的上下文和这里的记录，两边不会各说各话", async (t) => {
   const f = await setup(t);
   for (const text of ["第一句", "第二句", "第三句"]) { await f.service.send(f.task.id, text); await finished(f.service, f.task.id); }

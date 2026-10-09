@@ -1,7 +1,7 @@
 import "../src/adopt-legacy-env.js";
 import { _electron as electron } from "playwright";
 import electronBinary from "electron";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { once } from "node:events";
 import os from "node:os";
 import path from "node:path";
@@ -20,14 +20,23 @@ import { syntheticResponseStream } from "./fixtures/model-response.js";
 // .mp4 and wrote a faq.md into the site's folder, and 发布 refused the whole
 // version at the end. The rules were only ever said by that refusal.
 //
+// 2026-10-08: told that Markdown could not be published and to keep such files
+// "outside this folder", a task under 完全访问 put its notes and an npm install
+// in i豆's own data beside the site. Markdown now stays in the folder, out of the
+// version; a page naming a file in node_modules is listed; and a task on a
+// folder i豆 made is told the folder holding it is i豆's, scratch going to a
+// temporary folder.
+//
 //   node scripts/smoke-site-rules-desktop.js
 const RULES = "which i豆 publishes as a static website for other people to open";
+const OWNED = "the folder that contains this one is i豆's own data";
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-site-rules-desktop-"));
 const sessions = new SessionRegistry(), session = sessions.issue({ tenantId: "synthetic", userId: "synthetic", deviceId: "synthetic" });
-const seen = { requests: 0, told: 0 };
+const seen = { requests: 0, told: 0, owned: 0 };
 const server = createModelGateway({ apiKey: "synthetic-no-paid-key", sessions, fetchImpl: async (_url, options) => {
   seen.requests += 1;
   if (String(options.body).includes(RULES)) seen.told += 1;
+  if (String(options.body).includes(OWNED)) seen.owned += 1;
   return syntheticResponseStream("好的，先看一下这个网站的文件。");
 } });
 server.listen(0, "127.0.0.1"); await once(server, "listening");
@@ -45,17 +54,22 @@ try {
   // A site made of files only, as 文档网站 makes one: its own folder in the account's data.
   const site = await page.evaluate(() => window.idou.siteCreate({ name: "规则样本站" }));
   // What sank the publish on 2026-09-23 was an .mp4 and a faq.md. A video may be
-  // published since (as mp4 or webm); a .mov or a Markdown page still cannot, and
-  // the list names them before anyone presses 发布.
+  // published since (as mp4 or webm), and Markdown is notes left out of the
+  // version; a .mov still cannot be, nor a page that loads from node_modules,
+  // and the list names them before anyone presses 发布.
   await writeFile(path.join(site.folder, "intro.mp4"), "synthetic video");
   await writeFile(path.join(site.folder, "intro.mov"), "synthetic quicktime");
   await writeFile(path.join(site.folder, "faq.md"), "# 常见问题");
+  await mkdir(path.join(site.folder, "node_modules", "three", "build"), { recursive: true });
+  await writeFile(path.join(site.folder, "node_modules", "three", "build", "three.module.js"), "export const REVISION = '0';");
+  await writeFile(path.join(site.folder, "game.html"), '<!doctype html><script type="module" src="node_modules/three/build/three.module.js"></script>');
   await page.locator('[data-section="sites"]').click();
   const warning = page.locator(`.site-row[data-site="${site.id}"] .site-problems`);
   await warning.waitFor();
   const said = await warning.innerText();
-  assert.match(said, /faq\.md（不能发布这种文件）/, said);
+  assert.doesNotMatch(said, /faq\.md/, `Markdown is left out, not refused: ${said}`);
   assert.match(said, /intro\.mov（不能发布这种文件）/, said);
+  assert.match(said, /game\.html（用到的 node_modules\/three\/build\/three\.module\.js 不会发布）/, said);
   assert.doesNotMatch(said, /intro\.mp4/, `a video is publishable: ${said}`);
   await page.screenshot({ path: path.resolve("docs/evidence/desktop-site-publish-problems.png"), scale: "css" });
   await page.locator(`.site-row[data-site="${site.id}"] .site-edit`).click();
@@ -67,6 +81,7 @@ try {
     tasks: (await page.evaluate(async () => (await window.idou.snapshot()).tasks)).map((row) => ({ mode: row.mode, status: row.status, error: row.error, stage: row.stage })) });
   assert.ok(seen.requests > 0, `the coding task reached the model: ${await state()}`);
   assert.ok(seen.told > 0, `the coding task on the site's folder was told what publishing takes (${seen.told} of ${seen.requests} requests)`);
+  assert.ok(seen.owned > 0, `and that the folder holding it is i豆's own data (${seen.owned} of ${seen.requests} requests)`);
   const task = await page.evaluate(async () => (await window.idou.snapshot()).tasks.find((row) => row.mode === "coding"));
   assert.equal(task?.cwd, site.folder, "and it was working in that folder");
   assert.deepEqual(errors, []);

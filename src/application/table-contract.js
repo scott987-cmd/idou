@@ -17,9 +17,18 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { SLICE_LIMITS } from "./table-slice.js";
 
 export const CONTRACT_DIR = "data";
 export const CONTRACT_FILES = Object.freeze({ schema: "schema.json", data: "table-data.js", runtime: "table.js" });
+// The largest data file a slice can write: its snapshot at the limit, plus the
+// schema (at most 60 fields, far under a MiB) and the line around them. What
+// serves a site's folder on this computer has to serve a file this big: the
+// preview stopped at 20 MiB, and a 21 MB table showed a dashboard of 0 rows
+// (2026-10-08).
+export const MAX_DATA_FILE_BYTES = SLICE_LIMITS.bytes + 1024 * 1024;
+// The data file as a page asks for it, and as a published version leaves it out.
+export const CONTRACT_DATA_PATH = path.posix.join(CONTRACT_DIR, CONTRACT_FILES.data);
 
 // Kept here rather than in a template file so it ships inside the signed
 // application source and cannot be swapped out next to a project.
@@ -39,12 +48,20 @@ export const TABLE_RUNTIME = `// i豆 · 表格站点运行时。由产品生成
   var snapshot = loaded.snapshot || { rows: [] };
   var listeners = [];
   var stream = null;
+  var wrapped = [], wrappedFor = null;
 
+  // Looked up by id or by name, from an index made once per schema: a page of
+  // thousands of rows asks this for every cell it shows and every cell it
+  // searches (2026-10-04).
+  var ids = null, idsFor = null;
   function fieldId(name) {
-    for (var i = 0; i < (schema.fields || []).length; i += 1) {
-      if (schema.fields[i].id === name || schema.fields[i].name === name) return schema.fields[i].id;
+    if (idsFor !== schema) {
+      ids = {}; idsFor = schema;
+      var all = schema.fields || [], i;
+      for (i = 0; i < all.length; i += 1) ids["id:" + all[i].id] = all[i].id;
+      for (i = 0; i < all.length; i += 1) if (!ids["name:" + all[i].name]) ids["name:" + all[i].name] = all[i].id;
     }
-    return null;
+    return ids["id:" + name] || ids["name:" + name] || null;
   }
   // A field the visitor may not read is absent, not empty: Feishu's field-level
   // permission decides that, and a page must not crash over it.
@@ -52,9 +69,23 @@ export const TABLE_RUNTIME = `// i豆 · 表格站点运行时。由产品生成
     var id = fieldId(name);
     return id && row.values ? row.values[id] : undefined;
   }
+  // Everything a row shows, lowercased and joined once: searching thousands of
+  // rows on every keystroke lowercased every cell again each time (2026-10-04).
+  function haystack(row) {
+    var parts = [], all = schema.fields || [];
+    for (var i = 0; i < all.length; i += 1) { var c = row.values ? row.values[all[i].id] : undefined; if (c) parts.push(show(c)); }
+    return parts.join(" | ").toLowerCase();
+  }
   function wrap(row) {
+    var found = null;
     return {
       id: row.id,
+      // Whether any of its fields contains these words (already lowercased or not).
+      matches: function (needle) {
+        if (!needle) return true;
+        if (found === null) found = haystack(row);
+        return found.indexOf(String(needle).toLowerCase()) >= 0;
+      },
       values: row.values,
       cell: function (name) { return at(row, name) || null; },
       text: function (name) { var c = at(row, name); return c ? show(c) : ""; },
@@ -66,15 +97,48 @@ export const TABLE_RUNTIME = `// i豆 · 表格站点运行时。由产品生成
 
   // How a cell reads. The contract carries what a field means (kind) and the
   // value behind it; turning 1789862400000 into a date and 128.5 into 128.50
-  // belongs here, once, rather than in every page.
+  // belongs here, once, rather than in every page -- and once per cell, not
+  // every time a search looks at it.
+  var shownText = typeof WeakMap === "function" ? new WeakMap() : null;
   function show(cell) {
     if (!cell) return "";
-    if (cell.kind === "date") return cell.value ? new Date(cell.value).toLocaleDateString("zh-CN") : "";
+    if (shownText && typeof cell === "object") {
+      var known = shownText.get(cell);
+      if (known !== undefined) return known;
+      var made = reads(cell);
+      shownText.set(cell, made);
+      return made;
+    }
+    return reads(cell);
+  }
+  // One formatter each, made once: toLocaleString and toLocaleDateString make
+  // a new one on every call, which is most of the time a page of thousands of
+  // rows spends reading them. The same text as before, to the character.
+  var formats = null;
+  function formatter() {
+    if (formats) return formats;
+    formats = typeof Intl === "object" && Intl.DateTimeFormat ? {
+      date: new Intl.DateTimeFormat("zh-CN"),
+      time: new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }),
+      money: new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      number: new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 4 }),
+      percent: new Intl.NumberFormat("zh-CN", { style: "percent", maximumFractionDigits: 1 }),
+    } : {
+      date: { format: function (at) { return at.toLocaleDateString("zh-CN"); } },
+      time: { format: function (at) { return at.toLocaleString("zh-CN"); } },
+      money: { format: function (value) { return value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } },
+      number: { format: function (value) { return value.toLocaleString("zh-CN", { maximumFractionDigits: 4 }); } },
+      percent: { format: function (value) { return (Math.round(value * 1000) / 10).toLocaleString("zh-CN") + "%"; } },
+    };
+    return formats;
+  }
+  // A date shown with its time where the field shows one; a number as money or
+  // a percentage where it is one (style, table-snapshot.js cellFor).
+  function reads(cell) {
+    if (cell.kind === "date") return cell.value ? formatter()[cell.style === "datetime" ? "time" : "date"].format(new Date(cell.value)) : "";
     if (cell.kind === "boolean") return cell.value ? "是" : "否";
     if (cell.kind === "number" && typeof cell.value === "number") {
-      return cell.style === "currency"
-        ? cell.value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-        : cell.value.toLocaleString("zh-CN", { maximumFractionDigits: 4 });
+      return cell.style === "currency" ? formatter().money.format(cell.value) : cell.style === "percent" ? formatter().percent.format(cell.value) : formatter().number.format(cell.value);
     }
     return cell.text || "";
   }
@@ -147,7 +211,11 @@ export const TABLE_RUNTIME = `// i豆 · 表格站点运行时。由产品生成
   var api = {
     schema: function () { return schema; },
     fields: function () { return (schema.fields || []).slice(); },
-    rows: function () { return (snapshot.rows || []).map(wrap); },
+    // Wrapped once per set of data; each call a fresh array to sort or filter.
+    rows: function () {
+      if (wrappedFor !== snapshot) { wrapped = (snapshot.rows || []).map(wrap); wrappedFor = snapshot; }
+      return wrapped.slice();
+    },
     show: show,
     paint: paint,
     rowCount: function () { return (snapshot.rows || []).length; },

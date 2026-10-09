@@ -3,10 +3,16 @@ import path from "node:path";
 import { createServer } from "node:http";
 import { randomBytes, createHash } from "node:crypto";
 import { once } from "node:events";
-import { APP_CONTENT_TYPES } from "../apps/manifest.js";
+import { APP_CONTENT_TYPES, appLeftOutName } from "../apps/manifest.js";
 import { byteRange } from "../apps/byte-range.js";
+import { MAX_DATA_FILE_BYTES } from "./table-contract.js";
 
-const HIDDEN = /(^|\/)(\.|node_modules(?:\/|$)|vendor(?:\/|$))/;
+// Never listed, opened or served: what a published version leaves out by where
+// it is (manifest.js appLeftOutName) -- a dot name such as .env, node_modules.
+// vendor/, a page's own copy of a library, is not: when it was hidden here too,
+// three.js put there was missing from the preview and the published site alike
+// (2026-10-08).
+const hidden = (relative) => relative.split(/[\\/]/).some((part) => part && appLeftOutName(part));
 // What a preview serves is what a published site may hold (APP_CONTENT_TYPES):
 // an mp4 on the page was a 404 here, and the preview showed an empty player.
 const PREVIEW_TYPES = APP_CONTENT_TYPES;
@@ -14,9 +20,12 @@ const RASTER_TYPES = new Map([[".png", "image/png"], [".jpg", "image/jpeg"], [".
 const OFFICE_TYPES = new Set([".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".xlsm", ".odt", ".ods", ".odp", ".pdf", ".rtf", ".epub"]);
 const MAX_TEXT_BYTES = 512 * 1024;
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+// One file the preview serves: a table site's data file can be larger than the
+// 20 MiB that used to be the limit here (table-contract.js MAX_DATA_FILE_BYTES).
+export const MAX_PREVIEW_FILE_BYTES = Math.max(20 * 1024 * 1024, MAX_DATA_FILE_BYTES);
 
 function safeRelative(relative) {
-  if (typeof relative !== "string" || relative.includes("\\") || relative.includes("\0") || path.isAbsolute(relative) || HIDDEN.test(relative) || relative.split("/").includes("..")) throw new Error("不允许访问这个文件路径");
+  if (typeof relative !== "string" || relative.includes("\\") || relative.includes("\0") || path.isAbsolute(relative) || hidden(relative) || relative.split("/").includes("..")) throw new Error("不允许访问这个文件路径");
   return relative.split("/").filter(Boolean);
 }
 
@@ -37,14 +46,14 @@ export async function workspacePath(cwd, relative) {
   try { full = await realpath(cursor); }
   catch (error) { if (error?.code === "ENOENT") throw new Error("文件已不在原位置"); throw error; }
   const inside = path.relative(root, full);
-  if (inside.startsWith(`..${path.sep}`) || inside === ".." || path.isAbsolute(inside) || HIDDEN.test(inside)) throw new Error("文件不在任务可预览范围内");
+  if (inside.startsWith(`..${path.sep}`) || inside === ".." || path.isAbsolute(inside) || hidden(inside)) throw new Error("文件不在任务可预览范围内");
   return full;
 }
 
 export async function listWorkspaceFiles(cwd, relative = "") {
   const full = await workspacePath(cwd, relative);
   const entries = await readdir(full, { withFileTypes: true });
-  return entries.filter((entry) => !entry.isSymbolicLink() && !HIDDEN.test(entry.name)).slice(0, 500).map((entry) => ({
+  return entries.filter((entry) => !entry.isSymbolicLink() && !hidden(entry.name)).slice(0, 500).map((entry) => ({
     name: entry.name, path: [relative, entry.name].filter(Boolean).join("/"), directory: entry.isDirectory(),
   })).sort((a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name));
 }
@@ -109,9 +118,9 @@ export async function createArtifactServer(cwd) {
       const full = await workspacePath(cwd, relative);
       const mime = PREVIEW_TYPES[path.extname(full).toLowerCase()];
       const info = await stat(full);
-      if (!mime || !info.isFile() || info.size > 20 * 1024 * 1024) throw new Error();
+      if (!mime || !info.isFile() || info.size > MAX_PREVIEW_FILE_BYTES) throw new Error();
       const bytes = req.method === "HEAD" ? undefined : await readFile(full);
-      if (bytes && bytes.length > 20 * 1024 * 1024) throw new Error();
+      if (bytes && bytes.length > MAX_PREVIEW_FILE_BYTES) throw new Error();
       const contentType = /^(?:text\/|application\/json)/.test(mime) ? `${mime}; charset=utf-8` : mime;
       const headers = { "content-type": contentType, "cache-control": "no-store", "x-content-type-options": "nosniff", "accept-ranges": "bytes",
         "content-security-policy": "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-src 'none'" };

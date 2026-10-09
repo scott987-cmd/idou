@@ -173,7 +173,7 @@ try {
   const create = async () => { await page.locator('.use-enterprise-skill[data-mode="cowork"]').click(); await waitForHumanConfirm(page, "确认用于新任务"); await page.locator("#task-skill-label").waitFor(); await page.locator("#task-mcp-label").waitFor(); };
   const run = async (decision) => {
     await page.locator("#prompt").fill("执行绑定的技能。只使用声明的工具。"); await page.locator("#send").click();
-    await page.waitForFunction(() => document.querySelector("#approvals").textContent.includes("确认 MCP 工具调用") || document.querySelector("#task-status").textContent === "执行失败", null, { timeout: 40000 });
+    await page.waitForFunction(() => document.querySelector("#approvals").textContent.includes("确认使用工具") || document.querySelector("#task-status").textContent === "执行失败", null, { timeout: 40000 });
     assert.notEqual(await page.locator("#task-status").innerText(), "执行失败", await page.locator("#error-banner").innerText());
     // A work task folds the call's arguments under 技术详情 (since 2026-09-21,
     // aea0672); a person opens it to read what they are approving, and so does this.

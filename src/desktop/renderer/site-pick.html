@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>选中修改</title>
+  <link rel="stylesheet" href="site-pick.css">
+</head>
+<body>
+  <!-- i豆 自己的工具栏，叠在网站预览上面；网站的脚本碰不到这里。 -->
+  <div class="bar" id="bar">
+    <button type="button" id="pick-toggle" aria-pressed="false">选中修改</button>
+    <span id="pick-hint" class="hint" hidden>点页面上要改的地方</span>
+  </div>
+  <form class="panel" id="panel" hidden>
+    <p class="picked"><span class="label">已选中</span> <strong id="picked-label"></strong></p>
+    <textarea id="pick-text" rows="3" maxlength="500" placeholder="把它改成……（比如：字大一点，换成蓝色）"></textarea>
+    <p class="error" id="pick-error" role="alert" hidden></p>
+    <div class="actions">
+      <button type="button" id="pick-again">重选</button>
+      <button type="button" id="pick-cancel">取消</button>
+      <button type="submit" id="pick-send" class="primary">交给编程任务</button>
+    </div>
+  </form>
+  <script src="site-pick-view.js"></script>
+</body>
+</html>

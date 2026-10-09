@@ -95,9 +95,17 @@ test("published sites: served by the next coordinator from the database, sealed 
   const a = await open();
   const published = await a.publish({ ...owner, ...pack([file("index.html", "<h1>SITE-BODY-MARKER</h1>")]), share: { scope: "invited" } });
   for (let round = 1; round <= 4; round += 1) await a.publish({ ...owner, siteId: published.id, ...pack([file("index.html", `<h1>round ${round}</h1>`)]), share: { scope: "invited" } });
+  assert.equal(await a.dataStamp(published.id), null);
+  await a.putData(published.id, { snapshot: { digest: "d0", rows: ["DATA-MARKER"] } });
+  const stamped = await a.dataStamp(published.id);
   await a.putData(published.id, { snapshot: { digest: "d1", rows: ["DATA-MARKER"] } });
+  // Which write is there, without the bytes: what a coordinator keeps its
+  // compressed copy under, so it has to move with every write, from any of them.
+  assert.notEqual(await a.dataStamp(published.id), stamped);
   await a.setShare(published.id, { scope: "tenant" }, { ownerId: "ou_owner" });
   const b = await open();
+  assert.equal(await b.dataStamp(published.id), await a.dataStamp(published.id), "the same write, seen from another coordinator");
+  assert.equal(await b.dataDigest(published.id), "d1");
   assert.equal((await b.file(published.id, "/")).bytes.toString(), "<h1>round 4</h1>");
   assert.deepEqual((await b.data(published.id)).snapshot.rows, ["DATA-MARKER"]);
   assert.equal(b.get(published.id).share.scope, "tenant");

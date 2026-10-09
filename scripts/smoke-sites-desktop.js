@@ -13,6 +13,10 @@ import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { SiteRegistry } from "../src/control-plane/site-registry.js";
 import { SiteService } from "../src/control-plane/site-service.js";
+import { SITE_TEMPLATES } from "../src/application/site-templates.js";
+// The templates this build ships, from the one list: a smoke that spelled them
+// out failed on each new one for a reason that was not the product's.
+const TEMPLATE_IDS = SITE_TEMPLATES.map((template) => template.id);
 
 // 文档网站 in the actual Electron application, against a synthetic Base (no
 // account, no network, no model): 从表格新建 → pick the slice → the confirmation
@@ -60,10 +64,20 @@ try {
   //    sample table in it. A picture cannot tell you whether the sorting works.
   const gallery = page.locator("#site-gallery");
   await gallery.locator(".template-card").first().waitFor();
-  assert.equal(await gallery.locator(".template-card").count(), 6, "首页应当把每个模版都摆出来");
+  assert.equal(await gallery.locator(".template-card").count(), SITE_TEMPLATES.length, "首页应当把每个模版都摆出来");
   assert.deepEqual(await gallery.locator(".style-chip").allInnerTexts(), ["简约", "科技", "立体"]);
-  const otherWindow = async () => app.windows().find((other) => other !== page)
-    ?? await app.waitForEvent("window", { predicate: (other) => other !== page, timeout: 15_000 });
+  // What a row uses less often is behind its ⋯ menu (docs/sites-phase0.md §0.6).
+  const fromMenu = async (row, item) => { await row.locator(".site-more").click(); await page.locator(`#site-menu ${item}`).click(); };
+  // A preview is the page its loopback server serves. A local site's comes
+  // with the 选中修改 toolbar (docs/sites-phase1.md §1.2), a page of the
+  // application's own beside it -- not the one looked at here.
+  const otherWindow = async () => {
+    for (const until = Date.now() + 15_000; Date.now() < until; await new Promise((resolve) => setTimeout(resolve, 100))) {
+      const found = app.windows().find((other) => other !== page && /^http:\/\/127\.0\.0\.1:/.test(other.url()));
+      if (found) return found;
+    }
+    throw new Error("等了 15 秒没有预览窗口");
+  };
   const windowTitles = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((one) => one.getTitle()));
   await gallery.locator('.template-card[data-template="kanban"] .template-demo').click();
   const demo = await otherWindow();
@@ -74,6 +88,8 @@ try {
   await demo.locator(".column").first().waitFor();
   assert.deepEqual(await demo.locator(".column-head span:first-child").allInnerTexts(), ["进行中", "已回款", "待签"]);
   await demo.locator("#q").fill("海生");
+  // A search waits for the typing to pause before it draws (thousands of rows, 2026-10-04).
+  await demo.waitForFunction(() => document.querySelectorAll(".ticket-title").length === 1, null, { polling: 50, timeout: 5_000 });
   assert.deepEqual(await demo.locator(".ticket-title").allInnerTexts(), ["海生医疗"], "样例里的搜索是真的能用的");
   assert.equal(await page.evaluate(async () => (await window.idou.sites()).length), 0, "看一眼样例不该建出网站");
   await demo.close();
@@ -88,24 +104,23 @@ try {
   // Two axes: 场景 is what the page is for, 风格 is what it looks like. Five
   // scenarios and three styles are fifteen sites out of eight files, and the
   // picker has to show both or the second axis is not a choice anybody makes.
-  assert.deepEqual(await picker.locator(".template-card .template-name").allInnerTexts(),
-    ["表格看板", "名单查询", "项目进度", "时间线", "介绍页", "小游戏", "空网站"]);
+  assert.deepEqual(await picker.locator(".template-card .template-name").allInnerTexts(), [...SITE_TEMPLATES.map((template) => template.name), "空网站"]);
   assert.deepEqual(await picker.locator(".template-card .template-tag").allInnerTexts(),
-    ["接一张表格", "接一张表格", "接一张表格", "接一张表格", "不接表格", "不接表格", "不接表格"]);
+    [...SITE_TEMPLATES.map((template) => (template.table ? "接一张表格" : "不接表格")), "不接表格"]);
   assert.deepEqual(await picker.locator(".style-chip").allInnerTexts(), ["简约", "科技", "立体"]);
   assert.equal(await picker.locator('.style-chip[data-style="clean"]').getAttribute("aria-pressed"), "true");
   // Every template shows a picture of itself, and it is really drawn -- an
   // <img> that failed to decode is still an <img>. Decoding a data URL is fast
   // but not instant, so wait for it: measuring naturalWidth the moment the card
   // appears reads 0 from an image that is perfectly fine a tick later.
-  await page.waitForFunction(() => {
+  await page.waitForFunction((count) => {
     const images = [...document.querySelectorAll(".template-dialog .template-card img")];
-    return images.length === 6 && images.every((image) => image.complete && image.naturalWidth > 0);
-  }, null, { polling: 100 });
+    return images.length === count && images.every((image) => image.complete && image.naturalWidth > 0);
+  }, TEMPLATE_IDS.length, { polling: 100 });
   const shots = await picker.locator(".template-card img").evaluateAll((images) => images.map((image) => ({
     template: image.closest(".template-card").dataset.template, width: image.naturalWidth, height: image.naturalHeight,
     box: Math.round(image.getBoundingClientRect().width), data: image.src.startsWith("data:image/png;base64,") })));
-  assert.deepEqual(shots.map((shot) => shot.template), ["dashboard", "directory", "kanban", "timeline", "landing", "game"]);
+  assert.deepEqual(shots.map((shot) => shot.template), TEMPLATE_IDS);
   for (const shot of shots) {
     assert.equal(shot.data, true, `${shot.template} 的预览不是内嵌图片`);
     assert.equal(shot.width, 1200, `${shot.template} 的预览没有解码`);
@@ -149,7 +164,7 @@ try {
   // 3. Nothing is read until the card is answered, and the card names exactly
   //    what was picked.
   await dialog.locator("#table-build").click();
-  const card = page.locator("#confirmations .confirm-card");
+  const card = page.locator("#confirmations .confirm-card:not(.settled)");
   await card.waitFor();
   assert.equal(await card.locator("strong").first().innerText(), "确认把表格接进这个网站");
   const detail = await card.locator("pre").innerText();
@@ -159,7 +174,12 @@ try {
   assert.match(detail, /可写字段：无（只读）/);
   assert.match(await card.innerText(), /以你本人的飞书身份读取/);
   await waitForHumanChoice(card, "读取并建站");
+  // 表格看板 1 分钟内 (docs/sites-phase1.md §1.7): what is this application's
+  // of it is timed from the person's click -- reading the table and writing the site.
+  let clicked = Date.now();
   await page.locator(".site-row").waitFor();
+  const buildMs = Date.now() - clicked;
+  assert.ok(buildMs < 20_000, `reading the table and making the site took ${buildMs} ms`);
 
   // 3b. Making it opened it. Before this, the very next question after building
   //     a site was 谁可以打开 -- a sharing decision about a page nobody had
@@ -277,7 +297,10 @@ try {
   // Publishing is offered on both, and taking a site down is not offered until
   // there is something to take down.
   assert.equal(await page.locator(".site-row .site-publish").count(), 2);
-  assert.equal(await page.locator(".site-row .site-unpublish").count(), 0);
+  await page.locator(".site-row .site-more").first().click();
+  assert.deepEqual(await page.locator("#site-menu button").allInnerTexts(), ["换风格", "移出列表"], "nothing to take down or go back to before it is published");
+  await page.keyboard.press("Escape");
+  await page.locator("#site-menu").waitFor({ state: "hidden" });
   // The sharing panel speaks Feishu's words, and offers 跟随表格权限 only for a
   // site that has a table to follow.
   await page.locator('.site-row[data-site] .site-publish').first().click();
@@ -295,12 +318,16 @@ try {
   await publishShare.waitFor();
   await publishShare.locator("#share-tenant").check();
   await publishShare.locator("#share-confirm").click();
-  const publishCard = page.locator("#confirmations .confirm-card");
+  const publishCard = page.locator("#confirmations .confirm-card:not(.settled)");
   await publishCard.waitFor();
   assert.equal(await publishCard.locator("strong").first().innerText(), "确认发布这个网站");
   assert.match(await publishCard.locator("pre").innerText(), /谁能打开：组织内获得链接的人可阅读/);
   await waitForHumanChoice(publishCard, "发布");
+  clicked = Date.now();
   await page.locator(".site-row .site-link").first().waitFor();
+  const publishMs = Date.now() - clicked;
+  // 发布本身 10 秒内 (§1.7).
+  assert.ok(publishMs < 10_000, `publishing took ${publishMs} ms`);
   assert.match(await page.locator(".site-row .site-meta").first().innerText(), /已发布 · 组织内获得链接的人可阅读/);
   const serverSide = published.list({ ownerId: "ou_owner" });
   assert.equal(serverSide.length, 1, "服务端应当真的收到了这个网站");
@@ -324,8 +351,8 @@ try {
   }
 
   // 9. Taken offline, then back up -- without sending the bytes again.
-  await page.locator(".site-row .site-unpublish").first().click();
-  const downCard = page.locator("#confirmations .confirm-card");
+  await fromMenu(page.locator(".site-row").first(), ".site-unpublish");
+  const downCard = page.locator("#confirmations .confirm-card:not(.settled)");
   await downCard.waitFor();
   assert.match(await downCard.locator("pre").innerText(), /随时可以「重新发布」/);
   await waitForHumanChoice(downCard, "取消发布");
@@ -361,7 +388,7 @@ try {
   assert.match(await row.locator(".site-meta").innerText(), /已发布/);
   const onlineBefore = (await published.file(serverSide[0].id, "site.css")).bytes.toString();
   assert.match(onlineBefore, /简约/, "发布出去的是简约那一份");
-  await row.locator(".site-restyle").click();
+  await fromMenu(row, ".site-restyle");
   const restyle = page.locator(".share-dialog");
   await restyle.waitFor();
   assert.deepEqual(await restyle.locator(".share-scope strong").allInnerTexts(), ["简约", "科技", "立体"]);
@@ -373,7 +400,7 @@ try {
   // Local now, online not yet: that is the promise 发布 makes.
   assert.equal((await published.file(serverSide[0].id, "site.css")).bytes.toString(), onlineBefore, "没点更新，线上就不该变");
   await page.locator('.site-row[data-site]').first().locator(".site-update").click();
-  const updateCard = page.locator("#confirmations .confirm-card");
+  const updateCard = page.locator("#confirmations .confirm-card:not(.settled)");
   await updateCard.waitFor();
   assert.equal(await updateCard.locator("strong").first().innerText(), "确认更新线上版本");
   assert.match(await updateCard.locator("pre").innerText(), /（不变）/, "更新内容不是一次分享决定");
@@ -414,8 +441,8 @@ try {
   await page.locator(".site-row").nth(1).waitFor();
   const going = await page.locator(".site-row").last().locator(".site-name").innerText();
   const kept = await page.locator(".site-row").first().locator(".site-name").innerText();
-  await page.locator(".site-row .site-forget").last().click();
-  const forgetCard = page.locator("#confirmations .confirm-card");
+  await fromMenu(page.locator(".site-row").last(), ".site-forget");
+  const forgetCard = page.locator("#confirmations .confirm-card:not(.settled)");
   await forgetCard.waitFor();
   assert.match(await forgetCard.locator("pre").innerText(), /目录和里面的文件都保留/);
   await waitForHumanChoice(forgetCard, "移出列表");
@@ -454,7 +481,7 @@ try {
   await live.locator("#table-refresh").selectOption("15");
   await live.locator("#site-name").fill("跟着表格走");
   await live.locator("#table-build").click();
-  const liveCard = page.locator("#confirmations .confirm-card");
+  const liveCard = page.locator("#confirmations .confirm-card:not(.settled)");
   await liveCard.waitFor();
   await waitForHumanChoice(liveCard, "读取并建站");
   const liveRow = page.locator(".site-row").filter({ hasText: "跟着表格走" });
@@ -462,7 +489,7 @@ try {
   await (await otherWindow()).close();   // the preview it opened on creation
   await liveRow.locator(".site-publish").click();
   await page.locator(".share-dialog #share-confirm").click();
-  const liveConfirm = page.locator("#confirmations .confirm-card");
+  const liveConfirm = page.locator("#confirmations .confirm-card:not(.settled)");
   await liveConfirm.waitFor();
   await waitForHumanChoice(liveConfirm, "发布");
   await liveRow.locator(".site-link").waitFor();
@@ -489,7 +516,7 @@ try {
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ passed: true, actualElectron: true, syntheticFeishu: true, paidCalls: 0,
     templates: 7, styles: 3, liveDemo: true, fieldsOffered: 3, fieldsConfirmed: 2, cardAnswered: true, contractWritten: 3,
-    templateRendered: shown.rows + " rows", upstreamReads: reads, clockFollowedTheTable: true }));
+    templateRendered: shown.rows + " rows", upstreamReads: reads, clockFollowedTheTable: true, timingMs: { build: buildMs, publish: publishMs } }));
 } catch (error) {
   if (app) {
     const page = await app.firstWindow().catch(() => null);

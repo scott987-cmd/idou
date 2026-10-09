@@ -17,6 +17,7 @@
 //   working at once, and the files stay for an administrator to decide about;
 // what stays:
 //   the usage counts, which are the organisation's accounting.
+import { ownerWantsUp } from "./site-registry.js";
 import path from "node:path";
 import { dataHome } from "../install-names.js";
 
@@ -39,13 +40,20 @@ const ofLedger = async (ledger, who, work) => {
 };
 
 // What there is, read only. `who`: { tenantId, userId, appId }.
+// Which of a departing person's sites offboarding takes down: those whose owner
+// wants them up -- up now, or waiting for review or held, which an approval or
+// a release would otherwise put back up. One they already took down is left.
+// Read from the record itself (site-registry.js ownerWantsUp); the preview
+// counts by the same rule (fifth and sixth review before .270).
+export const goesOffline = (sites, site) => ownerWantsUp(sites.get?.(site.id) ?? site);
+
 export async function personInventory({ who, schedules = null, credentials = null, preferences = null, sites = null, ledger = null }) {
   const credential = credentials ? await credentials.read(who.tenantId, who.userId) : null;
   return {
     tasks: schedules ? await schedules.ownerData(who.tenantId, who.userId) : null,
     credential: credential ? { state: credential.state, expiresAt: credential.expiresAt ?? null } : null,
     model: preferences ? preferences.get(who) : null,
-    sites: sites ? sites.list({ ownerId: who.userId, tenantId: who.tenantId }).map((site) => ({ id: site.id, name: site.name, offline: site.offline === true })) : [],
+    sites: sites ? sites.list({ ownerId: who.userId, tenantId: who.tenantId }).map((site) => ({ id: site.id, name: site.name, offline: site.offline === true, withdrawn: goesOffline(sites, site) })) : [],
     reservations: await ofLedger(ledger, who, (identity) => ledger.ownerRows(identity)),
   };
 }
@@ -59,11 +67,38 @@ export async function forgetPerson({ who, schedules = null, credentials = null, 
   if (preferences && preferences.get(who) !== null) { await preferences.set(who, null); done.model = true; }
   done.reservations = await ofLedger(ledger, who, (identity) => ledger.forgetOwner(identity));
   if (sites) {
+    // A publish of theirs that passed its checks before they were disabled may
+    // still be on its way into the records: let it land, then take it down too.
+    // One that comes after is refused when it is written (site-service.js).
+    await sites.settled?.();
     for (const site of sites.list({ ownerId: who.userId, tenantId: who.tenantId })) {
-      if (site.offline === true) continue;
+      if (!goesOffline(sites, site)) continue;
       await sites.withdraw(site.id, { ownerId: who.userId });
       done.sitesOffline.push({ id: site.id, name: site.name });
     }
   }
   return done;
 }
+
+// The same, while the server runs (the administration console, admin-api.js):
+// the person has already been disabled, so no new run or session of theirs can
+// start. Their runs in flight are stopped, the unattended authorization is
+// revoked through the consent that caches its token, every session of theirs
+// ends on every replica, and then the inventory is let go through the same
+// live objects that hold it -- the site registry and the model choices are in
+// memory, and going around them is why the command line needs the coordinator
+// stopped. Pages still open on their sites are closed.
+export async function offboardLive({ who, scheduled = null, sessions, preferences = null, sites = null, ledger = null, siteServer = null }) {
+  if (!sessions?.revokePerson) throw new Error("离职清理需要会话注册表");
+  if (scheduled) {
+    for (const row of await Promise.resolve(scheduled.store.list(who, { mine: true })).catch(() => [])) {
+      if (row.owner === who.userId) scheduled.scheduler?.cancel?.(who.tenantId, row.id);
+    }
+  }
+  const revoked = scheduled?.unattended ? await scheduled.unattended.revoke(who).catch(() => false) : false;
+  const ended = await sessions.revokePerson(who.tenantId, who.userId);
+  const done = await forgetPerson({ who, schedules: scheduled?.store ?? null, credentials: scheduled?.unattended?.store ?? null, preferences, sites, ledger });
+  for (const site of done.sitesOffline) siteServer?.forgetSite?.(site.id);
+  return { ...done, credential: revoked === true || done.credential === true, sessions: ended };
+}
+

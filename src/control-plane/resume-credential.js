@@ -28,15 +28,20 @@ export function resumeSealingKey(appSecret, appId) {
 // The sealed fields are exactly what redemption needs and nothing else: who the
 // login belongs to, which device may redeem it, when it stops being valid, and
 // the refresh token itself.
+// `issuedAt` (2026-10) is when the login this credential continues began. An
+// administrator signing a person out refuses every credential from before that
+// moment (access-list.js). One sealed before the field existed has none, and is
+// read as the oldest there could be. A build from before it ignores the field.
 function validate(record) {
-  const { appId, tenantId, userId, deviceId, devicePublicKey, refreshToken, notAfter } = record ?? {};
+  const { appId, tenantId, userId, deviceId, devicePublicKey, refreshToken, notAfter, issuedAt } = record ?? {};
   for (const [name, value] of [["appId", appId], ["tenantId", tenantId], ["userId", userId], ["deviceId", deviceId]]) {
     if (typeof value !== "string" || !value || value.length > 256 || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error(`Invalid resume ${name}`);
   }
   if (typeof devicePublicKey !== "string" || !devicePublicKey || devicePublicKey.length > 4096) throw new Error("Invalid resume device key");
   if (typeof refreshToken !== "string" || !refreshToken || refreshToken.length > 16384) throw new Error("Invalid resume refresh token");
   if (!Number.isSafeInteger(notAfter) || notAfter <= 0) throw new Error("Invalid resume expiry");
-  return { appId, tenantId, userId, deviceId, devicePublicKey, refreshToken, notAfter };
+  if (issuedAt !== undefined && (!Number.isSafeInteger(issuedAt) || issuedAt < 0)) throw new Error("Invalid resume issue time");
+  return { appId, tenantId, userId, deviceId, devicePublicKey, refreshToken, notAfter, ...(issuedAt !== undefined ? { issuedAt } : {}) };
 }
 
 export function sealResume(key, record) {

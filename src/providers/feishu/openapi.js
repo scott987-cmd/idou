@@ -60,6 +60,9 @@ export const WIKI_OBJECT_KINDS = Object.freeze({ docx: "document", sheet: "sheet
 // being recorded. Either way the body's code decides, not the status. Anything
 // else is about the resource.
 export const scopeRefused = (code) => code === 99991672 || code === 99991679;
+// A user's access token Feishu no longer takes: missing, invalid, or run out.
+// The person has to sign in again; it says nothing about what they may read.
+export const userTokenRefused = (status, code) => status === 401 || code === 99991661 || code === 99991668 || code === 99991677;
 
 // A refusal of our own -- the desktop sidecar's, the control plane's CLI proxy,
 // the sandbox's CLI route -- is read by the Feishu SDK inside the CLI, which

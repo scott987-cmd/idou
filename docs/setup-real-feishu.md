@@ -58,6 +58,8 @@ npm run scopes -- /绝对路径/idou.env > /tmp/feishu-scopes.json
 | 读会话消息（以用户身份） | 以用户身份获取群组消息（`im:message.group_msg:get_as_user`）、单聊消息（`im:message.p2p_msg:get_as_user`） |
 | 读写电子表格 | `sheets:spreadsheet:read`、`sheets:spreadsheet:write_only`、`sheets:spreadsheet.meta:read` |
 | 读写多维表格 | `base:app:read`、`base:table:read`、`base:field:read`、`base:record:read`、`base:record:create`、`base:record:update` |
+| 按表格视图排列网站的列 | `base:view:read` |
+| 新建多维表格、数据表、字段（只新建，不删不改） | `base:app:create`、`base:table:create`、`base:field:create` |
 | 读日程与空闲 | `calendar:calendar:read`、`calendar:calendar.event:read`、`calendar:calendar.free_busy:read` |
 | 建改日程、回复邀请 | `calendar:calendar.event:create`、`calendar:calendar.event:update`、`calendar:calendar.event:reply` |
 | 读任务 | `task:task:read`、`task:tasklist:read` |

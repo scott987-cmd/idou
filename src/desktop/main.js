@@ -1,5 +1,5 @@
 import "../adopt-legacy-env.js";
-import { app, BrowserWindow, WebContentsView, clipboard, dialog, ipcMain, Menu, nativeTheme, Notification, safeStorage, session as electronSession, shell, systemPreferences } from "electron";
+import { app, BrowserWindow, WebContentsView, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, session as electronSession, shell, systemPreferences } from "electron";
 
 // The desktop is usually a child of a launcher, and its stdout/stderr are pipes
 // to that launcher. If the launcher goes away, the next write to either — which
@@ -10,7 +10,8 @@ for (const stream of [process.stdout, process.stderr]) {
   stream?.on?.("error", (error) => { if (error?.code !== "EPIPE") throw error; });
 }
 
-import { mkdir, readFile, writeFile, stat, mkdtemp, rm, rename, realpath } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile, stat, mkdtemp, rm, rename, realpath } from "node:fs/promises";
+import { watch } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
@@ -38,17 +39,24 @@ import { ScheduleMirror } from "../application/schedule-mirror.js";
 import { ScheduleNotifier } from "../application/schedule-notifier.js";
 import { codexRuntimeHome } from "../providers/codex/gateway-config.js";
 import { chatModelLabel, chatModelVendor, isChatModel } from "../providers/codex/chat-models.js";
-import { MODEL_UNCONFIRMED, ServerModel, modelFields, modelProblem, turnSessionUnknown } from "../providers/codex/server-model.js";
+import { siteRequestTimeout, siteRequestFailure, siteRequestBody, tooMuchData } from "../application/site-requests.js";
+import { pickedFile, pickedLabel, sitePickRequest } from "../application/site-pick.js";
+import { materialPrompt, parseMaterial, writeMaterialStart } from "../application/site-material.js";
+import { SitePicker } from "./site-pick.js";
+import { MODEL_UNCONFIRMED, ServerModel, modelFields, modelProblem, taskModelFields, turnSessionUnknown } from "../providers/codex/server-model.js";
 import { resolveFeishuProvider } from "../providers/feishu/provider-registry.js";
 import { productSkillCatalog, isProductSkill } from "../application/skill-policy.js";
 import { DocumentService } from "../application/document-service.js";
 import { knowledgeEvidence, knowledgeQuery } from "../knowledge/task-scope.js";
 import { LocalSkillStore } from "../skills/local-skill-store.js";
-import { sitePublishProblems, snapshotApp } from "../application/app-candidates.js";
+import { sitePublishProblems, sitePublishSkip, siteVersion, snapshotApp, writeSiteVersion } from "../application/app-candidates.js";
+import { mergeSiteLists, RefreshTrouble, remoteSiteId, REMOTE_SITE } from "../application/site-rows.js";
+import { SCOPE_WORDS, siteShareCard, sitePublishCard, widensShare } from "../application/site-publishing.js";
 import { describeProjectDirectory, initGitRepository } from "../application/project-directory.js";
-import { TableSites } from "../application/table-sites.js";
-import { readContract, writeContract } from "../application/table-contract.js";
-import { readBaseSlice } from "../application/table-snapshot.js";
+import { TableSites, makeTableSite } from "../application/table-sites.js";
+import { refreshTableSite } from "../application/site-refresh.js";
+import { contractFiles, readContract, writeContract } from "../application/table-contract.js";
+import { contractKey, readBaseSlice } from "../application/table-snapshot.js";
 import { SAMPLE_SLICE, SAMPLE_TITLE, SAMPLE_READ_AT, sampleRecords } from "../application/site-sample.js";
 import { baseCellText } from "../providers/feishu/base-reader.js";
 import { SiteStore } from "../application/site-store.js";
@@ -84,6 +92,10 @@ import { runWikiRenewalCheckpoint } from "../knowledge/renewal-checkpoint.js";
 import { GatewayWikiSynthesizer } from "../knowledge/synthesis.js";
 import { DesktopAuth, SESSION_LEASE_ROOT, SESSION_UNKNOWN, sweepStaleLeases } from "../application/desktop-auth.js";
 import { FeishuLoginClient } from "../application/feishu-login-client.js";
+import { readReleaseManifestSync } from "../providers/release-manifest.js";
+// Which build this is, for the administration console's list of people; null
+// when it cannot be read, which changes nothing else.
+const desktopRelease = () => { try { return readReleaseManifestSync()?.releaseId ?? null; } catch { return null; } };
 import { DeviceIdentityStore } from "../application/device-identity.js";
 import { ResumeStore } from "../application/resume-store.js";
 import { FeishuAccountVerifier, AccountCheckBlocked } from "../application/feishu-account-verifier.js";
@@ -110,9 +122,10 @@ import { AGENT_READS } from "../application/agent-reads.js";
 import { sheetKnowledgeSource, baseKnowledgeSource, knowledgeSourceReader } from "../knowledge/sheet-source.js";
 import { agentMediaActions, describeMedia } from "../application/agent-media-actions.js";
 import { agentDeliveryActions } from "../application/agent-delivery-actions.js";
-import { permitsUnattendedActions } from "../permissions.js";
+import { permitsUnattendedActions, fullAccessAllowedNow, setFullAccessAllowed, FULL_ACCESS_WITHHELD } from "../permissions.js";
 import { agentScheduleActions } from "../application/agent-schedule-actions.js";
 import { agentSkillActions } from "../application/agent-skill-actions.js";
+import { agentSiteActions } from "../application/agent-site-actions.js";
 import { deliveryConfirmation } from "../application/delivery-confirmation.js";
 import { WEB_IDENTITY, WebIdentityCheck, rememberedVerdict, verdictRecord } from "../application/web-identity.js";
 import { NativeViewGroup } from "./native-view-group.js";
@@ -123,6 +136,8 @@ import { DockedChat } from "./docked-chat.js";
 import { chatContext, documentDockContext } from "./feishu-chat-context.js";
 import { documentName } from "./feishu-document-name.js";
 import { desktopProfileName, taskFolderRoot } from "../install-names.js";
+// The one file of a table site the server writes for each visitor (site-server.js).
+const LIVE_TABLE_DATA = "data/table-data.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const entryUrl = pathToFileURL(path.join(here, "renderer/index.html")).href;
@@ -194,6 +209,9 @@ async function start() {
   const builtinConnectors = await new BuiltinConnectors({ file: path.join(dataRoot, "builtin-connectors.json") }).load();
   let scope, scopeEpoch = 0, scopeOperations = 0, switching = false, quitting = false;
   const inFlight = new Set();
+  // Aborted when the app quits: a request that may wait minutes on the server
+  // (a site's content check, site-requests.js) is not waited out by the quit.
+  const leaving = new AbortController();
   // Not being signed in and being signed in without the capability are different
   // situations with different fixes. Reporting the second for the first sent the
   // person to their administrator when all they had to do was log in.
@@ -288,6 +306,19 @@ async function start() {
     }, choice: savedModelChoice, persist: async (model) => { await writeFile(modelChoiceFile, JSON.stringify({ model }), { mode: 0o600 }); },
     remote: { options: () => modelChoiceRequest("/v1/models/options", {}), choose: (model) => modelChoiceRequest("/v1/models/choose", { model }) } });
     serverModel.learn();
+    // What the administrators allow this person (control-plane/policy.js): for
+    // now, whether a task may run with 完全访问. Asked now and every five
+    // minutes; a server from before it answers 404, and nothing is withheld.
+    const refreshPolicy = async () => {
+      const held = await modelChoiceRequest("/v1/policy", {}).catch(() => undefined);
+      if (held === undefined) return;
+      const allowed = held?.features?.fullAccess !== false;
+      if (allowed === fullAccessAllowedNow()) return;
+      setFullAccessAllowed(allowed);
+      if (!win.webContents.isDestroyed()) win.webContents.send("idou:permission-modes-changed");
+    };
+    void refreshPolicy();
+    const policyTimer = setInterval(() => { void refreshPolicy(); }, 5 * 60_000); policyTimer.unref?.();
     if (savedModelChoice && savedChoiceFile?.movedToServer !== true) void (async () => {
       const held = await modelChoiceRequest("/v1/models/options", {}).catch(() => null);
       if (!held || held.choice !== null || !held.available?.includes(savedModelChoice)) return;
@@ -358,10 +389,13 @@ async function start() {
       const builtinRows = task.mode === "coding" ? builtinConnectors.enabledRows({ previewBase: await previews.baseFor(task) }).filter((row) => !ownConnections.some((existing) => existing.id === row.id)) : [];
       // A coding task opened on one of this account's sites (用编程任务修改 hands
       // it the site's folder) is told what publishing that folder will take.
+      // And whether i豆 made that folder in its own data: then the folder holding
+      // it holds the person's other sites, and the task is told to write nothing there.
       const site = task.mode === "coding" ? siteStore.list().find((item) => path.resolve(item.folder) === path.resolve(task.cwd)) : null;
+      const owned = site ? Boolean(await siteStore.ownedFolder(site.id)) : false;
       const runtime = await createTaskRuntime({ ...config, chatModel: await serverModel.requestModel({ sending }), mcpConnections: [...builtinRows, ...ownConnections], acquireEnterpriseMcp: (row) => enterpriseMcp.acquire(row),
         builtinConnections: builtinRows.map((row) => ({ id: row.id, title: row.title })),
-        ...(site ? { site: { name: site.name } } : {}) }, task);
+        ...(site ? { site: { name: site.name, owned } } : {}) }, task);
       serverModel.watchTurns(runtime.client);
       runtime.client.on("notification", (message) => { if (turnSessionUnknown(message)) void checkSession().catch(() => {}); });
       if (runtime.prepare) { const prepare = runtime.prepare; runtime.prepare = async (...args) => { await mcp.resolve(task.mcpConnection); return prepare(...args); }; }
@@ -470,7 +504,7 @@ async function start() {
     const wikiPublication = new DesktopWikiPublication({ ...cloudOptions, filename: path.join(root, "knowledge", "publication-journal.enc") });
     const wikiReception = new DesktopWikiReception(cloudOptions);
     await cliSidecar?.start();
-    return { root, webVerdictFile: path.join(root, "web-identity.json"), config, serverModel, clientSession, feishu, feishuProvider, sheetEdits, bases, baseEdits, tableSites, siteStore, taskUi, cliSidecar, localSkills, feishuBusinessLinked: config.feishuBusinessLinked, documentWriteAccess, destructiveWriteAccess, messageWriteAccess, driveWriteAccess, wiki, knowledgeSources: wikiProvider, wikiCoordinator, wikiPublication, wikiReception, cloudWork, documents, sheets, documentEdits, documentDelivery, chatReader, scheduleChatReader, chatReply, dockedChat, discovery, service, terminals, skills, mcp, runtimeFactory, previews, enterprise, enterpriseMcp, media, mediaDelivery, fileDelivery, appCandidates, appArchive, appReviews, appRuntimeExports };
+    return { root, webVerdictFile: path.join(root, "web-identity.json"), config, serverModel, clientSession, stopPolicy: () => clearInterval(policyTimer), feishu, feishuProvider, sheetEdits, bases, baseEdits, tableSites, siteStore, taskUi, cliSidecar, localSkills, feishuBusinessLinked: config.feishuBusinessLinked, documentWriteAccess, destructiveWriteAccess, messageWriteAccess, driveWriteAccess, wiki, knowledgeSources: wikiProvider, wikiCoordinator, wikiPublication, wikiReception, cloudWork, documents, sheets, documentEdits, documentDelivery, chatReader, scheduleChatReader, chatReply, dockedChat, discovery, service, terminals, skills, mcp, runtimeFactory, previews, enterprise, enterpriseMcp, media, mediaDelivery, fileDelivery, appCandidates, appArchive, appReviews, appRuntimeExports };
   };
   const loginRequired = Boolean(initialConfig.controlPlane.baseUrl && !initialConfig.controlPlane.sessionFile);
   scope = await buildScope(loginRequired ? path.join(dataRoot, "signed-out") : dataRoot, initialConfig.controlPlane, loginRequired);
@@ -597,6 +631,8 @@ async function start() {
       await hidePreview(); await mediaPreview.close(); await scope.media.close(); scope.wiki.disableSynthesis();
       scope.chatReader.close();
       scope.scheduleChatReader.close();
+      // The next account is asked afresh; until it answers, nothing is withheld.
+      scope.stopPolicy?.(); setFullAccessAllowed(true);
       scope.previews.closeAll();
       scope.terminals.closeAll();
       for (const id of scope.service.tasks.keys()) scope.documents.close(id);
@@ -615,7 +651,7 @@ async function start() {
   const auth = new DesktopAuth({ serverUrl: initialConfig.controlPlane.baseUrl,
     // The browser half is done once the authorizing browser is back on this
     // machine's loopback address; the renderer then finishes the sign-in.
-    client: new FeishuLoginClient({ getDeviceKey: origin => deviceIdentity.key(origin),
+    client: new FeishuLoginClient({ getDeviceKey: origin => deviceIdentity.key(origin), client: desktopRelease(),
       onReturn: () => { if (!win.webContents.isDestroyed()) win.webContents.send("idou:login-callback"); } }),
     // Authorization happens in the app's own window. If that view cannot be
     // created for any reason, the system browser is still the way in rather
@@ -670,7 +706,7 @@ async function start() {
   // Learning started with the scope, so this rarely waits; while the server has
   // confirmed no model, reading it is what has the server asked again.
   const connection = async () => {
-    const status = auth.status(), current = scope, model = modelFields(await current.serverModel.current());
+    const status = auth.status(), current = scope, model = { ...modelFields(await current.serverModel.current()), ...taskModelFields(current.serverModel.options()) };
     if (status.identity) return { ...status, ...model, identity: status.identity.displayName || status.identity.userId, provider: "feishu" };
     try {
       const session = await readClientSession(current.config.controlPlane.sessionFile, current.config.controlPlane.baseUrl);
@@ -842,23 +878,90 @@ async function start() {
   // structure only -- names and types -- so it is a read; anything that takes a
   // slice out of Feishu goes through the confirmation card first.
   bind("table-describe", ({ url, tableId, sheetId } = {}) => scope.tableSites.describe(typeof url === "string" ? url.slice(0, 2000) : "", { tableId, sheetId }), "read");
-  bind("sites", async () => Promise.all(scope.siteStore.list().map(async (site) => {
-    // A one-use handle, as the folder picker mints them: the renderer never
-    // names a directory, it names a handle this process resolved.
-    const workspaceId = randomUUID();
-    workspaces.set(workspaceId, site.folder);
-    return { id: site.id, name: site.name, workspaceId, path: site.folder, kind: site.slice ? "table" : "files", createdAt: site.createdAt,
-      lastReadAt: site.lastReadAt, rowCount: site.rowCount, truncated: site.truncated,
-      published: Boolean(site.publishedId), offline: site.publishedOffline === true, url: site.url ?? null, publishedScope: site.publishedScope ?? null,
-      publishedInherit: site.publishedInherit === true, publishedAt: site.publishedAt ?? null,
-      fields: site.slice ? (site.slice.kind === "base" ? site.slice.fields.length : site.slice.columns.length) : 0,
-      refreshSeconds: site.slice?.refreshSeconds ?? null,
-      // Read from the folder rather than remembered: the person may have
-      // rewritten site.css in a coding task, and then it is theirs, not a style.
-      style: await styleOf(site.folder).catch(() => null),
-      // What in the folder 发布 would refuse, named now rather than by the refusal.
-      problems: await sitePublishProblems(site.folder).catch(() => []) };
-  })), "read");
+  let followedAt = 0;
+  // What the server last said it can do (site-service.js features) and how much
+  // it takes; null until it has answered.
+  let serverFeatures = null, serverLimits = null;
+  // The server's word on each published site, kept here: a first publish the
+  // app stopped waiting for that went up after all, and whether each is up and
+  // for whom -- an administrator's approval or hold, a change whose answer never
+  // came, are known only there. Without it a table site approved after review
+  // was never refreshed again, its row saying it was (fifth review before .270).
+  // One site's trouble -- forgotten meanwhile, say -- is its own: the others
+  // are still followed, and nothing here stops a refresh or a list (sixth review).
+  // `askedAt`: when the list was asked for, if it is the server's whole list. A
+  // site published here before then that is not in it is gone from the server
+  // -- deleted from another computer, or a deletion whose answer never came --
+  // and is shown as not published, rather than as up with every action on it
+  // failing (review of phase 0, 2026-10-03).
+  const goneSites = new Set();
+  const followServer = async (remote, { askedAt = null } = {}) => {
+    followedAt = Date.now();
+    const store = scope.siteStore;
+    for (const site of store.list()) {
+      try {
+        const found = !site.publishedId && site.publishingId ? remote.get(site.publishingId) : null;
+        if (found) await store.recordPublish(site.id, { publishedId: found.id, url: found.url, scope: found.share?.scope, inherit: found.share?.inherit, offline: found.offline === true });
+        const row = site.publishedId ? remote.get(site.publishedId) : null;
+        if (row) await store.recordServer(site.id, { offline: row.offline === true, scope: row.share?.scope, inherit: row.share?.inherit === true });
+        else if (site.publishedId && askedAt !== null && (site.publishedAt ?? 0) < askedAt) {
+          await store.recordPublish(site.id, {});
+          goneSites.add(site.id);
+        }
+      } catch (error) { process.stderr.write(`idou-desktop: 网站「${site.name}」没能按服务端同步：${String(error?.message ?? error).slice(0, 160)}\n`); }
+    }
+  };
+  bind("sites", async () => {
+    // The server's list, read once per drawing: what an administrator did to
+    // each site -- taken it down, or holding it for review -- and the sites this
+    // computer has no folder for (docs/sites-phase0.md §0.5). Not signed in, or
+    // no publishing there: this computer's list, as it last knew it.
+    const askedAt = Date.now();
+    const listed = await siteRequest("/v1/sites/list", {}).catch(() => null);
+    serverFeatures = listed ? listed.features ?? [] : serverFeatures;
+    serverLimits = listed ? listed.limits ?? null : serverLimits;
+    await followServer(new Map((listed?.sites ?? []).map((row) => [row.id, row])), { askedAt: listed ? askedAt : null }).catch(() => {});
+    const { here, hidden, elsewhere } = mergeSiteLists(scope.siteStore.list(), listed ? listed.sites ?? [] : null);
+    const shared = (row) => (row?.share?.members ?? []).map((member) => ({ handle: memberHandle(member), type: member.type, name: member.name || "" }));
+    const localRow = async ({ site, server: row }, extra = {}) => {
+      // A one-use handle, as the folder picker mints them: the renderer never
+      // names a directory, it names a handle this process resolved.
+      const workspaceId = randomUUID();
+      workspaces.set(workspaceId, site.folder);
+      // A site downloaded here follows its table on the server, and this
+      // computer does not read it (readsHere).
+      return { id: site.id, name: site.name, workspaceId, path: site.folder, kind: site.slice || row?.sourced ? "table" : "files", readsHere: Boolean(site.slice), createdAt: site.createdAt,
+        lastReadAt: site.lastReadAt, rowCount: site.rowCount, truncated: site.truncated,
+        published: Boolean(site.publishedId), offline: row ? row.offline === true : site.publishedOffline === true,
+        held: row?.held ?? null, review: row?.review ?? null,
+        // Who else may open it is the server's to say: unknown while it does not
+        // answer, never "nobody" -- saved like that, it took every collaborator
+        // off (review of phase 0, 2026-10-03).
+        // The server's link when it has said one: by the site's address name, if it has one.
+        url: row?.url ?? site.url ?? null, address: row?.address ?? null, publishedScope: site.publishedScope ?? null, members: row ? shared(row) : site.publishedId ? null : [],
+        note: !site.publishedId && goneSites.has(site.id) ? "服务端上已经没有这个网站了：可能在别的电脑上删掉了。本机目录还在，可以重新发布。" : null,
+        publishedInherit: site.publishedInherit === true, publishedAt: site.publishedAt ?? null,
+        // 删除 is offered only where site-delete would do it: never published, its folder the application's.
+        deletable: !site.publishedId && Boolean(await scope.siteStore.ownedFolder(site.id).catch(() => null)),
+        fields: site.slice ? (site.slice.kind === "base" ? site.slice.fields.length : site.slice.columns.length) : 0,
+        refreshSeconds: site.slice?.refreshSeconds ?? null,
+        refreshTrouble: site.slice ? refreshTrouble.of(site.id) : null,
+        // Read from the folder rather than remembered: the person may have
+        // rewritten site.css in a coding task, and then it is theirs, not a style.
+        style: await styleOf(site.folder).catch(() => null),
+        // What in the folder 发布 would refuse, named now rather than by the refusal.
+        // A table site that has been read publishes without its data file (publishLocalSite).
+        problems: await sitePublishProblems(site.folder, "index.html", { skip: sitePublishSkip(Boolean(site.slice && site.lastReadAt)) }).catch(() => []), ...extra };
+    };
+    // On the server only: nothing of it on this computer to edit or read.
+    const remoteRow = (row) => ({ id: remoteSiteId(row.id), remote: true, name: row.name, address: row.address ?? null, workspaceId: null, path: null, kind: row.sourced ? "table" : "files",
+      createdAt: row.createdAt ?? null, lastReadAt: null, rowCount: 0, truncated: false,
+      published: true, offline: row.offline === true, held: row.held ?? null, review: row.review ?? null, url: row.url ?? null,
+      publishedScope: row.share?.scope ?? null, members: shared(row), publishedInherit: row.share?.inherit === true, publishedAt: row.publishedAt ?? null,
+      fields: 0, refreshSeconds: null, style: null, problems: [] });
+    return [...await Promise.all(here.map((pair) => localRow(pair))), ...elsewhere.map(remoteRow),
+      ...await Promise.all(hidden.map((pair) => localRow(pair, { hidden: true })))];
+  }, "read");
   // The ready-made sites. Static files that ship with the application, so the
   // list is the same for everybody and cannot be swapped out next to a site.
   // Each template with a picture of itself: the template, actually rendered
@@ -893,31 +996,15 @@ async function start() {
         + "把这个网站发布出去，就等于把这份数据交给能打开它的人。",
       buttons: ["取消", "读取并建站"], defaultId: 0, cancelId: 0 });
     if (choice.response !== 1) return null;
-    const site = await scope.siteStore.create({ name, slice: parsed, title });
-    // The page first, then its data: a folder with a template in it and no
-    // contract yet is a page that says it is loading, which is the truth.
-    const files = chosen ? await writeTemplate(site.folder, chosen.id, style ?? DEFAULT_STYLE) : { written: [] };
-    const built = await scope.tableSites.build(site.folder, parsed, { title: site.name });
-    return { ...await scope.siteStore.recordRead(site.id, built), paths: built.paths, written: files.written };
+    // The table first, then the site (table-sites.js makeTableSite).
+    const { site, built, written } = await makeTableSite({ store: scope.siteStore, tables: scope.tableSites, name, title, slice: parsed,
+      template: chosen ? (folder) => writeTemplate(folder, chosen.id, style ?? DEFAULT_STYLE) : null });
+    return { ...await scope.siteStore.recordRead(site.id, built), paths: built.paths, written };
   });
-  // Reading the same slice again is not a new disclosure: it was confirmed once
-  // and nothing about what may be shown has changed.
-  const refreshSite = async (id) => {
-    const site = scope.siteStore.get(id);
-    if (!site.slice) throw new Error("这个网站没有接表格，没有可刷新的数据");
-    const built = await scope.tableSites.build(site.folder, site.slice, { title: site.name });
-    const recorded = await scope.siteStore.recordRead(site.id, built);
-    // A published site shows what it was last given, so a refresh here is only
-    // half the job until the server has the same numbers.
-    if (site.publishedId) {
-      const data = await readContract(site.folder);
-      if (data) await siteRequest("/v1/sites/data", { siteId: site.publishedId, ...data }).catch((error) => {
-        throw new Error(`本机已更新，但推送到线上失败：${error.message}`);
-      });
-    }
-    return recorded;
-  };
-  bind("site-refresh", refreshSite);
+  // Read again if it may have moved, and pushed if the server lacks it (site-refresh.js).
+  const refreshSite = (id, { force = false } = {}) => refreshTableSite(scope.siteStore.get(id), { force, tables: scope.tableSites, store: scope.siteStore,
+    readData: readContract, push: (siteId, data) => siteRequest("/v1/sites/data", { siteId, ...data }) });
+  bind("site-refresh", async (id) => { const done = await refreshSite(id, { force: true }); refreshTrouble.succeeded(id); return done; });
   // The clock the whole feature rests on.
   //
   // "数值会跟着表格走" was, until this existed, only true when somebody pressed
@@ -930,22 +1017,42 @@ async function start() {
   // this process, so it runs while the application is open and stops when it is
   // closed. The list says so rather than implying a server does it.
   let refreshing = false;
+  // A reading that keeps failing (docs/sites-phase0.md §0.7): on the site's row
+  // with the reason, and told once in a notification at the third in a row --
+  // until then a published page went on showing old numbers and nothing said
+  // so but a line in the log. Told through tellSiteTrouble, set once the
+  // notification switch is read, further down.
+  const refreshTrouble = new RefreshTrouble();
+  let tellSiteTrouble = () => {};
   const dueSites = (now) => scope.siteStore.list().filter((site) =>
     // Only what somebody can actually open: an unpublished or withdrawn site has
     // no reader to tell, and reading it anyway spends the person's Feishu quota.
     site.slice && site.publishedId && site.publishedOffline !== true
-    && now - (site.lastReadAt ?? 0) >= site.slice.refreshSeconds * 1000);
+    && now - (site.lastReadAt ?? 0) >= site.slice.refreshSeconds * 1000 && refreshTrouble.due(site.id, now));
   const refreshDueSites = async () => {
     if (refreshing || quitting) return;
     refreshing = true;
     const owner = scope;
     try {
+      // A table site down here may be up there by now: asked at most every five minutes.
+      if (Date.now() - followedAt > 5 * 60_000 && scope.siteStore.list().some((site) => site.slice && site.publishedId && site.publishedOffline === true)) {
+        const askedAt = Date.now();
+        const listed = await siteRequest("/v1/sites/list", {}).catch(() => null);
+        if (listed && scope === owner) await followServer(new Map((listed.sites ?? []).map((row) => [row.id, row])), { askedAt }).catch(() => {});
+        followedAt = Date.now();
+      }
       for (const site of dueSites(Date.now())) {
         if (scope !== owner || quitting) return;   // account switch: not this account's tables any more
         // One site's failure is its own: a table somebody lost access to must
         // not stop the others from following theirs.
-        await refreshSite(site.id).then(() => win.webContents.isDestroyed() || win.webContents.send("idou:sites-changed"),
-          (error) => process.stderr.write(`idou-desktop: 网站「${site.name}」自动刷新失败：${String(error.message).slice(0, 200)}\n`));
+        await refreshSite(site.id).then(() => { refreshTrouble.succeeded(site.id); win.webContents.isDestroyed() || win.webContents.send("idou:sites-changed"); },
+          (error) => {
+            process.stderr.write(`idou-desktop: 网站「${site.name}」自动刷新失败：${String(error.message).slice(0, 200)}\n`);
+            const { tell, first } = refreshTrouble.failed(site.id, error, Date.now(), site.slice.refreshSeconds * 1000);
+            if (tell) tellSiteTrouble(site, refreshTrouble.of(site.id));
+            // The row is drawn again when there is something new to say on it.
+            if ((first || tell) && !win.webContents.isDestroyed()) win.webContents.send("idou:sites-changed");
+          });
       }
     } finally { refreshing = false; }
   };
@@ -980,6 +1087,41 @@ async function start() {
   //
   // Nothing is published here. It joins the list; who may open it is still the
   // sharing panel's question, answered later and separately.
+  // 从材料开始 (docs/sites-phase1.md §1.3). A folder of the person's own
+  // material is chosen here and named to the renderer by a handle only, as a
+  // workspace is.
+  const materialFolders = new Map();
+  bind("site-material-folder", async () => {
+    const selected = await dialog.showOpenDialog(win, { title: "选择放着资料的文件夹（只读，不会改里面的文件）", properties: ["openDirectory"], buttonLabel: "用这个文件夹" });
+    if (selected.canceled || !selected.filePaths[0]) return null;
+    const folder = await realpath(selected.filePaths[0]);
+    const handle = randomUUID();
+    materialFolders.set(handle, folder);
+    return { handle, name: path.basename(folder) };
+  });
+  // Which kind of Feishu link this is, as the deployment reads its own links.
+  const materialLink = (value) => {
+    const references = scope.feishuProvider.references;
+    for (const [key, kind] of [["document", "document"], ["wikiNode", "document"], ["driveFile", "document"], ["base", "table"], ["sheet", "table"]]) {
+      try { if (typeof references[key] === "function" && references[key](value)) return kind; } catch { /* another kind, or one this deployment does not read */ }
+    }
+    return null;
+  };
+  // The site's folder, with its style and the scenarios to choose from, and the
+  // first message for the coding task the renderer then starts on it. A table
+  // goes the table's own way, through its confirmation card. `check` only says
+  // which way a link goes, before anything is made.
+  bind("site-from-material", async ({ kind, link, handle, description, name, style, check = false } = {}) => {
+    const material = parseMaterial({ kind, link, folder: typeof handle === "string" ? materialFolders.get(handle) : null, description }, { recognise: materialLink });
+    if (material.kind === "table") return { table: true, link: material.link };
+    if (check === true) return { table: false };
+    if (style !== undefined && style !== null && !siteStyle(style)) throw new Error("没有这个风格");
+    const site = await scope.siteStore.create({ name: typeof name === "string" ? name : "" });
+    const start = await writeMaterialStart(site.folder, style ?? DEFAULT_STYLE);
+    const workspaceId = randomUUID();
+    workspaces.set(workspaceId, site.folder);
+    return { id: site.id, name: site.name, workspaceId, path: site.folder, prompt: materialPrompt(material, { styleId: start.style }) };
+  });
   bind("site-from-task", async (taskId) => {
     const task = scope.service.get(taskId);
     if (task.mode !== "coding") throw new Error("只有编程任务的成果可以收进文档网站");
@@ -1003,13 +1145,71 @@ async function start() {
   // loopback server, the same CSP the published page gets, its own partition,
   // and nothing that leaves the origin.
   let sitePreview = null;
+  // What a preview holds beyond its window: the 选中修改 toolbar, the picker,
+  // and the watch that reloads the page when its files change.
+  const releasePreview = (current) => {
+    current.server.close();
+    // A view's page outlives the window it was in unless it is closed itself.
+    if (current.toolbar && !current.toolbar.webContents.isDestroyed()) current.toolbar.webContents.close();
+    current.watcher?.close(); clearTimeout(current.reloadTimer);
+    void current.picker?.stop().catch(() => {});
+    if (current.sweep) void rm(current.sweep, { recursive: true, force: true }).catch(() => {});
+  };
   const closeSitePreview = () => {
     const current = sitePreview; sitePreview = null;
     if (!current) return;
-    current.server.close();
     if (!current.window.isDestroyed()) current.window.destroy();
-    if (current.sweep) void rm(current.sweep, { recursive: true, force: true }).catch(() => {});
+    releasePreview(current);
   };
+  // 选中修改 (docs/sites-phase1.md §1.2): a toolbar of this application's own,
+  // laid over a local site's preview, sized to what it is showing so that the
+  // rest of the page stays the page's.
+  const PICK_SIZES = { idle: { width: 120, height: 46 }, picking: { width: 300, height: 46 }, picked: { width: 420, height: 222 } };
+  const placePickToolbar = (current) => {
+    if (!current.toolbar || current.window.isDestroyed()) return;
+    const [width, height] = current.window.getContentSize();
+    const size = PICK_SIZES[current.mode] ?? PICK_SIZES.idle;
+    current.toolbar.setBounds({ x: Math.max(0, width - size.width - 14), y: Math.max(0, height - size.height - 14), width: Math.min(size.width, width), height: Math.min(size.height, height) });
+  };
+  const setPickState = (current, state) => {
+    current.mode = state.mode;
+    placePickToolbar(current);
+    if (!current.toolbar.webContents.isDestroyed()) current.toolbar.webContents.send("idou:site-pick-state", state);
+  };
+  const fromPickToolbar = (event) => {
+    const current = sitePreview;
+    if (!current?.toolbar || event.sender !== current.toolbar.webContents || event.senderFrame !== current.toolbar.webContents.mainFrame) throw new Error("Untrusted preview toolbar");
+    return current;
+  };
+  ipcMain.handle("idou:site-pick-toggle", async (event, on) => {
+    const current = fromPickToolbar(event);
+    current.pick = null;
+    if (on === true) { await current.picker.start(); setPickState(current, { mode: "picking" }); }
+    else { await current.picker.stop(); setPickState(current, { mode: "idle" }); }
+  });
+  ipcMain.handle("idou:site-pick-cancel", async (event) => {
+    const current = fromPickToolbar(event);
+    current.pick = null;
+    await current.picker.stop();
+    setPickState(current, { mode: "idle" });
+  });
+  // The person's sentence, with the place this process recorded when they
+  // picked it, put into the composer of the site's coding task -- for them to
+  // send. Nothing is sent from a preview window.
+  ipcMain.handle("idou:site-pick-send", async (event, text) => {
+    const current = fromPickToolbar(event);
+    const site = scope.siteStore.get(current.siteId);
+    const request = sitePickRequest({ file: current.pick?.file, pick: current.pick, instruction: text });
+    const workspaceId = randomUUID();
+    workspaces.set(workspaceId, site.folder);
+    current.pick = null;
+    await current.picker.stop();
+    setPickState(current, { mode: "idle" });
+    if (win.isMinimized()) win.restore();
+    win.show(); win.focus();
+    win.webContents.send("idou:site-pick", { workspaceId, path: site.folder, name: site.name, text: request });
+    return { handed: true };
+  });
   const openSitePreview = async (folder, title, { siteId = null, sweep = null } = {}) => {
     closeSitePreview();
     const server = await createArtifactServer(folder);
@@ -1033,10 +1233,41 @@ async function start() {
     // listener outliving its window is a hole.
     window.on("closed", () => {
       if (sitePreview?.window !== window) return;
-      sitePreview = null; server.close();
-      if (sweep) void rm(sweep, { recursive: true, force: true }).catch(() => {});
+      const current = sitePreview; sitePreview = null;
+      releasePreview(current);
     });
-    sitePreview = { window, server, siteId, sweep };
+    const current = { window, server, siteId, sweep, toolbar: null, picker: null, watcher: null, reloadTimer: null, mode: "idle", pick: null };
+    sitePreview = current;
+    // A site of this computer's: picked and changed from here, and shown again
+    // as its files change. Not a demo, nor an old version from the server.
+    if (siteId) {
+      current.picker = new SitePicker(window.webContents, {
+        onPicked: (description) => {
+          if (sitePreview !== current) return;
+          current.pick = { ...description, file: pickedFile(server.relative(window.webContents.getURL())) };
+          setPickState(current, { mode: "picked", label: pickedLabel(description), fresh: true });
+        },
+        onError: (error) => { if (sitePreview === current) setPickState(current, { mode: "idle", error: `没能选中：${String(error?.message ?? error).slice(0, 120)}` }); },
+      });
+      const toolbar = new WebContentsView({ webPreferences: { preload: path.join(here, "site-pick-preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false, partition: `site-pick-${randomUUID()}` } });
+      toolbar.setBackgroundColor("#00000000");
+      toolbar.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      toolbar.webContents.on("will-navigate", (event) => event.preventDefault());
+      window.contentView.addChildView(toolbar);
+      current.toolbar = toolbar;
+      window.on("resize", () => placePickToolbar(current));
+      placePickToolbar(current);
+      void toolbar.webContents.loadFile(path.join(here, "renderer", "site-pick.html")).catch(() => {});
+      // A coding task changing the page shows here without anybody pressing reload.
+      try {
+        current.watcher = watch(folder, { recursive: true }, (_kind, name) => {
+          if (String(name ?? "").split(path.sep).some((part) => part.startsWith("."))) return;
+          clearTimeout(current.reloadTimer);
+          current.reloadTimer = setTimeout(() => { if (sitePreview === current && !window.isDestroyed()) window.webContents.reloadIgnoringCache(); }, 400);
+        });
+      } catch { current.watcher = null; }
+      window.webContents.on("did-finish-load", () => { if (sitePreview === current) void current.picker.resume().catch(() => {}); });
+    }
     try { await window.loadURL(server.url("index.html")); }
     catch { closeSitePreview(); throw new Error("预览没能打开这个页面"); }
     if (window.isDestroyed()) throw new Error("预览已关闭");
@@ -1092,70 +1323,322 @@ async function start() {
   // Publishing: the one action here that other people can see the result of, so
   // it is the one that always stops at a card. What the card names is what the
   // visitor will be able to open, in the words the sharing panel uses.
-  const siteRequest = async (route, body) => {
+  const siteRequest = async (route, body, { updating = false } = {}) => {
     // The account's own session, from the scope that owns it: `clientSession`
     // lives inside buildScope, and this runs out here where only `scope` does.
     const session = await scope.clientSession();
     if (!session?.token || !session?.serverUrl) throw new Error("请先登录后再发布网站");
-    const response = await fetch(`${session.serverUrl}${route}`, { method: "POST", redirect: "error", signal: AbortSignal.timeout(60_000),
-      headers: { authorization: `Bearer ${session.token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
-    if (response.status === 404) { await response.body?.cancel(); throw new Error("这个服务端还没有开启「文档网站」的发布功能，请联系管理员。"); }
-    const value = await response.json().catch(() => null);
+    const sent = await siteRequestBody(route, body, { features: serverFeatures, limits: serverLimits });
+    let response;
+    try {
+      response = await fetch(`${session.serverUrl}${route}`, { method: "POST", redirect: "error", signal: AbortSignal.any([AbortSignal.timeout(siteRequestTimeout(route)), leaving.signal]),
+        headers: { authorization: `Bearer ${session.token}`, "content-type": "application/json", ...(sent.encoding ? { "content-encoding": sent.encoding } : {}) }, body: sent.body });
+    } catch (error) { throw new Error(siteRequestFailure(error, route, { quitting: leaving.signal.aborted, updating })); }
+    // A server that has not said what it keeps, refusing a table's data as too big.
+    if (response.status === 413 && route === "/v1/sites/data") { await response.body?.cancel(); throw new Error(tooMuchData(null)); }
+    // Publishing missing altogether, or only something newer than this server.
+    if (response.status === 404) {
+      await response.body?.cancel();
+      throw new Error(["/v1/sites/list", "/v1/sites/publish"].includes(route) ? "这个服务端还没有开启「文档网站」的发布功能，请联系管理员。"
+        : "这个服务端的版本还不支持这个操作，请联系管理员升级服务端。");
+    }
+    const value = await response.json().catch((error) => ({ unread: error }));
     if (!response.ok) throw new Error(typeof value?.error === "string" ? value.error : `发布请求失败（HTTP ${response.status}）`);
+    // The answer cut off or late after it began: no answer, said as such.
+    if (value?.unread) throw new Error(siteRequestFailure(value.unread, route, { quitting: leaving.signal.aborted, updating }));
     return value;
   };
-  const SCOPE_WORDS = { invited: "仅邀请的人可访问", tenant: "组织内获得链接的人可阅读", anyone: "互联网上获得链接的人可阅读" };
   bind("site-published", () => siteRequest("/v1/sites/list", {}), "read");
-  bind("site-publish", async ({ id, share } = {}) => {
-    const site = scope.siteStore.get(id);
-    const snapshot = await snapshotApp(site.folder, "index.html");
+  // Collaborators of a site (docs/sites-phase0.md §0.4): the renderer holds a
+  // handle for each person, group or department it was shown, and this process
+  // the id behind it -- turned back into ids only when the share is sent.
+  // One handle for each person, group or department, reused at every drawing:
+  // minted afresh each time, the handles a sharing panel held ran out within
+  // minutes and 保存 lost its edits (review of phase 0, 2026-10-03).
+  const siteMembers = new Map(), memberHandles = new Map();
+  const memberHandle = (member) => {
+    const key = `${member.type}:${member.id}`;
+    let handle = memberHandles.get(key);
+    if (!handle) {
+      if (memberHandles.size >= 2000) { const [oldest, gone] = memberHandles.entries().next().value; memberHandles.delete(oldest); siteMembers.delete(gone); }
+      handle = randomUUID(); memberHandles.set(key, handle);
+    }
+    siteMembers.set(handle, { type: member.type, id: String(member.id), name: String(member.name ?? "").slice(0, 64) });
+    return handle;
+  };
+  const shareWithIds = (share) => {
+    if (!share || !Array.isArray(share.members)) return share;
+    return { ...share, members: share.members.map((picked) => {
+      const member = siteMembers.get(picked?.handle);
+      if (!member) throw new Error("有协作者已经失效，请在「谁可以打开」里重新添加");
+      return member;
+    }) };
+  };
+  bind("site-member-search", async (query) => {
+    businessAccess();
+    const text = typeof query === "string" ? query.trim() : "";
+    if (!text || [...text].length > 50 || /[\n\t]/.test(text)) return { users: [], groups: [], departments: [], departmentsAvailable: false };
+    const current = scope;
+    // Groups only from a server that lets people in through them: one from
+    // before that took a group and let nobody in (review of phase 0).
+    const [users, groups, departments] = await Promise.allSettled([current.feishu.messages.search(text),
+      serverFeatures?.includes("groups") ? current.feishu.messages.searchGroups(text) : Promise.resolve({ groups: [] }),
+      siteRequest("/v1/sites/departments", { query: text })]);
+    if (users.status === "rejected" && groups.status === "rejected" && departments.status === "rejected") throw users.reason;
+    if (scope !== current) throw new Error("账号已切换，请重新搜索");
+    return {
+      users: users.status === "fulfilled" ? users.value.users.slice(0, 8).map((user) => ({ handle: memberHandle({ type: "user", id: user.id, name: user.name }), type: "user", name: user.name, detail: user.department ?? "" })) : [],
+      groups: groups.status === "fulfilled" ? groups.value.groups.slice(0, 6).map((group) => ({ handle: memberHandle({ type: "chat", id: group.id, name: group.name }), type: "chat", name: group.name, detail: "" })) : [],
+      departments: departments.status === "fulfilled" ? (departments.value.departments ?? []).slice(0, 8).map((department) => ({ handle: memberHandle({ type: "department", id: department.id, name: department.name }),
+        type: "department", name: department.name, detail: (department.trail ?? []).slice(0, -1).join(" / ") })) : [],
+      departmentsAvailable: departments.status === "fulfilled" && departments.value.available === true,
+    };
+  });
+  // One change of a site's at a time: a public site's check can take minutes,
+  // and a second click meanwhile only ran into "this site changed while it was
+  // checked" (fifth review before .270). Said before any card. 取消发布 is not
+  // held back: it is what someone reaches for to stop the first.
+  // What a site is in the middle of, on its row (docs/sites-phase0.md §0.7):
+  // a public site's check can take minutes, and a row that showed nothing
+  // meanwhile read as nothing happening -- or as something to press again.
+  const whileWorking = async (id, text, run) => {
+    const say = (value) => { if (!win.webContents.isDestroyed()) win.webContents.send("idou:site-progress", { id, text: value }); };
+    say(text);
+    try { return await run(); } finally { say(null); }
+  };
+  const CHECKING = "（公开的网站要经过内容检查，可能要几分钟）";
+  const sitesBusy = new Set();
+  const oneAtATime = async (id, run) => {
+    if (sitesBusy.has(id)) throw new Error("这个网站还有一次发布或设置没有完成：可能在等你确认，也可能正在检查（公开网站要先经过内容检查，可能要一两分钟）。完成后再试；要马上下线，点「取消发布」。");
+    sitesBusy.add(id);
+    try { return await run(); } finally { sitesBusy.delete(id); }
+  };
+  // Publishing a site of this computer's: from 文档网站's 发布 and 更新线上, and
+  // from a conversation (the Agent's site-publish, docs/sites-phase1.md §1.1)
+  // -- one card, one upload, one record, whichever asked.
+  // `share`: who may open it, for a first publish. `approve(card)`: the
+  // person's answer to the card, or for an Agent on 完全访问 the task's
+  // standing authorization; false stops here with nothing sent. `task`: the
+  // title of the task whose Agent asked.
+  const publishLocalSite = async (site, { share = null, approve, task = null }) => {
+    const id = site.id;
+    // A table site's data travels beside the version, not in it: left in, 20,000
+    // rows were a 20 MB file against the 2 MiB a version's file may be, and the
+    // site could not be published at all (2026-10-08, app-candidates.js siteVersion).
+    const { data, snapshot } = await siteVersion(site.folder, { table: Boolean(site.slice) });
     // Updating what is already online is not a sharing decision: who may open
     // it stays exactly as it is, members and all, so the current sharing is
     // taken from the server rather than rebuilt from what this window knows.
     const updating = !share && Boolean(site.publishedId);
+    let serverSource = null;
     if (updating) {
       const current = (await siteRequest("/v1/sites/list", {})).sites?.find((row) => row.id === site.publishedId);
       if (!current) throw new Error("服务端找不到这个网站，先取消发布再重新发布");
       share = { scope: current.share.scope, inherit: current.share.inherit, members: current.share.members ?? [] };
+      serverSource = current.source ?? null;
     }
-    const scopeWord = SCOPE_WORDS[share?.scope] ?? SCOPE_WORDS.invited;
-    const following = share?.inherit === true && Boolean(site.slice);
-    const choice = await confirmInApp({ type: "warning", title: updating ? "确认更新线上版本" : "确认发布这个网站",
-      message: `「${site.name}」· ${snapshot.manifest.files.length} 个文件 · ${Math.max(1, Math.round(snapshot.totalBytes / 1024))} KB`,
-      detail: `谁能打开：${scopeWord}${Array.isArray(share?.members) && share.members.length ? `，另加 ${share.members.length} 位协作者` : ""}${updating ? "（不变）" : ""}\n`
-        + `${following ? "访问权限跟随这张表格：在飞书里能读这张表的人就能打开，在飞书里移除就立刻打不开。\n" : ""}`
-        + `${site.slice ? "页面上会显示你选定的那些字段的数据；发布出去就等于把这份数据交给能打开它的人。\n" : ""}`
-        + `${updating ? "\n这会把线上的页面换成当前目录里的文件。已经打开着的人刷新之后看到新的；旧版本还留着。"
-          : "\n发布的是当前目录里的静态文件，发出去之后不会因为你改了本机文件而变——要更新就再发布一次。已经发出去的内容不会因为以后收回权限而消失。"}`,
-      buttons: ["取消", updating ? "更新" : "发布"], defaultId: 0, cancelId: 0 });
-    if (choice.response !== 1) return null;
-    const published = await siteRequest("/v1/sites/publish", {
-      siteId: site.publishedId ?? undefined, name: site.name, manifest: snapshot.manifest, blobs: snapshot.blobs,
+    if (!await approve(sitePublishCard({ name: site.name, files: snapshot.manifest.files.length, bytes: snapshot.totalBytes,
+      share, updating, sliced: Boolean(site.slice || serverSource), task }))) return null;
+    // A first publish goes out under an id kept beforehand (site-store.js
+    // recordPublishing) -- read after the card: while it was open, the list may
+    // have found that an earlier publish went up after all.
+    const current = await scope.siteStore.recordPublishing(site.id);
+    const siteId = current.publishedId ?? current.publishingId;
+    const published = await whileWorking(id, `${current.publishedId ? "正在更新线上" : "正在发布"}：上传并检查内容${share?.scope === "anyone" ? CHECKING : "……"}`, async () => siteRequest("/v1/sites/publish", {
+      siteId, name: site.name, manifest: snapshot.manifest, blobs: snapshot.blobs,
       share: share ?? { scope: "invited" },
-      source: site.slice ? { kind: site.slice.kind, token: site.slice.token, tableId: site.slice.tableId ?? null, sheetId: site.slice.sheetId ?? null } : null,
-      data: site.slice ? await readContract(site.folder) : null,
-    });
-    await scope.siteStore.recordPublish(site.id, { publishedId: published.id, url: published.url, scope: published.share.scope, inherit: published.share.inherit });
+      // A site downloaded here from the server reads no table on this computer,
+      // and updating its page must not take it off the table it follows there.
+      source: site.slice ? { kind: site.slice.kind, token: site.slice.token, tableId: site.slice.tableId ?? null, sheetId: site.slice.sheetId ?? null } : serverSource,
+      data,
+    }, { updating: Boolean(current.publishedId) }));
+    // Offline when it waits for an administrator (docs/site-content-safety.md).
+    await scope.siteStore.recordPublish(site.id, { publishedId: published.id, url: published.url, scope: published.share.scope, inherit: published.share.inherit, offline: published.offline === true });
+    // The data went up with it: the next refresh has nothing to send unless the table moved.
+    if (data) await scope.siteStore.recordPushed(site.id, contractKey(data.schema, data.snapshot));
     return published;
+  };
+  bind("site-publish", async ({ id, share } = {}) => oneAtATime(id, async () => {
+    return publishLocalSite(scope.siteStore.get(id), { share: share ? shareWithIds(share) : null, approve: async (card) => (await confirmInApp(card)).response === 1 });
+  }));
+  // What the Agent publishes with (agent-site-actions.js): a folder of its task,
+  // joined to 文档网站 if it is not there yet, published or updated by the same
+  // steps; and the person's sites, to name one by its link.
+  const sitesForAgent = {
+    publishFolder: async ({ task, folder, name = null, scope: wanted = null, approve }) => {
+      const store = scope.siteStore;
+      const known = store.list().find((item) => item.folder === folder) ?? await store.create({ name: name || task.title, at: folder });
+      return oneAtATime(known.id, async () => {
+        let site = store.get(known.id);
+        if (site.publishedId && wanted) throw new Error("这个网站已经在线：谁能打开不变，要改请用户在「文档网站」的「分享设置」里改。不带 --scope 再发一次就是更新线上。");
+        if (name && name !== site.name) { await store.rename(site.id, name); site = store.get(site.id); }
+        const updated = Boolean(site.publishedId);
+        const published = await publishLocalSite(site, { share: updated ? null : { scope: wanted ?? "invited", inherit: false, members: [] },
+          approve: async (card) => { await approve(card); return true; }, task: task.title });
+        if (!win.webContents.isDestroyed()) win.webContents.send("idou:sites-changed");
+        return { name: published.name, url: published.url, updated, online: published.offline !== true, scope: published.share.scope,
+          review: published.review ? { state: published.review.state, reason: published.review.reason } : null };
+      });
+    },
+    list: async () => {
+      const listed = await siteRequest("/v1/sites/list", {});
+      const here = new Map(scope.siteStore.list().filter((site) => site.publishedId).map((site) => [site.publishedId, site]));
+      return { sites: (listed.sites ?? []).map((row) => ({ name: row.name, url: row.url, online: row.offline !== true, scope: row.share?.scope ?? "invited",
+        waitingForReview: row.review?.state === "pending", takenDownByAdministrator: Boolean(row.held), onThisComputer: here.has(row.id), folder: here.get(row.id)?.folder ?? null })) };
+    },
+  };
+  // Sharing a site's link (docs/sites-phase1.md §1.4). Groups to send it to are
+  // the person's own, as Feishu returns them, held here behind a handle; the
+  // send is made as the person, so it stops at a card that says who in that
+  // group can actually open the site.
+  const siteChats = new Map();
+  bind("site-chat-search", async (query) => {
+    businessAccess();
+    const found = await scope.feishu.messages.searchGroups(typeof query === "string" ? query.trim() : "");
+    if (siteChats.size >= 500) siteChats.clear();
+    return found.groups.slice(0, 10).map((group) => {
+      const handle = randomUUID();
+      siteChats.set(handle, { identity: found.identity, group });
+      return { handle, name: group.name, description: group.description };
+    });
+  }, "read");
+  bind("site-send-to-chat", async ({ id, chat, note = "" } = {}) => oneAtATime(id, async () => {
+    const picked = siteChats.get(chat);
+    if (!picked) throw new Error("这个群已经失效，请重新搜索");
+    scope.messageWriteAccess();
+    const site = await siteTarget(id, { withRow: true });
+    const words = typeof note === "string" ? note.trim().slice(0, 1000) : "";
+    const { group } = await scope.feishu.messages.groupMembers(picked.group, picked.identity);
+    const share = site.row.share;
+    const who = share.inherit && site.row.sourced ? "跟随表格权限" : SCOPE_WORDS[share.scope] ?? SCOPE_WORDS.invited;
+    const named = (share.members ?? []).some((member) => member.type === "chat" && member.id === group.id);
+    const closed = share.scope === "invited" && !share.inherit && !named;
+    const choice = await confirmInApp({ type: "warning", title: "确认把网站发到飞书群",
+      message: `「${group.name}」${group.memberCount ? ` · ${group.memberCount} 人` : ""}`,
+      detail: `以你的身份在群里发一条消息：\n\n${site.name}\n${site.row.url}${words ? `\n${words}` : ""}\n\n`
+        + `群里的人能不能打开，看网站的「谁可以打开」：${who}。`
+        + `${closed ? "\n这个群不在网站的协作者里：群里没被邀请的人点开会看到「没有权限」。要让他们都能看，先在「分享设置」里把这个群加为协作者。" : ""}`,
+      buttons: ["取消", "发送"], defaultId: 0, cancelId: 0 });
+    if (choice.response !== 1) return null;
+    await whileWorking(id, "正在发到飞书群……", () => scope.feishu.messages.sendLink({ identity: picked.identity, recipient: picked.group, title: site.name, url: site.row.url,
+      note: words, idempotencyKey: randomUUID() }, async () => {}));
+    return { sent: true, chat: group.name };
+  }));
+  // A QR code the page drew, onto the clipboard or into a file the person
+  // chooses. Only a PNG of bounded size; nothing else is read from it.
+  const PNG_DATA = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/;
+  const pngOf = (value) => {
+    const match = typeof value === "string" && value.length <= 4 * 1024 * 1024 ? PNG_DATA.exec(value) : null;
+    if (!match) throw new Error("图片无效");
+    return match[1];
+  };
+  bind("copy-image", (dataUrl) => { pngOf(dataUrl); clipboard.writeImage(nativeImage.createFromDataURL(dataUrl)); return true; }, "read");
+  bind("save-image", async ({ dataUrl, name } = {}) => {
+    const bytes = Buffer.from(pngOf(dataUrl), "base64");
+    const base = String(name ?? "二维码").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "").trim().slice(0, 60) || "二维码";
+    const chosen = await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath("downloads"), `${base}.png`), filters: [{ name: "PNG 图片", extensions: ["png"] }] });
+    if (chosen.canceled || !chosen.filePath) return null;
+    await writeFile(chosen.filePath, bytes);
+    return { saved: true, name: path.basename(chosen.filePath) };
   });
+  // Who opened it, for its owner (docs/sites-phase1.md §1.5): numbers only.
+  bind("site-stats", async (id) => siteRequest("/v1/sites/stats", { siteId: (await siteTarget(id)).publishedId }), "read");
+  // A name for the site's address (docs/sites-phase1.md §1.6): how its link
+  // reads, not who may open it, so no card. `address` null: by its id again.
+  bind("site-address", async ({ id, address } = {}) => oneAtATime(id, async () => {
+    const site = await siteTarget(id);
+    const named = await siteRequest("/v1/sites/address", { siteId: site.publishedId, address: address === null ? null : String(address ?? "").slice(0, 80) });
+    await recordAnswer(site, named);
+    return { address: named.address, url: named.url };
+  }));
   // Back online: the same version, without sending the bytes again.
-  bind("site-republish", async (id) => {
-    const site = scope.siteStore.get(id);
-    if (!site.publishedId) throw new Error("这个网站还没有发布过");
-    const back = await siteRequest("/v1/sites/republish", { siteId: site.publishedId });
-    await scope.siteStore.recordPublish(site.id, { publishedId: back.id, url: back.url, scope: back.share.scope, inherit: back.share.inherit, offline: false });
+  bind("site-republish", async (id) => oneAtATime(id, async () => {
+    const site = await siteTarget(id);
+    if (site.local) refreshTrouble.succeeded(site.local.id);
+    const back = await whileWorking(id, `正在重新上线：按现在的规则再检查一次${site.row?.share?.scope === "anyone" || site.local?.publishedScope === "anyone" ? CHECKING : "……"}`, () => siteRequest("/v1/sites/republish", { siteId: site.publishedId }));
+    await recordAnswer(site, back);
     return back;
-  });
-  bind("site-share-set", async ({ id, share } = {}) => {
-    const site = scope.siteStore.get(id);
-    if (!site.publishedId) throw new Error("这个网站还没有发布");
-    const changed = await siteRequest("/v1/sites/share", { siteId: site.publishedId, share });
-    await scope.siteStore.recordPublish(site.id, { publishedId: changed.id, url: changed.url, scope: changed.share.scope, inherit: changed.share.inherit });
+  }));
+  // The site a row names: one with a folder here (its id in this computer's
+  // list), or one only the server has (site-rows.js). `withRow`: the server's
+  // record of it, asked now -- a card says what is there, not what was.
+  const siteTarget = async (id, { withRow = false } = {}) => {
+    const remote = typeof id === "string" ? REMOTE_SITE.exec(id) : null;
+    const local = remote ? null : scope.siteStore.get(id);
+    const publishedId = remote ? remote[1] : local.publishedId;
+    if (!publishedId) throw new Error("这个网站还没有发布过");
+    const row = remote || withRow ? (await siteRequest("/v1/sites/list", {})).sites?.find((item) => item.id === publishedId) ?? null : null;
+    if ((remote || withRow) && !row) throw new Error("服务端找不到这个网站：它可能已经被删掉了。刷新网站列表看看。");
+    return { local, publishedId, row, name: local?.name ?? row.name, url: local?.url ?? row?.url ?? null };
+  };
+  // What the server answered, kept with this computer's copy if there is one.
+  const recordAnswer = async (target, answer) => {
+    if (target.local) await scope.siteStore.recordPublish(target.local.id, { publishedId: answer.id, url: answer.url, scope: answer.share.scope, inherit: answer.share.inherit, offline: answer.offline === true });
+  };
+  // The versions a published site keeps on the server (docs/sites-phase0.md
+  // §0.6): to list, to look at, and to go back to. A version is named by its
+  // digest, which says nothing but which bytes it is.
+  const keptVersion = (value) => { if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) throw new Error("没有这个版本"); return value; };
+  bind("site-versions", async (id) => siteRequest("/v1/sites/versions", { siteId: (await siteTarget(id)).publishedId }), "read");
+  // A kept version opened in the same hardened window as a local preview: its
+  // files from the server, in a scratch folder swept when the window closes --
+  // and a table site's with the numbers it has now, which is what going back
+  // to it would show.
+  // With no version, the one up now: what a site on the server only looks like.
+  bind("site-version-preview", async ({ id, version = null } = {}) => {
+    const site = await siteTarget(id);
+    const got = await siteRequest("/v1/sites/files", { siteId: site.publishedId, version: version === null ? null : keptVersion(version) });
+    const folder = await mkdtemp(path.join(os.tmpdir(), "idou-site-version-"));
+    try {
+      await writeSiteVersion(folder, got);
+      // Only the numbers: the version's own page and runtime are what it is.
+      const live = got.data ? [...contractFiles(got.data)].find(([name]) => name === LIVE_TABLE_DATA) : null;
+      // Whether or not the version holds a data file of its own: since 2026-10-08
+      // a table site's version leaves it out (app-candidates.js siteVersion), and
+      // the server serves its data under that name either way.
+      if (live) { await mkdir(path.join(folder, path.dirname(LIVE_TABLE_DATA)), { recursive: true }); await writeFile(path.join(folder, LIVE_TABLE_DATA), live[1]); }
+    } catch (error) { await rm(folder, { recursive: true, force: true }).catch(() => {}); throw error; }
+    return openSitePreview(folder, `${site.name} · ${version === null ? "线上版本" : "历史版本"}（只有你能看到）`, { sweep: folder });
+  }, "read");
+  // Going back is publishing that version again, so it stops at a card like
+  // publishing does, and says what changes for whom.
+  bind("site-rollback", async ({ id, version } = {}) => oneAtATime(id, async () => {
+    const site = await siteTarget(id, { withRow: true }), current = site.row;
+    const wanted = keptVersion(version);
+    const row = (await siteRequest("/v1/sites/versions", { siteId: site.publishedId })).versions?.find((item) => item.version === wanted);
+    if (!row) throw new Error("服务端已经不保留这一版了：重新打开「历史版本」看看现在保留的是哪几版。");
+    if (row.current) throw new Error("这已经是线上的版本");
+    const when = row.publishedAt ? new Date(row.publishedAt).toLocaleString("zh-CN", { hour12: false }) : "更早";
+    const who = current.share.inherit && current.sourced ? "跟随表格权限" : SCOPE_WORDS[current.share.scope] ?? SCOPE_WORDS.invited;
+    const choice = await confirmInApp({ type: "warning", title: "确认回到这一版",
+      message: `「${site.name}」回到 ${when} 发布的版本 · ${row.files} 个文件 · ${Math.max(1, Math.round(row.bytes / 1024))} KB`,
+      detail: `谁能打开：${who}${current.share.members?.length ? `，另加 ${current.share.members.length} 位协作者` : ""}（不变）\n`
+        + `${current.offline ? "网站现在是下线的：回到这一版，它会重新上线。\n" : ""}`
+        + `${current.share.scope === "anyone" ? "公开的网站会先经过服务端的内容安全检查：有手机号、身份证号、密钥之类的内容，会送管理员审核或不予上线。\n" : ""}`
+        + "\n线上的页面会换成这一版，已经打开着的人刷新之后看到它；现在线上的那一版也保留，可以再回来。\n"
+        + "本机目录里的文件不变：之后点「更新线上」，发布的仍是本机目录里的文件。",
+      buttons: ["取消", "回到这一版"], defaultId: 0, cancelId: 0 });
+    if (choice.response !== 1) return null;
+    const back = await whileWorking(id, `正在回到那一版：按现在的规则再检查一次${current.share.scope === "anyone" ? CHECKING : "……"}`, () => siteRequest("/v1/sites/rollback", { siteId: site.publishedId, version: wanted }));
+    await recordAnswer(site, back);
+    return back;
+  }));
+  bind("site-share-set", async ({ id, share } = {}) => oneAtATime(id, async () => {
+    const site = await siteTarget(id, { withRow: true });
+    share = shareWithIds(share);
+    // Letting somebody new in asks first, as publishing does; letting fewer in
+    // does not (site-publishing.js widensShare).
+    if (widensShare(site.row.share, share)) {
+      const choice = await confirmInApp(siteShareCard({ name: site.name, before: site.row.share, after: share, sliced: site.row.sourced === true }));
+      if (choice.response !== 1) return null;
+    }
+    const changed = await whileWorking(id, `正在保存谁可以打开${share?.scope === "anyone" ? CHECKING : "……"}`, () => siteRequest("/v1/sites/share", { siteId: site.publishedId, share }));
+    await recordAnswer(site, changed);
     return changed;
-  });
+  }));
   bind("site-unpublish", async (id) => {
-    const site = scope.siteStore.get(id);
-    if (!site.publishedId) return null;
+    if (!REMOTE_SITE.test(id) && !scope.siteStore.get(id).publishedId) return null;
+    const site = await siteTarget(id);
     const choice = await confirmInApp({ type: "warning", title: "确认取消发布",
       message: `「${site.name}」的链接将立刻失效`,
       detail: `${site.url ?? ""}\n\n别人立刻打不开了，已经打开的页面刷新后也打不开。\n`
@@ -1164,9 +1647,50 @@ async function start() {
       buttons: ["取消", "取消发布"], defaultId: 0, cancelId: 0, destructive: true });
     if (choice.response !== 1) return null;
     await siteRequest("/v1/sites/withdraw", { siteId: site.publishedId });
-    await scope.siteStore.recordPublish(site.id, { publishedId: site.publishedId, url: site.url, scope: site.publishedScope, inherit: site.publishedInherit, offline: true });
+    // Not read while it is down: what the row said of failed reads is over.
+    if (site.local) refreshTrouble.succeeded(site.local.id);
+    if (site.local) await scope.siteStore.recordPublish(site.local.id, { publishedId: site.publishedId, url: site.url, scope: site.local.publishedScope, inherit: site.local.publishedInherit, offline: true });
     return { withdrawn: true, kept: true };
   });
+  // Off the server for good (docs/sites-phase0.md §0.5): every version and its
+  // data. A deletion, so a deletion card, and approved in code only by the
+  // person's answer to that card (settleConfirm's `destructive`). The folder
+  // here, if there is one, is the person's work and stays.
+  bind("site-erase", async (id) => oneAtATime(id, async () => {
+    const site = await siteTarget(id, { withRow: true });
+    const choice = await confirmInApp({ type: "warning", title: "确认下线并删除这个网站",
+      message: `「${site.name}」会从服务端彻底删除`,
+      detail: `${site.url ?? ""}\n\n链接立刻失效；服务端上它保留的所有版本和数据一起删除，不能恢复，也不能再「重新发布」。\n`
+        + `${site.local ? `这台电脑上的目录保留，网站从列表里移出：${site.local.folder}\n` : ""}`
+        + "已经被别人下载或截图的内容收不回来。",
+      buttons: ["取消", "删除"], defaultId: 0, cancelId: 0, destructive: true });
+    if (choice.response !== 1 || choice.destructive !== true) return null;
+    await whileWorking(id, "正在删除……", () => siteRequest("/v1/sites/erase", { siteId: site.publishedId }));
+    if (site.local) await scope.siteStore.forget(site.local.id);
+    return { erased: true };
+  }));
+  // Out of this computer's list while it stays up, and back: this computer's
+  // own bookkeeping, nothing anybody else sees changes, so no card.
+  bind("site-hide", (id) => scope.siteStore.setHidden(id, true));
+  bind("site-unhide", (id) => scope.siteStore.setHidden(id, false));
+  // A site only the server has, onto this computer to work on: the version up
+  // now, in a new folder of this account's, joined to the site it came from so
+  // 更新线上 updates it. A site on a table keeps following it on the server;
+  // reading the table stays with the computer that set it up.
+  bind("site-download", async (id) => oneAtATime(id, async () => {
+    const site = await siteTarget(id);
+    if (site.local) throw new Error("这个网站在这台电脑上已经有目录了");
+    const got = await whileWorking(id, "正在下载到这台电脑……", () => siteRequest("/v1/sites/files", { siteId: site.publishedId }));
+    const made = await scope.siteStore.create({ name: site.name });
+    try { await writeSiteVersion(made.folder, got); }
+    catch (error) {
+      await scope.siteStore.forget(made.id).catch(() => {});
+      await rm(made.folder, { recursive: true, force: true }).catch(() => {});
+      throw error;
+    }
+    await scope.siteStore.recordPublish(made.id, { publishedId: site.publishedId, url: site.row.url, scope: site.row.share.scope, inherit: site.row.share.inherit, offline: site.row.offline === true });
+    return { id: made.id, name: made.name, sourced: site.row.sourced === true };
+  }));
   bind("site-forget", async (id) => {
     const site = scope.siteStore.get(id);
     const choice = await confirmInApp({ type: "warning", title: "确认移出列表",
@@ -1177,9 +1701,39 @@ async function start() {
     await scope.siteStore.forget(id);
     return { forgotten: true };
   });
+  // Deleting a site of this computer's that was never published: its folder to
+  // the Trash, where it can be put back from, and the site out of the list.
+  // Only a folder the application made (site-store.js ownedFolder): a site
+  // joined from a folder of the person's own can only be taken out of the list.
+  // A published site goes with 下线并删除. Before 2026-10-08 a site nobody
+  // published could not be deleted at all -- two left by failed reads stayed.
+  bind("site-delete", async (id) => {
+    const site = scope.siteStore.get(id);
+    if (site.publishedId) throw new Error("这个网站发布过：用「下线并删除」，线上和这台电脑上的都会删掉");
+    const folder = await scope.siteStore.ownedFolder(id);
+    if (!folder) throw new Error("这个网站的目录是你自己的文件夹，不是 i豆 建的：只能「移出列表」，里面的文件不会动");
+    const inside = (cwd) => typeof cwd === "string" && (cwd === folder || cwd.startsWith(`${folder}${path.sep}`));
+    const using = () => scope.service.snapshot().tasks.filter((task) => inside(task.cwd));
+    const busy = () => using().some((task) => scope.service.active.has(task.id));
+    if (busy()) throw new Error("有任务正在这个网站的目录里运行：先停止它，再删除");
+    const files = (await readdir(folder, { recursive: true, withFileTypes: true })).filter((entry) => entry.isFile()).length;
+    const choice = await confirmInApp({ type: "warning", title: "确认删除网站",
+      message: `删除「${site.name}」`,
+      detail: `目录：${folder}（${files} 个文件）\n\n网站从列表里删掉，目录移到废纸篓，需要时可以从废纸篓放回。它没有发布过，线上没有它。`
+        + (using().length ? `\n\n用这个目录的 ${using().length} 个任务之后会找不到目录。` : ""),
+      buttons: ["取消", "删除"], defaultId: 0, cancelId: 0, destructive: true });
+    if (choice.response !== 1) return null;
+    // Asked again: a task may have been started on it while the card was open.
+    if (busy()) throw new Error("有任务正在这个网站的目录里运行：先停止它，再删除");
+    await shell.trashItem(folder);
+    await scope.siteStore.forget(id);
+    return { deleted: true };
+  });
   // What /review can be pointed at: the other branches and the latest commits.
   bind("review-targets", ({ taskId, workspaceId } = {}) => reviewTargets(projectFolder({ taskId, workspaceId })), "read");
-  bind("permission-modes", () => listPermissions().map(({ id, label, summary }) => ({ id, label, summary })));
+  // 完全访问 shown, but not choosable, when the administrators withheld it.
+  bind("permission-modes", () => listPermissions().map(({ id, label, summary }) => ({ id, label, summary,
+    ...(id === "full" && !fullAccessAllowedNow() ? { disabled: true, disabledReason: FULL_ACCESS_WITHHELD } : {}) })));
   // Choosing 完全访问 from this menu is the person's authorization for the one
   // task: its line in the menu says what it covers (modes.js), and from then on
   // what the Agent does outward runs without a card (permissions.js).
@@ -1492,7 +2046,8 @@ async function start() {
       confirmRemoval: (ids) => confirmScheduleRemoval(ids), openDraft: (draft) => openScheduleDraft(draft),
       unattended: (taskId) => permitsUnattendedActions(scope.service.get(taskId)),
       changed: () => { if (!win.webContents.isDestroyed()) win.webContents.send("idou:schedules-changed"); } }),
-    ...agentSkillActions({ getScope: () => scope, confirm: confirmInApp }) },
+    ...agentSkillActions({ getScope: () => scope, confirm: confirmInApp }),
+    ...agentSiteActions({ getScope: () => scope, confirm: confirmInApp, sites: sitesForAgent }) },
     // Searching the knowledge copy changes nothing, so a task may search while
     // another search -- or a write awaiting its card -- is still out.
     readOnly: [...AGENT_READS] });
@@ -1815,11 +2370,16 @@ async function start() {
     const shelf = await scope.skills.shelf();
     const bundle = promoteToEnterprise(local, { publisher: auth.status().identity?.displayName || "企业管理员" });
     const existing = (shelf.skills || []).find(item => item.id === bundle.id);
-    const choice = await confirmInApp({ type: "warning", title: "确认上架到企业技能货架",
-      message: existing ? `用「${bundle.title}」替换货架上的同名技能？` : `把「${bundle.title}」上架给全企业？`,
+    // With review on (docs/enterprise-skill-governance.md §2) it goes to an
+    // administrator first, and the shelf does not change until they approve.
+    const reviewed = shelf.review?.required === true;
+    const choice = await confirmInApp({ type: "warning", title: reviewed ? "确认提交企业技能审核" : "确认上架到企业技能货架",
+      message: reviewed ? `把「${bundle.title}」${bundle.version} 提交给管理员审核？` : existing ? `用「${bundle.title}」替换货架上的同名技能？` : `把「${bundle.title}」上架给全企业？`,
       detail: `标识：${bundle.id}（由本机技能 ${local.id} 转换而来）\n版本：${bundle.version}\n发布者：${bundle.publisher}\n文件：${bundle.files.length} 个\n摘要：${bundle.digest.slice(0, 16)}…${existing ? `\n\n将替换：${existing.id} · 版本 ${existing.version}` : ""}\n\n说明：\n${bundle.description}`,
-      boundary: "上架后本企业所有人在技能中心都能看到并启用它。技能的说明会作为指令进入模型上下文，可能改变 Agent 的行为——这份内容没有经过任何自动审查，由你为它背书。工具声明不会随之上架。随时可以下架，但已经绑定了它的任务不受影响。",
-      buttons: ["取消", existing ? "确认替换" : "确认上架"], defaultId: 0, cancelId: 0 });
+      boundary: reviewed
+        ? "管理员会看到每个文件的全文和与线上版本的差别，通过后才会上线；在那之前货架不变。上线后本企业能看到它的人都能启用它，技能的说明会作为指令进入模型上下文。工具声明不会随之上架。"
+        : "上架后本企业所有人在技能中心都能看到并启用它。技能的说明会作为指令进入模型上下文，可能改变 Agent 的行为——这份内容没有经过任何自动审查，由你为它背书。工具声明不会随之上架。随时可以下架，但已经绑定了它的任务不受影响。",
+      buttons: ["取消", reviewed ? "确认提交" : existing ? "确认替换" : "确认上架"], defaultId: 0, cancelId: 0 });
     if (choice.response !== 1) return null;
     return scope.skills.publish(bundle);
   });
@@ -1859,7 +2419,10 @@ async function start() {
     }
     requireUsableSkill(await current.skills.read(skill), await current.mcp.resolve(binding));
     if (!cwd) cwd = await newWorkTaskFolder();
-    return current.service.create({ mode, cwd, enterpriseSkill: skill, mcpConnection: binding });
+    const created = await current.service.create({ mode, cwd, enterpriseSkill: skill, mcpConnection: binding });
+    // Counted for the console's 使用情况; a server that does not count is no reason to fail the task.
+    void current.skills.used(skill.id, skill.version).catch(() => {});
+    return created;
   });
   bind("list-local-skills", () => scope.localSkills.list());
   bind("import-local-skill", async () => {
@@ -2009,6 +2572,10 @@ async function start() {
       notice.show();
     }
     return { close: () => { notice?.close(); if (Number.isInteger(bounce)) app.dock?.cancelBounce?.(bounce); } };
+  };
+  tellSiteTrouble = (site, trouble) => {
+    if (!noticePreferences.desktop || !trouble) return;
+    showNotice({ title: `「${site.name}」的数据没有更新`, body: `自动读取表格已经连续 ${trouble.failures} 次失败：${trouble.reason}。线上页面还在显示上次读到的数据。` });
   };
   const taskCardNotices = new ApprovalNotices((text, item) => announceConfirmation({ text, taskId: item?.taskId ?? null }));
   noticeTaskCards = (approvals) => taskCardNotices.update(approvals);
@@ -3290,6 +3857,7 @@ async function start() {
   });
   const beginShutdown = () => {
     if (quitting) return; quitting = true;
+    leaving.abort();
     // A card still waiting is answered as the cancelling choice, as it is when
     // the window reloads or the account changes: quitting is not consent. Left
     // waiting, the operation that raised it stayed in flight and the quit below

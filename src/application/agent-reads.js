@@ -11,5 +11,6 @@ import { KNOWLEDGE_READS } from "./agent-knowledge-actions.js";
 import { MEDIA_READS } from "./agent-media-actions.js";
 import { DELIVERY_READS } from "./agent-delivery-actions.js";
 import { SCHEDULE_READS } from "./agent-schedule-actions.js";
+import { SITE_READS } from "./agent-site-actions.js";
 
-export const AGENT_READS = Object.freeze([...KNOWLEDGE_READS, ...MEDIA_READS, ...DELIVERY_READS, ...SCHEDULE_READS]);
+export const AGENT_READS = Object.freeze([...KNOWLEDGE_READS, ...MEDIA_READS, ...DELIVERY_READS, ...SCHEDULE_READS, ...SITE_READS]);

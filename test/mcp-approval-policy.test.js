@@ -1,10 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mcpApprovalPolicy, mcpGrant, mcpToolName } from "../src/application/mcp-approval-policy.js";
+import { mcpApprovalPolicy, mcpCallSentence, mcpGrant, mcpToolName } from "../src/application/mcp-approval-policy.js";
 
 test("the tool is read from Codex's own approval message, and nothing else", () => {
   assert.equal(mcpToolName('Allow the computer MCP server to run tool "computer_click"?'), "computer_click");
   for (const message of ["Allow?", "", null, 'to run tool ""', `to run tool "${"x".repeat(81)}"`]) assert.equal(mcpToolName(message), null, String(message));
+});
+
+test("the card's sentence names the connector and the tool, and is Chinese without one", () => {
+  assert.equal(mcpCallSentence({ title: "浏览器操作", tool: mcpToolName('Allow the browser MCP server to run tool "browser_preview"?') }), "「浏览器操作」想运行「browser_preview」");
+  assert.equal(mcpCallSentence({ title: "电脑操作", tool: null }), "「电脑操作」想运行一个工具，运行时没有说明是哪一个");
 });
 
 test("the permission decides how much one answer covers", () => {

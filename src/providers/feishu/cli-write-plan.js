@@ -42,7 +42,8 @@ export function canonicalJson(value) {
 // when only some do.
 //
 // Still absent: permission and sharing changes, owner transfer, security
-// labels, wiki moves, chat or message writes, and deleting Drive files or wiki
+// labels, wiki moves, chat or message writes, deleting or changing a Base's
+// tables and fields (only creating them is here), and deleting Drive files or wiki
 // nodes (those delete asynchronously and then poll, which a single-use grant
 // cannot cover).
 const TOKEN = "[A-Za-z0-9_-]{1,128}";
@@ -79,6 +80,12 @@ function sheetDestructive(body) {
   return sheetStepDestructive(body?.tool_name, input);
 }
 const DOCUMENT_DESTRUCTIVE = new Set(["block_delete", "overwrite"]);
+// A JSON object with only the named keys.
+const plainBody = (body, keys) => Boolean(body) && typeof body === "object" && !Array.isArray(body) && Object.keys(body).every(key => keys.includes(key));
+// One field as `+table-create` and `+field-create` send it: an object with a
+// name and a type (the rest is the type's own settings, which Feishu checks).
+const fieldShape = field => Boolean(field) && typeof field === "object" && !Array.isArray(field) &&
+  typeof field.name === "string" && field.name.trim() !== "" && field.name.length <= 255 && typeof field.type === "string" && /^[a-z_]{1,40}$/.test(field.type);
 const RECORD = /^rec[A-Za-z0-9]{1,64}$/;
 function describeTaskUpdate(body) {
   const fields = Array.isArray(body?.update_fields) ? body.update_fields : [], task = body?.task ?? {};
@@ -106,6 +113,35 @@ export const CLI_WRITE_FAMILIES = Object.freeze([
     resource: path => `电子表格 ${path.split("/")[5]}`,
     destructive: sheetDestructive, destructiveSummary: "删除或清空电子表格内容",
     consequence: () => "这是删除或清空类的表格操作，执行后不能在这里撤销。飞书表格的历史版本里可能还能找回。" }),
+  // Building a table from nothing: a new Base, a data table in it, a field in a
+  // table. Creation only -- no table or field is deleted, renamed or retyped
+  // here, and nothing is shared. Each shortcut sends exactly one request
+  // (`base +base-create`, `+table-create`, `+field-create`, measured with
+  // --dry-run on the pinned CLI, 2026-10-06); `+base-create` given a first
+  // table's fields sends four, one of them deleting the default table, and is
+  // refused like any command that fans out.
+  Object.freeze({ id: "base.create", methods: ["POST"], summary: "新建多维表格",
+    pattern: /^\/open-apis\/base\/v3\/bases$/,
+    resource: () => "我的空间",
+    describe: body => `多维表格「${String(body?.name ?? "（未命名）").slice(0, 100)}」${body?.time_zone ? ` · 时区 ${body.time_zone}` : ""}`,
+    refuse: body => plainBody(body, ["name", "time_zone", "folder_token"]) && typeof body.name === "string" && body.name.trim() && body.name.length <= 255
+      ? null : "新建多维表格只能给名称、时区和所在文件夹" }),
+  Object.freeze({ id: "base.table.create", methods: ["POST"], summary: "在多维表格里新建数据表",
+    pattern: new RegExp(`^/open-apis/base/v3/bases/${TOKEN}/tables$`),
+    resource: path => `多维表格 ${path.split("/")[5]}`,
+    describe: body => {
+      const fields = Array.isArray(body?.fields) ? body.fields : [];
+      const names = fields.map(field => `${field?.name}（${field?.type}）`);
+      return `数据表「${String(body?.name ?? "").slice(0, 100)}」 · ${fields.length} 个字段${names.length ? `：${names.slice(0, 12).join("、")}${names.length > 12 ? " …" : ""}` : ""}`;
+    },
+    refuse: body => plainBody(body, ["name", "fields"]) && typeof body.name === "string" && body.name.trim() &&
+      (body.fields === undefined || Array.isArray(body.fields) && body.fields.length <= 300 && body.fields.every(fieldShape))
+      ? null : "新建数据表只能给表名和一组字段（每个字段要有名称和类型）" }),
+  Object.freeze({ id: "base.field.create", methods: ["POST"], summary: "在数据表里新建字段",
+    pattern: new RegExp(`^/open-apis/base/v3/bases/${TOKEN}/tables/${TOKEN}/fields$`),
+    resource: path => { const parts = path.split("/"); return `多维表格 ${parts[5]} · 数据表 ${parts[7]}`; },
+    describe: body => `字段「${String(body?.name ?? "").slice(0, 100)}」（${body?.type}）${body?.type === "formula" ? ` · 公式 ${String(body?.expression ?? "").slice(0, 200)}` : ""}`,
+    refuse: body => fieldShape(body) ? null : "新建字段要有名称和类型" }),
   Object.freeze({ id: "base.records", methods: ["POST"], summary: "新增或更新多维表格记录",
     pattern: new RegExp(`^/open-apis/base/v3/bases/${TOKEN}/tables/${TOKEN}/records/batch_(create|update)$`),
     resource: path => { const parts = path.split("/"); return `多维表格 ${parts[5]} · 数据表 ${parts[7]}`; } }),

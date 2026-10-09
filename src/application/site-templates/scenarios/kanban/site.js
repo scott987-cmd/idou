@@ -70,11 +70,17 @@
     return card;
   }
 
-  function draw() {
+  // A column at a time: thousands of cards drawn at once took a second and
+  // more, and every keystroke drew them all again (2026-10-04). Each column
+  // shows its first cards and 显示更多 the next ones; a new search starts over.
+  var PAGE = 30, opened = {}, waiting = null;
+  function typed() { clearTimeout(waiting); waiting = setTimeout(function () { draw(); }, 150); }
+  function draw(keep) {
+    if (!keep) opened = {};
     var needle = (q.value || "").trim().toLowerCase();
     var rows = Table.rows().filter(function (row) {
       if (!needle) return true;
-      return fields.some(function (field) { return row.text(field.name).toLowerCase().indexOf(needle) >= 0; });
+      return row.matches(needle);
     });
     board.replaceChildren();
     var columns = grouping ? grouping.values.slice() : [];
@@ -93,7 +99,14 @@
       head.append(make("span", name), make("span", String(held[name].length), "column-count"));
       column.append(head);
       var body = make("div", undefined, "column-body");
-      held[name].forEach(function (row) { body.append(ticket(row)); });
+      var limit = opened[name] || PAGE, all = held[name];
+      all.slice(0, limit).forEach(function (row) { body.append(ticket(row)); });
+      if (all.length > limit) {
+        var rest = all.length - limit, more = make("button", "再显示 " + Math.min(PAGE, rest) + " 张（还有 " + rest + " 张）", "more");
+        more.type = "button";
+        more.addEventListener("click", function () { opened[name] = limit + PAGE; draw(true); });
+        body.append(more);
+      }
       column.append(body);
       board.append(column);
     });
@@ -114,10 +127,10 @@
     text(document.getElementById("foot"), Table.truncated()
       ? "只显示了表格的前 " + Table.rowCount() + " 条；要看更多，在「文档网站」里把行数上限调大。"
       : "数据来自飞书表格，改表格这里就会跟着变。");
-    draw();
+    draw(true);
   }
 
-  q.addEventListener("input", draw);
+  q.addEventListener("input", typed);
   Table.onChange(redraw);
   redraw();
 })();

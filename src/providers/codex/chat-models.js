@@ -31,6 +31,9 @@ export const CHAT_MODELS = Object.freeze({
   "GLM-5.3": Object.freeze({ provider: "litellm", label: "GLM-5.3", vendor: "智谱 GLM（火山方舟，经服务端本机 LiteLLM）", sideCalls: sideCalls(8192, 8192, 180_000) }),
 });
 export const DEFAULT_CHAT_MODEL = "MiniMax-M3";
+// The longest any model's side call may take: what a request that waits on
+// one -- a site's content check (control-plane/site-moderation.js) -- has to allow.
+export const LONGEST_SIDE_CALL_MS = Math.max(...Object.values(CHAT_MODELS).map((model) => model.sideCalls.proposal.timeoutMs));
 export const isChatModel = value => typeof value === "string" && Object.hasOwn(CHAT_MODELS, value);
 // "GLM-5.3（智谱 GLM（火山方舟，经服务端本机 LiteLLM））" reads badly; the label
 // and the vendor are shown separately where both are needed.

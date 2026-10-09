@@ -67,26 +67,45 @@ let previewBase = null, previewOrigin = null;
 let browser = null, context = null, page = null;
 const consoleLog = [];
 
+// The browser can go away under a task. A WebGL game the agent was testing
+// took it down on 2026-10-08, and every later call answered "Target page,
+// context or browser has been closed" for the rest of the turn -- twenty
+// minutes of the agent retrying a tool that could never work again. So a page
+// that closed or crashed, or a browser that is gone, is dropped, and the next
+// call opens a fresh one (and says so in the console log).
+let lost = "";
 async function ensurePage() {
-  if (page) return page;
-  const { chromium } = await import("playwright");   // lazy: only pay for Playwright when the agent actually browses
-  try { browser = await chromium.launch({ headless: true }); }
-  catch { browser = await chromium.launch({ headless: true, channel: "chrome" }); }   // fall back to system Chrome
-  context = await browser.newContext({ userAgent: "idou-browser/1.0 (+coding-agent)" });
-  // SSRF: abort any request — top level or subresource — to a private/loopback
-  // host, except the task's own preview origin.
-  await context.route("**/*", async (route) => {
-    try { await assertReachable(route.request().url(), previewOrigin); await route.continue(); }
-    catch { await route.abort(); }
-  });
-  page = await context.newPage();
-  page.on("console", (message) => { if (consoleLog.length < 300) consoleLog.push(`[${message.type()}] ${message.text()}`.slice(0, 500)); });
-  page.on("pageerror", (error) => { if (consoleLog.length < 300) consoleLog.push(`[pageerror] ${String(error?.message ?? error)}`.slice(0, 500)); });
-  page.setDefaultTimeout(NAV_TIMEOUT);
-  return page;
+  if (page && !page.isClosed() && browser?.isConnected()) return page;
+  if (!browser?.isConnected()) {
+    await closeBrowser();
+    const { chromium } = await import("playwright");   // lazy: only pay for Playwright when the agent actually browses
+    try { browser = await chromium.launch({ headless: true }); }
+    catch { browser = await chromium.launch({ headless: true, channel: "chrome" }); }   // fall back to system Chrome
+    const launched = browser;
+    launched.on("disconnected", () => { if (browser === launched) { browser = context = page = null; lost = "浏览器意外退出"; } });
+    context = await browser.newContext({ userAgent: "idou-browser/1.0 (+coding-agent)" });
+    // SSRF: abort any request — top level or subresource — to a private/loopback
+    // host, except the task's own preview origin.
+    await context.route("**/*", async (route) => {
+      try { await assertReachable(route.request().url(), previewOrigin); await route.continue(); }
+      catch { await route.abort(); }
+    });
+  }
+  const opened = page = await context.newPage();
+  if (lost && consoleLog.length < 300) consoleLog.push(`[i豆] ${lost}，已重新打开浏览器；之前的页面状态没有保留。`);
+  lost = "";
+  opened.on("console", (message) => { if (consoleLog.length < 300) consoleLog.push(`[${message.type()}] ${message.text()}`.slice(0, 500)); });
+  opened.on("pageerror", (error) => { if (consoleLog.length < 300) consoleLog.push(`[pageerror] ${String(error?.message ?? error)}`.slice(0, 500)); });
+  opened.on("crash", () => { if (page === opened) { page = null; lost = "页面崩溃"; void opened.close().catch(() => {}); } });
+  opened.on("close", () => { if (page === opened) { page = null; lost ||= "页面被关闭"; } });
+  opened.setDefaultTimeout(NAV_TIMEOUT);
+  return opened;
 }
 
 async function closeBrowser() { try { await browser?.close(); } catch { /* best effort */ } browser = context = page = null; }
+// A tool that works on the open page, when there is none: say why, so the
+// agent opens it again rather than retrying the same call.
+const noPage = (fallback) => toolError(lost ? `${lost}，页面已经没有了，请先用 browser_navigate 或 browser_preview 重新打开。` : fallback);
 
 async function navigate({ url }) {
   let target; try { target = new URL(String(url)); } catch { return toolError("URL 无效。"); }
@@ -112,7 +131,7 @@ async function preview({ path: relative } = {}) {
 }
 
 async function read({ selector, max_chars }) {
-  if (!page) return toolError("还没有打开页面，请先调用 browser_navigate。");
+  if (!page) return noPage("还没有打开页面，请先调用 browser_navigate。");
   try {
     const text = selector ? await page.locator(String(selector)).first().innerText({ timeout: 5000 }) : await page.innerText("body");
     return toolText(untrusted(page.url(), clip((text || "").trim() || "（无可读文本）", max_chars)));
@@ -120,7 +139,7 @@ async function read({ selector, max_chars }) {
 }
 
 async function click({ text, selector }) {
-  if (!page) return toolError("还没有打开页面。");
+  if (!page) return noPage("还没有打开页面。");
   if (!text && !selector) return toolError("请提供 text 或 selector。");
   try {
     const locator = selector ? page.locator(String(selector)).first() : page.getByText(String(text), { exact: false }).first();
@@ -131,7 +150,7 @@ async function click({ text, selector }) {
 }
 
 async function type_({ selector, text, submit }) {
-  if (!page) return toolError("还没有打开页面。");
+  if (!page) return noPage("还没有打开页面。");
   if (!selector) return toolError("请提供要输入的字段 selector。");
   try {
     await page.locator(String(selector)).first().fill(String(text ?? ""));
@@ -141,18 +160,22 @@ async function type_({ selector, text, submit }) {
 }
 
 function consoleMessages() {
-  if (!page) return toolError("还没有打开页面。");
+  if (!page && !consoleLog.length) return noPage("还没有打开页面。");
+  if (!page) return toolText(untrusted("（页面已经没有了）", consoleLog.slice(-100).join("\n")));
   return toolText(untrusted(page.url(), consoleLog.length ? consoleLog.slice(-100).join("\n") : "（暂无 console 输出）"));
 }
 
 async function screenshot({ full_page } = {}) {
-  if (!page) return toolError("还没有打开页面，请先调用 browser_navigate。");
+  if (!page) return noPage("还没有打开页面，请先调用 browser_navigate。");
   try {
-    const buffer = await page.screenshot({ type: "png", fullPage: full_page === true });
-    // A screenshot is only useful to a vision-capable model, and a huge PNG can
-    // blow its image limits; a viewport PNG is usually well within them.
+    // JPEG, not PNG: every screenshot stays in the conversation and goes back
+    // to the gateway with each later request. An agent checking a WebGL game by
+    // its screen took 27 PNG screenshots (345 KB each) and every request after
+    // that was refused as too large (2026-10-08); the same frames as JPEG are a
+    // fraction of that and still read fine.
+    const buffer = await page.screenshot({ type: "jpeg", quality: 70, fullPage: full_page === true });
     if (buffer.length > 4 * 1024 * 1024) return toolError("截图过大（超过 4MB）。请缩小视口，或改用 browser_read 读取文本。");
-    return { content: [{ type: "image", data: buffer.toString("base64"), mimeType: "image/png" }] };
+    return { content: [{ type: "image", data: buffer.toString("base64"), mimeType: "image/jpeg" }] };
   } catch (error) { return toolError(`截图失败：${String(error?.message ?? error).slice(0, 200)}`); }
 }
 

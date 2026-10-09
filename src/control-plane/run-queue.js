@@ -31,7 +31,10 @@ const SCHEMA = `
     cancel boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
   CREATE UNIQUE INDEX IF NOT EXISTS idou_run_queue_active ON idou_run_queue (schedule) WHERE state IN ('queued', 'running');
-  CREATE INDEX IF NOT EXISTS idou_run_queue_waiting ON idou_run_queue (created_at) WHERE state = 'queued';`;
+  CREATE INDEX IF NOT EXISTS idou_run_queue_waiting ON idou_run_queue (created_at) WHERE state = 'queued';
+  CREATE TABLE IF NOT EXISTS idou_run_worker_beats (
+    worker text PRIMARY KEY, name text NOT NULL, host text NOT NULL, pid integer NOT NULL, release text NOT NULL,
+    started_at bigint NOT NULL, beat_at bigint NOT NULL, state text NOT NULL);`;
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 const SLOT = (id, part) => `run:${id}:${part}`;
 
@@ -210,6 +213,34 @@ export class RunQueue extends EventEmitter {
     const { rowCount } = await this.pool.query(`DELETE FROM idou_run_queue WHERE state NOT IN ('queued', 'running')
       AND updated_at < now() - ($1::bigint * interval '1 millisecond')`, [maxAgeMs]);
     return rowCount;
+  }
+
+  // Each worker's heartbeat (docs/service-status.md §1): what it is and how
+  // many runs it holds. A worker's role writes it once worker-role.sql has
+  // granted it the table; before that the write is refused (42501) and the
+  // worker runs as it always did.
+  // Only this worker writes its row, so an update and, the first time, an
+  // insert: ON CONFLICT would need the role to read every worker's state.
+  async beat({ worker, name, host, pid, release, startedAt, state }) {
+    const at = this.now(), held = JSON.stringify(state ?? {});
+    const { rowCount } = await this.pool.query("UPDATE idou_run_worker_beats SET beat_at = $2, state = $3 WHERE worker = $1", [worker, at, held]);
+    if (!rowCount) await this.pool.query(`INSERT INTO idou_run_worker_beats (worker, name, host, pid, release, started_at, beat_at, state) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [worker, name, host, pid, release, startedAt, at, held]);
+  }
+
+  // The coordinator's side: every worker that has said anything in the last day.
+  async workers({ forgetMs = 86_400_000 } = {}) {
+    // A day old, or from the future (no worker writes those), is removed.
+    await this.pool.query("DELETE FROM idou_run_worker_beats WHERE beat_at < $1 OR beat_at > $2", [this.now() - forgetMs, this.now() + forgetMs]);
+    // At most a hundred rows, and no state larger than a worker writes: the
+    // table is writable by every worker's role.
+    const { rows } = await this.pool.query(`SELECT worker, name, host, pid, release, started_at, beat_at, CASE WHEN length(state) <= 4096 THEN state ELSE '{}' END AS state
+      FROM idou_run_worker_beats ORDER BY beat_at DESC LIMIT 100`);
+    return rows.map((row) => {
+      let state = {};
+      try { state = JSON.parse(row.state); } catch {}
+      return { worker: row.worker, name: row.name, host: row.host, pid: row.pid, release: row.release, startedAt: Number(row.started_at), beatAt: Number(row.beat_at), state };
+    });
   }
 
   async counts() {

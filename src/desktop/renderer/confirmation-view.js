@@ -33,6 +33,10 @@ function workAction(command) {
   if (has("media-create")) return [option("media-create", "kind") === "video" ? "生成视频" : "生成图片", ""];
   if (has("media-save")) return ["保存媒体到飞书云盘", ""];
   if (has("schedule-draft", "schedule-pause", "schedule-resume", "schedule-delete", "schedule-run-now")) return ["更新定时任务", ""];
+  if (has("event-delete")) return ["删除飞书日程", ""];
+  if (has("task-delete")) return ["删除飞书任务", ""];
+  if (has("site-publish")) return ["发布网站", option("site-publish", "name")];
+  if (has("skill-enable")) return ["启用技能", basename(option("skill-enable", "dir"))];
   if (shortcut?.domain === "sheets") return ["处理飞书电子表格", ""];
   if (shortcut?.domain === "base") return ["处理飞书多维表格", ""];
   if (shortcut?.domain === "calendar") return ["处理飞书日程", ""];
@@ -44,12 +48,17 @@ export function approvalPresentation(approval, mode) {
   const detail = approval?.kind === "file"
     ? (approval.changes ?? []).map((file) => `${file.path}\n${file.diff || ""}`).join("\n\n")
     : String(approval?.command ?? "");
-  if (approval?.kind === "question") return { title: "Agent 想先问你", target: "", detail: "" };
-  if (approval?.kind === "mcp") return { title: "确认 MCP 工具调用", target: approval.target ?? approval.cwd ?? "", detail };
-  if (approval?.kind === "file") return { title: "确认修改文件", target: (approval.changes ?? []).map((file) => basename(file.path)).join("、"), detail };
+  // `note` is the line under the detail: the folder a command or a change runs
+  // in. An MCP card has none -- its cwd is the server's id, which once stood
+  // alone by 允许这一次 (2026-10-08) -- and names the connector by its title,
+  // as its step does (使用工具, cowork-timeline.js).
+  const note = String(approval?.cwd ?? "");
+  if (approval?.kind === "question") return { title: "Agent 想先问你", target: "", detail: "", note: "" };
+  if (approval?.kind === "mcp") return { title: "确认使用工具", target: approval.target ?? "", detail, note: "" };
+  if (approval?.kind === "file") return { title: "确认修改文件", target: (approval.changes ?? []).map((file) => basename(file.path)).join("、"), detail, note };
   if (mode === "cowork") {
     const [action, target] = workAction(approval?.command);
-    return { title: `确认${action}`, target, detail };
+    return { title: `确认${action}`, target, detail, note };
   }
-  return { title: "确认执行命令", target: "", detail };
+  return { title: "确认执行命令", target: "", detail, note };
 }

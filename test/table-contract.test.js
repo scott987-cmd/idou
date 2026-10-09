@@ -143,3 +143,28 @@ test("writing refuses a data directory that leaves the project", async (t) => {
   await assert.rejects(() => writeContract("relative/path", { schema, snapshot }), /绝对路径/);
   await assert.rejects(() => writeContract(project, { schema }), /数据契约不完整/);
 });
+
+// Found 2026-10-04 (a table site of thousands of rows): every search lowercased
+// every cell of every row again, rows() wrapped every row again on each call,
+// and each date and amount made a new formatter. A row is now read for search
+// once, by what it shows; the text a cell shows is unchanged.
+test("search finds a row by what it shows, and the rows are wrapped once per set of data", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "idou-contract-search-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const fields = [{ id: "fldName", name: "客户名", type: "text" }, { id: "fldWhen", name: "签约", type: "date", kind: "date" }, { id: "fldAmount", name: "金额", type: "number" }];
+  const at = Date.UTC(2026, 0, 5, 4);
+  const rows = [{ id: "r1", values: { fldName: { kind: "text", text: "北极星科技" }, fldWhen: { kind: "date", text: "", value: at }, fldAmount: { kind: "number", text: "1234.5", value: 1234.5, style: "currency" } } },
+    { id: "r2", values: { fldName: { kind: "text", text: "远山物流" } } }];
+  await writeContract(directory, { schema: { ...schema, fields }, snapshot: { ...snapshot, rows, rowCount: 2 } });
+  const Table = page(await written(directory));
+  const [first, second] = Table.rows();
+  assert.equal(first.text("签约"), new Date(at).toLocaleDateString("zh-CN"), "a date reads as it always did");
+  assert.equal(first.text("金额"), (1234.5).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  assert.equal(first.matches("北极星"), true);
+  assert.equal(first.matches(first.text("金额")), true, "found by the amount as shown");
+  assert.equal(first.matches(new Date(at).toLocaleDateString("zh-CN")), true, "and by the date as shown");
+  assert.equal(second.matches("北极星"), false);
+  assert.equal(second.matches(""), true, "no words, every row");
+  assert.equal(Table.rows()[0], first, "the same rows until the data changes");
+  assert.notEqual(Table.rows(), Table.rows(), "each call a fresh array to sort or filter");
+});

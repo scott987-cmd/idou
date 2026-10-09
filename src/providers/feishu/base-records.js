@@ -76,6 +76,63 @@ export class SaasBaseRecords {
     });
   }
 
+  // How a table stands, without reading it: its revision and its row count,
+  // as the table list gives them. Null for either when the list does not say
+  // it as a number; a caller then has nothing to compare and reads in full.
+  //
+  // `others`: the tables whose revisions are wanted too, from the same list --
+  // "all", or ids. A link shows names kept in another table, and a formula
+  // can read any of them; neither moves this table's revision when that table
+  // changes (measured live, docs/feishu-base.md).
+  async tableState(baseToken, tableId, { signal, others = null } = {}) {
+    if (typeof tableId !== "string" || !TABLE_ID.test(tableId)) throw new Error("多维表格数据表标识无效。");
+    const data = await this.call(["+table-list", "--base-token", baseToken], signal);
+    if (!Array.isArray(data?.tables)) invalid();
+    const table = data.tables.find(item => item?.id === tableId);
+    if (!table) throw new Error("未找到这张数据表。");
+    const count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
+    const state = { rev: count(table.rev), count: count(table.records_count) };
+    if (!others) return state;
+    const wanted = others === "all" ? null : new Set(others);
+    state.others = Object.fromEntries(data.tables
+      .filter(item => typeof item?.id === "string" && TABLE_ID.test(item.id) && item.id !== tableId && (!wanted || wanted.has(item.id)))
+      .map(item => [item.id, count(item.rev)]));
+    // A table asked for by id and not in the list: gone, and said as no revision.
+    for (const id of wanted ?? []) if (id !== tableId && !(id in state.others)) state.others[id] = null;
+    return state;
+  }
+
+  // The order a person sees a table's fields in: its primary field, then its
+  // first grid view's visible fields as that view lays them out. The field list
+  // and the table itself give them in a different order on every call
+  // (measured live), and a site took whatever order that was -- its columns,
+  // its cards' titles (the first text field) and its timeline's date (the first
+  // date) with them. A view names its fields by name, recorded live.
+  async fieldOrder(baseToken, tableId, signal) {
+    if (typeof tableId !== "string" || !TABLE_ID.test(tableId)) throw new Error("多维表格数据表标识无效。");
+    const data = await this.call(["+table-get", "--base-token", baseToken, "--table-id", tableId], signal);
+    const fields = Array.isArray(data?.fields) ? data.fields : [];
+    const idOf = new Map(fields.filter(field => typeof field?.id === "string" && BASE_FIELD_ID.test(field.id) && typeof field.name === "string").map(field => [field.name, field.id]));
+    const primary = typeof data?.table?.primary_field === "string" && BASE_FIELD_ID.test(data.table.primary_field) ? [data.table.primary_field] : [];
+    const views = Array.isArray(data?.views) ? data.views : [];
+    const view = views.find(item => item?.type === "grid") ?? views[0];
+    if (typeof view?.id !== "string" || !/^vew[A-Za-z0-9]{1,64}$/.test(view.id)) return primary;
+    const shown = await this.call(["+view-get-visible-fields", "--base-token", baseToken, "--table-id", tableId, "--view-id", view.id], signal);
+    const visible = (Array.isArray(shown?.visible_fields) ? shown.visible_fields : [])
+      .map(entry => typeof entry === "string" ? idOf.get(entry) ?? (BASE_FIELD_ID.test(entry) ? entry : null) : entry?.id ?? null)
+      .filter(id => typeof id === "string" && BASE_FIELD_ID.test(id));
+    return [...new Set([...primary, ...visible])];
+  }
+
+  // The field a table's records are named by, as a link to them shows them.
+  async primaryField(baseToken, tableId, signal) {
+    if (typeof tableId !== "string" || !TABLE_ID.test(tableId)) throw new Error("多维表格数据表标识无效。");
+    const data = await this.call(["+table-get", "--base-token", baseToken, "--table-id", tableId], signal);
+    const id = data?.table?.primary_field;
+    if (typeof id !== "string" || !BASE_FIELD_ID.test(id)) invalid();
+    return id;
+  }
+
   async fields(baseToken, tableId, signal) {
     const data = await this.call(["+field-list", "--base-token", baseToken, "--table-id", tableId, "--limit", String(PAGE_LIMIT)], signal);
     if (!Array.isArray(data?.fields) || !data.fields.length || data.fields.length > PAGE_LIMIT) invalid();
@@ -85,7 +142,16 @@ export class SaasBaseRecords {
           typeof field.type !== "string" || !/^[a-z_]{1,40}$/.test(field.type)) invalid();
       seen.add(field.id);
       const style = typeof field.style?.type === "string" && /^[a-z_]{1,40}$/.test(field.style.type) ? field.style.type : null;
-      return { id: field.id, name: field.name, type: field.type, ...(style ? { style } : {}) };
+      // What a page needs to show a value as Feishu does (recorded live,
+      // test/fixtures/base-field-shapes.json): a select that takes several
+      // options, a number shown as a percentage (a progress bar is one), a
+      // date shown with its time, and the table a link points into.
+      const percent = field.type === "number" && (field.style?.percentage === true || style === "progress" && field.style?.percentage !== false);
+      const time = typeof field.style?.format === "string" && /H{1,2}:mm/.test(field.style.format);
+      const linkTable = field.type === "link" && typeof field.link_table === "string" && TABLE_ID.test(field.link_table) ? field.link_table : null;
+      return { id: field.id, name: field.name, type: field.type, ...(style ? { style } : {}),
+        ...(field.type === "select" && field.multiple === true ? { multiple: true } : {}),
+        ...(percent ? { percent: true } : {}), ...(time ? { time: true } : {}), ...(linkTable ? { linkTable } : {}) };
     });
   }
 

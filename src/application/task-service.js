@@ -4,7 +4,7 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import { redactor } from "./redact-secrets.js";
 import { getMode, getPermission, DEFAULT_PERMISSION } from "../modes.js";
-import { executionPermissionForTask, isExecutionPermission } from "../permissions.js";
+import { executionPermissionForTask, isExecutionPermission, fullAccessAllowedNow, FULL_ACCESS_WITHHELD } from "../permissions.js";
 import { runTurn } from "./turn.js";
 import { validateTaskId } from "./task-store.js";
 import { prepareTaskContext, contextualPrompt } from "./task-context.js";
@@ -12,7 +12,7 @@ import { knowledgeScope, knowledgeEvidence, knowledgePrompt, knowledgeSources } 
 import { listTaskFiles, taskFilesPrompt } from "./task-files.js";
 import { skillReference, registerTaskSkill } from "./task-skill.js";
 import { knowledgeCommand } from "./knowledge-commands.js";
-import { mcpApprovalPolicy, mcpGrant, mcpToolName } from "./mcp-approval-policy.js";
+import { mcpApprovalPolicy, mcpCallSentence, mcpGrant, mcpToolName } from "./mcp-approval-policy.js";
 import { sheetEditProposal } from "./sheet-proposal.js";
 import { baseEditProposal } from "./base-proposal.js";
 import { mentionsPrompt, normalizeMentions } from "./mentions.js";
@@ -146,6 +146,13 @@ export const UPSTREAM_FAILURES = Object.freeze([
   [/max_output_tokens/, "这一轮写得太长，超过了模型单次输出的上限，被从中间截断。已经改好的文件都还在，"
     + "直接说「继续」就能接着写。如果是在写一个很长的文件，让它分几次写。"],
   [/context[_ ]length|context window/i, "对话太长，模型装不下了。用下面的「压缩对话」收一收再继续。"],
+  // Each turn sends the whole conversation, screenshots included, and the
+  // gateway refuses a body over its limit. An agent checking a game by its
+  // screen took 27 screenshots (9 MB) and every later request was refused
+  // (2026-10-08) -- shown as "unexpected status 413 Payload Too Large:
+  // request_too_large, url: …". Compacting drops the pictures.
+  [/request_too_large|413 Payload Too Large/, "这段对话里的截图太多，整段请求超过了模型网关的大小上限，被拒绝了。已经改好的文件都还在："
+    + "用下面的「压缩对话」收一收，再说「继续」；压缩也失败的话，新开一个任务，说明接着做什么。"],
   // Codex cannot find the file it keeps this conversation in. Seen when the
   // account's directory had been renamed under Codex's index (2026-09-23; the
   // index is now brought along, account-paths.js), shown as a raw sentence with
@@ -158,6 +165,27 @@ export const upstreamFailure = (message) => {
   const text = String(message ?? "");
   return UPSTREAM_FAILURES.find(([pattern]) => pattern.test(text))?.[1] ?? text;
 };
+// A turn cut off at the model's output limit goes on by itself, at most twice
+// for each message the person sent. The coding instructions already say to
+// write a long file in parts; MiniMax-M3 still wrote a whole dashboard in one
+// patch, and on a small change rewrote a 343-line file whole, and each time
+// the task stopped until the person typed 继续 (2026-10-08). Nothing of a
+// patch cut off mid-way is written, so going on is what they would do; a third
+// cut-off stops and says so, rather than spend calls on a loop.
+export const MAX_CONTINUATIONS = 2;
+export const CONTINUE_AFTER_TRUNCATION = "继续。上一段输出超过了模型单次输出的上限，被从中间截断了，截断的那个补丁没有写进去。"
+  + "这次不要把整个文件重写：先看一下文件现在是什么样，再分几段写，每个补丁不超过 150 行。";
+const TRUNCATED = /max_output_tokens/;
+// How many automatic continuations followed the person's last message.
+export function continuationsSince(task) {
+  let count = 0;
+  for (const message of [...task.messages].reverse()) {
+    if (message.role !== "user" || message.steered) continue;
+    if (!message.continuation) break;
+    count += 1;
+  }
+  return count;
+}
 
 // How full the model's context is, as Codex reports it after each response:
 // the last response's tokens (what the conversation now holds, not the
@@ -273,6 +301,7 @@ export class TaskService extends EventEmitter {
   async create({ mode, cwd, permission = DEFAULT_PERMISSION, enterpriseSkill, mcpConnection }) {
     if (this.closing) throw new Error("应用正在退出");
     getMode(mode); getPermission(permission);
+    if (permission === "full" && !fullAccessAllowedNow()) throw new Error(FULL_ACCESS_WITHHELD);
     if (typeof cwd !== "string" || !path.isAbsolute(cwd)) throw new Error("请选择有效的工作目录");
     await requireTaskDirectory(cwd);
     const executionPermission = isExecutionPermission(permission) ? permission : DEFAULT_PERMISSION;
@@ -304,6 +333,8 @@ export class TaskService extends EventEmitter {
     if (!task.messages.some((message) => message.role === "assistant" && (!Number.isSafeInteger(message.seq) || message.seq > after))) throw new Error("还没有方案可以开始");
     const previous = clone(task), next = clone(task);
     next.permission = executionPermissionForTask(task);
+    // Remembered as full while planning, and full has since been withheld.
+    if (next.permission === "full" && !fullAccessAllowedNow()) next.permission = "standard";
     next.stage = "building";
     delete next.planningKind;
     delete next.planningAfterSeq;
@@ -406,7 +437,7 @@ export class TaskService extends EventEmitter {
       });
       await client.request("thread/compact/start", { threadId: task.codexThreadId });
       const turn = await finished.catch((error) => { throw new Error(`压缩未完成：${error.message}`); });
-      if (turn?.status && turn.status !== "completed") throw new Error(`压缩未完成：${turn.error?.message || turn.status}`);
+      if (turn?.status && turn.status !== "completed") throw new Error(`压缩未完成：${turn.error?.message ? upstreamFailure(turn.error.message) : turn.status}`);
     });
     // Smaller now; the next response says by how much.
     task.compactedAt = Date.now(); task.contextUsage = null; task.updatedAt = Date.now();
@@ -620,6 +651,7 @@ export class TaskService extends EventEmitter {
     if (this.closing) throw new Error("应用正在退出");
     const task = this.get(id);
     getPermission(permission);
+    if (permission === "full" && !fullAccessAllowedNow()) throw new Error(FULL_ACCESS_WITHHELD);
     // Refused while the task is running: a turn must finish under the rules it
     // was started with, or an approval already on screen would mean something
     // different by the time it is answered.
@@ -652,7 +684,7 @@ export class TaskService extends EventEmitter {
     await this.store.save(next);
     this.tasks.set(id, next); this.changed(); return clone(next);
   }
-  async send(id, text, contextInput, { mentions: mentionInput, references: referenceInput, review: reviewInput, images: imageInput, command: commandInput, planningAction: planningActionInput, authored = true } = {}, queueToken = null) {
+  async send(id, text, contextInput, { mentions: mentionInput, references: referenceInput, review: reviewInput, images: imageInput, command: commandInput, planningAction: planningActionInput, authored = true, continuation = false } = {}, queueToken = null) {
     if (this.closing) throw new Error("应用正在退出");
     if (typeof text !== "string" || !text.trim() || text.length > 100_000) throw new Error("请输入 1–100000 字的任务内容");
     // Checked before anything starts, so a malformed pick fails the send
@@ -733,7 +765,7 @@ export class TaskService extends EventEmitter {
       previous.error = String(error.message).slice(0, 2000);
       this.tasks.set(id, previous); this.active.delete(id); execution.done.resolve(); this.changed(); throw error;
     }
-    task.messages.push({ id: randomUUID(), role: "user", text: text.trim(), ...(authored ? {} : { authored: false }), ...(context ? { context } : {}), ...(mentions.length ? { mentions } : {}), ...(references.length ? { references } : {}), ...(execution.skill ? { skill: execution.skill.reference } : {}), ...(review ? { review } : {}), ...(planningAction ? { planningAction } : {}),
+    task.messages.push({ id: randomUUID(), role: "user", text: text.trim(), ...(authored ? {} : { authored: false }), ...(continuation ? { continuation: true } : {}), ...(context ? { context } : {}), ...(mentions.length ? { mentions } : {}), ...(references.length ? { references } : {}), ...(execution.skill ? { skill: execution.skill.reference } : {}), ...(review ? { review } : {}), ...(planningAction ? { planningAction } : {}),
       ...(images.length ? { images: images.map((image) => ({ id: image.id, type: image.type })) } : {}), ...(command ? { command } : {}),
       // Which documents went with the question, so the answer can be checked
       // against them instead of taken on trust.
@@ -849,6 +881,7 @@ export class TaskService extends EventEmitter {
       task.status = "completed";
     } catch (error) {
       task.status = execution.controller.signal.aborted ? "interrupted" : "failed";
+      execution.truncated = !execution.controller.signal.aborted && !persistenceFailure && TRUNCATED.test(String(error?.message ?? ""));
       task.error = persistenceFailure ? "任务记录保存失败，已停止执行。" : (execution.controller.signal.aborted ? "任务已停止，可继续对话。" : upstreamFailure(error.message).slice(0, 2000));
     } finally {
       clearInterval(checkpoint);
@@ -881,7 +914,14 @@ export class TaskService extends EventEmitter {
       if (opened?.turn && !opened.turn.finishedAt) opened.turn = { ...opened.turn, finishedAt: Date.now(), status: task.status };
       try { await this.store.save(task); } catch { task.error = "任务记录未能保存，请勿关闭应用。"; task.status = "failed"; }
       this.active.delete(task.id); this.changed();
-      if (this.queue) {
+      const continuing = execution.truncated === true && task.status === "failed" && !execution.review && !execution.proposalInput && !this.closing
+        && continuationsSince(task) < MAX_CONTINUATIONS;
+      if (continuing) {
+        // The next queued message waits for the continuation's turn to end, as it would for any turn.
+        void this.send(task.id, CONTINUE_AFTER_TRUNCATION, undefined, { authored: false, continuation: true }).catch(() => {
+          if (this.queue) void this.queue.pause(task.id, "上一轮未正常完成；下一轮队列已暂停", { ifPresent: true }).then(() => this.changed(), () => {});
+        });
+      } else if (this.queue) {
         if (task.status === "completed" && !task.error) void this.drainQueue(task.id);
         else void this.queue.pause(task.id, task.status === "interrupted" ? "任务已停止；下一轮队列已暂停" : "上一轮未正常完成；下一轮队列已暂停", { ifPresent: true }).then(() => this.changed()).catch(() => {});
       }
@@ -1017,8 +1057,8 @@ export class TaskService extends EventEmitter {
       }
       // Whether this call needs the person at all, by the turn's permission:
       // 完全访问 never asks, 标准 and 自动 ask once per grant, the rest every time.
-      const tool = mcpToolName(params.message), builtin = execution.builtinConnections?.get(params.serverName);
-      const grant = tool ? mcpGrant({ server: params.serverName, tool, params: params._meta?.tool_params, builtin: Boolean(builtin), title: builtin ?? params.serverName }) : null;
+      const tool = mcpToolName(params.message), builtin = execution.builtinConnections?.get(params.serverName), title = builtin ?? params.serverName;
+      const grant = tool ? mcpGrant({ server: params.serverName, tool, params: params._meta?.tool_params, builtin: Boolean(builtin), title }) : null;
       const policy = mcpApprovalPolicy(task.permission);
       const allowed = policy === "never" ? "完全访问，自动允许"
         : policy === "grant" && grant?.free ? "只列出应用，自动允许"
@@ -1030,9 +1070,13 @@ export class TaskService extends EventEmitter {
       }
       const offer = policy === "grant" && grant?.label ? grant : null;
       const id = randomUUID();
+      // The card reads in the product's words and names the connector as the
+      // person knows it (mcpCallSentence). cwd stays the server's id and tool
+      // the tool's name: they are what a script tells cards apart by, never
+      // what the card shows.
       this.approvals.set(id, { requestId: request.id, client: execution.client, ...(offer ? { grant: offer.key, tool } : {}),
-        public: { id, taskId: task.id, kind: "mcp", reason: params.message, command: rendered, cwd: params.serverName, changes: [], ...display,
-          ...(grant?.target ? { target: grant.target } : {}), ...(offer ? { grant: offer.label } : {}) } });
+        public: { id, taskId: task.id, kind: "mcp", reason: mcpCallSentence({ title, tool }), ...(tool ? { tool } : {}), command: rendered, cwd: params.serverName, changes: [], ...display,
+          target: grant?.target ?? title, ...(offer ? { grant: offer.label } : {}) } });
       task.status = "awaiting_approval"; this.changed(); return;
     }
     // Nothing reaches the model until the person answers. A question marked

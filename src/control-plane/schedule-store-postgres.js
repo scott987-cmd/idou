@@ -504,6 +504,42 @@ export class PostgresScheduleStore {
     return { schedules, runs };
   }
 
+  // For the administration console (docs/admin-console.md §9): how many
+  // tasks, in which state, whose -- never what they say. No prompt and no
+  // title leaves the store this way. `ownersOf` pages by owner and adds, for
+  // each, how the runs since `since` ended.
+  async tenantTotals(tenant) {
+    const row = (await this.pool.query(`SELECT count(*) AS total, count(DISTINCT owner) AS owners,
+        coalesce(sum(CASE WHEN state = 'active' AND suspended_at IS NULL THEN 1 ELSE 0 END), 0) AS active,
+        coalesce(sum(CASE WHEN state = 'paused' THEN 1 ELSE 0 END), 0) AS paused,
+        coalesce(sum(CASE WHEN state = 'active' AND suspended_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS suspended FROM idou_schedules WHERE tenant = $1`, [tenant])).rows[0];
+    return { total: Number(row.total), owners: Number(row.owners), active: Number(row.active), paused: Number(row.paused), suspended: Number(row.suspended) };
+  }
+  async ownersOf(tenant, { after = "", limit = 100, since = this.now() - 86_400_000, only = null } = {}) {
+    const size = Math.max(1, Math.min(200, Number(limit) || 100));
+    const params = [tenant, String(after ?? ""), size + 1, ...(only ?? [])];
+    const filter = only ? ` AND owner IN (${only.map((_, index) => `$${index + 4}`).join(",")})` : "";
+    const { rows } = await this.pool.query(`SELECT owner, count(*) AS total,
+        coalesce(sum(CASE WHEN state = 'active' AND suspended_at IS NULL THEN 1 ELSE 0 END), 0) AS active,
+        coalesce(sum(CASE WHEN state = 'paused' THEN 1 ELSE 0 END), 0) AS paused,
+        coalesce(sum(CASE WHEN state = 'active' AND suspended_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS suspended,
+        min(CASE WHEN state = 'active' AND suspended_at IS NULL THEN next_at END) AS next_at FROM idou_schedules
+      WHERE tenant = $1 AND owner > $2${filter} GROUP BY owner ORDER BY owner LIMIT $3`, params);
+    const page = rows.slice(0, size);
+    const runs = new Map();
+    if (page.length) {
+      const counted = await this.pool.query(`SELECT owner, outcome, count(*) AS n FROM idou_schedule_runs WHERE tenant = $1 AND owner = ANY($2) AND started_at >= $3 GROUP BY owner, outcome`,
+        [tenant, page.map((row) => row.owner), since]);
+      for (const row of counted.rows) {
+        const counts = runs.get(row.owner) ?? { completed: 0, failed: 0, skipped: 0 };
+        if (row.outcome in counts) counts[row.outcome] = Number(row.n);
+        runs.set(row.owner, counts);
+      }
+    }
+    return { owners: page.map((row) => ({ userId: row.owner, total: Number(row.total), active: Number(row.active), paused: Number(row.paused), suspended: Number(row.suspended),
+      nextAt: row.next_at === null ? null : Number(row.next_at), runs: runs.get(row.owner) ?? { completed: 0, failed: 0, skipped: 0 } })), next: rows.length > size ? page.at(-1).owner : null };
+  }
+
   async forgetOwner(tenant, owner) {
     return this.#transaction(async (query) => {
       const runs = (await query(`DELETE FROM idou_schedule_runs WHERE tenant = $1 AND (owner = $2

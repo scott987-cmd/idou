@@ -1,23 +1,64 @@
 import { constants } from "node:fs";
-import { open, readdir, lstat, realpath, mkdir, unlink } from "node:fs/promises";
+import { open, readdir, readFile, lstat, realpath, mkdir, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { APP_FILE_PATTERN, APP_LIMITS, appFileLimit, appManifest, appHash, appId, appPath } from "../apps/manifest.js";
+import { APP_FILE_PATTERN, APP_LIMITS, APP_NOTES_PATTERN, appFileLimit, appLeftOutName, appManifest, appHash, appId, appPath } from "../apps/manifest.js";
 import { validateServerUrl } from "../control-plane/client-session.js";
 import { appPackage, MAX_APP_PACKAGE_BYTES, archiveRecord } from "../apps/archive.js";
 import { reviewRecord } from "../apps/review.js";
 import { CLOCK_SKEW_MS } from "./clock-skew.js";
+import { CONTRACT_DATA_PATH, readContract } from "./table-contract.js";
 
-export async function snapshotApp(cwd, entry) {
+// What a version leaves out of a folder without refusing it (manifest.js
+// appLeftOutName): a dot name or node_modules, folder or file, and Markdown notes.
+const leftOut = (item) => appLeftOutName(item.name) || (!item.isDirectory() && APP_NOTES_PATTERN.test(item.name));
+
+// A page that names a file its version leaves out works in this folder and is
+// missing once published: three.js put in vendor/, which a version then left
+// out, was (2026-10-08). `left`: what the walk left out, files and folders,
+// relative to the root. A name counts where a reference stands -- right after
+// a quote, a "(" or an "=" -- taken relative to the file it is in, and only
+// when that file is there: "see README.md" in a sentence, or a ".hidden" class,
+// stops nothing. The files a page can name others in are its text ones.
+const NAMING = /\.(html?|css|m?js|json|svg)$/i;
+const IN_PATH = /[^\s"'`()<>{}[\],;=\\]/;
+async function namedLeftOut(root, file, text, left) {
+  const found = [];
+  for (const name of new Set(left.map((entry) => path.posix.basename(entry)))) {
+    for (let at = text.indexOf(name); at !== -1; at = text.indexOf(name, at + name.length)) {
+      let start = at, end = at + name.length;
+      while (start > 0 && IN_PATH.test(text[start - 1])) start -= 1;
+      while (end < text.length && IN_PATH.test(text[end])) end += 1;
+      let before = start - 1; while (before >= 0 && (text[before] === " " || text[before] === "\t")) before -= 1;
+      if (before < 0 || !"\"'`(=".includes(text[before])) continue;
+      let named = text.slice(start, end).split(/[?#]/)[0];
+      try { named = decodeURI(named); } catch { continue; }
+      if (!named || named.startsWith("/") || /^[a-z][a-z0-9+.-]*:/i.test(named)) continue;
+      const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), named));
+      if (found.includes(target) || !left.some((entry) => target === entry || target.startsWith(`${entry}/`))) continue;
+      if (await stat(path.join(root, target)).then((info) => info.isFile(), () => false)) found.push(target);
+    }
+  }
+  return found;
+}
+
+// `skip`: paths, relative to the entry's folder, left out of the version. A
+// table site's data file goes to the server beside the version, not in it
+// (main.js publishLocalSite): the server serves its own latest copy under that
+// name, and frozen into the version a 20,000-row table was 20 MB against a
+// 2 MiB file limit, so the site could not be published at all (2026-10-08).
+export async function snapshotApp(cwd, entry, { skip = [] } = {}) {
+  const skipped = new Set(skip);
   appPath(entry); if (!/\.html?$/.test(entry)) throw new Error("请选择 HTML 入口");
   const workspace = await realpath(cwd), root = path.join(workspace, path.dirname(entry));
   if (await realpath(root) !== root) throw new Error("应用目录不能包含符号链接");
   const buffer = Buffer.alloc(Math.max(APP_LIMITS.fileBytes, APP_LIMITS.videoBytes) + 1);
-  const blobs = [], walk = async (directory, prefix = "") => {
+  const blobs = [], left = [], walk = async (directory, prefix = "") => {
     const entries = await readdir(directory, { withFileTypes: true });
     if (entries.length > 256) throw new Error("应用目录过大，请选择独立的构建产物目录");
     for (const item of entries) {
-      if (item.name.startsWith(".") || ["node_modules", "vendor"].includes(item.name)) continue;
       const name = prefix + item.name, full = path.join(directory, item.name);
+      if (leftOut(item)) { left.push(name); continue; }
+      if (skipped.has(name)) continue;
       if (item.isSymbolicLink()) throw new Error("应用产物不能包含符号链接");
       if (item.isDirectory()) { if (name.split("/").length > 8) throw new Error("应用目录层级超限"); await walk(full, `${name}/`); continue; }
       appPath(name); if (!item.isFile() || blobs.length >= APP_LIMITS.files) throw new Error("应用文件数量或类型无效");
@@ -36,8 +77,45 @@ export async function snapshotApp(cwd, entry) {
     }
   };
   await walk(root);
+  for (const blob of left.length ? blobs.filter((file) => NAMING.test(file.path)) : []) {
+    const [named] = await namedLeftOut(root, blob.path, blob.bytes.toString("utf8"), left);
+    if (named) throw new Error(`${blob.path} 用到的 ${named} 不会发布：以 . 开头的、node_modules 里的和 Markdown 文件都不随网站发布，把页面要用的文件放到网站目录里别的位置`);
+  }
   const result = appManifest({ schemaVersion: 1, runtime: "static", network: "none", entry: path.basename(entry), files: blobs.map((file) => ({ path: file.path, bytes: file.bytes.length, sha256: appHash(file.bytes) })) });
   return { ...result, root, blobs: result.manifest.files.map((file) => ({ path: file.path, base64: blobs.find((blob) => blob.path === file.path).bytes.toString("base64") })) };
+}
+
+// What a site leaves out of its version: for a table site that has been read,
+// its data file, which goes beside the version instead (siteVersion).
+export const sitePublishSkip = (tableRead) => (tableRead ? [CONTRACT_DATA_PATH] : []);
+
+// What 发布 sends for a site of this computer's (main.js publishLocalSite): its
+// version, and for a table site that has been read, the table's data beside it
+// -- as `data`, up to the server's 32 MiB for a site's data, which it then
+// serves under the data file's name (site-server.js LIVE_DATA_FILE).
+export async function siteVersion(folder, { table = false } = {}) {
+  const data = table ? await readContract(folder) : null;
+  return { data, snapshot: await snapshotApp(folder, "index.html", { skip: sitePublishSkip(Boolean(data)) }) };
+}
+
+// The other way: a version of a published site as the server sent it, written
+// into an empty folder of this machine's -- a kept version to look at
+// (docs/sites-phase0.md §0.6). Only what the manifest names, each file as it
+// hashes, nothing outside the folder and nothing over what is already there.
+export async function writeSiteVersion(folder, { manifest, blobs } = {}) {
+  const checked = appManifest(manifest);
+  const sent = new Map((Array.isArray(blobs) ? blobs : []).filter((blob) => typeof blob?.path === "string" && typeof blob?.base64 === "string")
+    .map((blob) => [blob.path, Buffer.from(blob.base64, "base64")]));
+  const root = await realpath(folder);
+  for (const file of checked.manifest.files) {
+    const bytes = sent.get(file.path);
+    if (!bytes || bytes.length !== file.bytes || appHash(bytes) !== file.sha256) throw new Error(`服务端发来的这一版不完整：${file.path}`);
+    const target = path.resolve(root, file.path);
+    if (!target.startsWith(`${root}${path.sep}`)) throw new Error(`文件名不能用在网站里：${file.path}`);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, bytes, { flag: "wx", mode: 0o600 });
+  }
+  return { entry: checked.manifest.entry, files: checked.manifest.files.length };
 }
 
 // Everything that would stop a site's folder from being published, found before
@@ -45,19 +123,21 @@ export async function snapshotApp(cwd, entry) {
 // is how a site learned it held a video only when the whole version was refused
 // (2026-09-23). The same walk and the same rules, read-only and listing all of
 // them; a folder with nothing listed is one snapshotApp takes -- the test holds
-// the two to exactly that. At most 20 are listed.
-export async function sitePublishProblems(folder, entry = "index.html") {
+// the two to exactly that, `skip` included. At most 20 are listed.
+export async function sitePublishProblems(folder, entry = "index.html", { skip = [] } = {}) {
+  const skipped = new Set(skip);
   const problems = [], add = (file, reason) => { if (problems.length < 20) problems.push({ path: file, reason }); };
   let root;
   try { root = await realpath(folder); } catch { return [{ path: "", reason: "找不到网站目录" }]; }
-  const seen = new Set();
+  const seen = new Set(), left = [], pages = [];
   let files = 0, total = 0, home = 0;
   const walk = async (directory, prefix = "") => {
     const entries = await readdir(directory, { withFileTypes: true });
     if (entries.length > 256) { add(prefix || "./", "一个目录里超过 256 项"); return; }
     for (const item of entries) {
-      if (item.name.startsWith(".") || ["node_modules", "vendor"].includes(item.name)) continue;
       const name = prefix + item.name, full = path.join(directory, item.name);
+      if (leftOut(item)) { left.push(name); continue; }
+      if (skipped.has(name)) continue;
       if (item.isSymbolicLink()) { add(name, "是符号链接"); continue; }
       if (item.isDirectory()) { if (name.split("/").length > 8) add(name, "目录层级超过 8 层"); else await walk(full, `${name}/`); continue; }
       if (!item.isFile()) { add(name, "不是普通文件"); continue; }
@@ -67,10 +147,15 @@ export async function sitePublishProblems(folder, entry = "index.html") {
       const { size } = await lstat(full);
       files += 1; total += size;
       if (size > appFileLimit(name)) add(name, `超过 ${appFileLimit(name) / 1024 / 1024} MiB`);
+      else if (NAMING.test(name)) pages.push(name);
       if (name === entry) home = size;
     }
   };
   await walk(root);
+  for (const page of left.length ? pages : []) {
+    const text = await readFile(path.join(root, page), "utf8").catch(() => "");
+    for (const named of await namedLeftOut(root, page, text, left)) add(page, `用到的 ${named} 不会发布`);
+  }
   if (files > APP_LIMITS.files) add("", `文件超过 ${APP_LIMITS.files} 个`);
   if (total > APP_LIMITS.totalBytes) add("", `合计超过 ${APP_LIMITS.totalBytes / 1024 / 1024} MiB`);
   if (!home) add(entry, "首页不存在或是空的");

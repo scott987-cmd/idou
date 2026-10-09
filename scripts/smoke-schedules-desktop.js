@@ -35,7 +35,11 @@ async function controlPlane(dataDir) {
   const child = spawn(process.execPath, ["bin/server.js", "--dev"], { cwd: process.cwd(),
     // Not the default 8443: it is a popular port and something else may well be
     // on it, which is exactly why the port is configurable at all.
+    // Two models, so the composer's model chip has a choice to offer (step 8b).
+    // Choosing one calls no model; the placeholder key is only ever read when a
+    // turn runs on GLM, and none does here.
     env: { ...process.env, MINIMAX_CONFIG_FILE: minimax, IDOU_SCHEDULED_TASKS: "1",
+      IDOU_MODEL_PROVIDERS: "minimax,litellm", ...(process.env.IDOU_LITELLM_API_KEY || process.env.IDOU_LITELLM_KEY_FILE ? {} : { IDOU_LITELLM_API_KEY: "smoke-placeholder-not-a-real-key" }),
       IDOU_SCHEDULED_TASKS_PORT: "8452", IDOU_SCHEDULED_TASKS_DIR: path.join(dataDir, "scheduled") },
     stdio: ["ignore", "pipe", "pipe"] });
   const sessionFile = await new Promise((resolve, reject) => {
@@ -113,14 +117,28 @@ const visible = async (locator, what) => {
 // itself opens the task's page (G12). Clicked on its name, clear of the buttons.
 let page;
 const taskRow = (name) => page.locator(".schedule-task-row", { hasText: name }).first();
+// The list is drawn again when a read comes back (after a save, after 返回),
+// and a row drawn under a pointer that has not moved is not :hover in a window
+// in the background -- in front of a person Chromium works it out again by
+// itself. So a hover whose actions do not come up is made again, from off the
+// row: the actions still have to come up on a hover, and still be visible.
+// Seen failing one run in three under load (2026-10-09).
+async function hovered(name, target) {
+  for (let attempt = 1; ; attempt += 1) {
+    const row = taskRow(name);
+    await page.mouse.move(2, 2);
+    await row.hover();
+    const shown = target(row);
+    if (await shown.waitFor({ state: "visible", timeout: 1_500 }).then(() => true, () => false)) return { row, shown };
+    if (attempt === 4) throw new Error(`${name}: the row's actions did not come up on hover`);
+  }
+}
 async function rowAction(name, label) {
-  const row = taskRow(name);
-  await row.hover();
-  await row.locator(".schedule-row-actions button", { hasText: label }).click();
+  const { shown } = await hovered(name, (row) => row.locator(".schedule-row-actions button", { hasText: label }));
+  await shown.click();
 }
 async function rowMenu(name, label) {
-  const row = taskRow(name);
-  await row.hover();
+  const { row } = await hovered(name, (row) => row.locator(".schedule-more > summary"));
   await row.locator(".schedule-more > summary").click();
   await row.locator(".schedule-menu button", { hasText: label }).click();
 }
@@ -293,7 +311,7 @@ try {
   await visible(page.locator(".schedule-group-head", { hasText: "当前" }), "the 当前 group heading");
   // Its actions come up on hover, in the status's place.
   assert.equal(await row.locator(".schedule-row-actions").isVisible(), false, "actions wait for the pointer");
-  await row.hover();
+  await hovered("每天早上的 AI 早报", (row) => row.locator(".schedule-run-now"));
   await visible(row.locator(".schedule-run-now"), "▶ 立即运行 on hover");
   await visible(row.locator(".schedule-more > summary"), "更多 on hover");
   await page.screenshot({ path: path.join(evidence, "desktop-schedules-row-hover.png") });
@@ -474,6 +492,9 @@ try {
     Notification.prototype.show = function show() { globalThis.__notices.push({ title: this.title, body: this.body }); };
   });
   await page.locator("#settings").click();
+  // Where somebody signs in, i豆 says it is not Feishu's own software (2026-10-09).
+  await visible(page.locator("#feishu-login .login-unofficial", { hasText: "i豆 不是飞书官方软件" }), "the not-official notice on the account card");
+  await page.locator("#feishu-login").screenshot({ path: path.join(evidence, "desktop-login-unofficial.png") });
   const noticeSwitch = page.locator("#desktop-notifications");
   await visible(noticeSwitch, "the desktop notification switch");
   await page.waitForFunction(() => document.querySelector("#desktop-notifications")?.disabled === false);
@@ -495,6 +516,33 @@ try {
   assert.equal(models.choice, null, "following the default");
   assert.equal(models.current, "MiniMax-M3");
   assert.match(await page.locator("#model-select").evaluate((node) => node.parentElement.innerText), /服务端/);
+  // The same choice from the composer. Until 2026-10-08 the model there was a
+  // label that looked like a chip and did nothing, and it named the server's
+  // default: a person who had picked GLM-5.3 in 设置 still read MiniMax-M3 beside
+  // the send button while their turns ran on GLM.
+  await page.locator('[data-section="cowork"]').click();
+  const chip = page.locator("#model-toggle"), modelMenu = page.locator("#model-menu");
+  await visible(chip, "the composer's model chip");
+  await page.locator("#model-label", { hasText: "MiniMax-M3 · 企业模型网关" }).waitFor();
+  await chip.click();
+  await visible(modelMenu, "the model menu");
+  const menuBox = await modelMenu.boundingBox(), windowSize = await page.evaluate(() => [innerWidth, innerHeight]);
+  assert.ok(menuBox.x >= 0 && menuBox.y >= 0 && menuBox.x + menuBox.width <= windowSize[0] && menuBox.y + menuBox.height <= windowSize[1], `the model menu is inside the window: ${JSON.stringify(menuBox)}`);
+  assert.deepEqual(await modelMenu.locator("button").evaluateAll((rows) => rows.map((row) => [row.getAttribute("aria-label"), row.getAttribute("aria-checked"), row.disabled])),
+    [["跟随服务端默认（MiniMax-M3）", "true", false], ["MiniMax-M3", "false", false], ["GLM-5.3", "false", false]]);
+  await page.screenshot({ path: path.join(evidence, "desktop-model-chip.png") });
+  await modelMenu.locator('button[aria-label="GLM-5.3"]').click();
+  await page.locator("#model-label", { hasText: "GLM-5.3 · 企业模型网关" }).waitFor();
+  assert.equal(await modelMenu.isHidden(), true, "a choice closes the menu");
+  const picked = await page.evaluate(() => window.idou.modelOptions());
+  assert.deepEqual([picked.choice, picked.current], ["GLM-5.3", "GLM-5.3"], "kept by the server");
+  assert.equal((await page.evaluate(() => window.idou.connection())).model, "MiniMax-M3", "the server's default is still its default");
+  // Chosen in 设置, the chip follows at once, not at the next 30-second poll.
+  await page.locator("#settings").click();
+  await page.waitForFunction(() => document.querySelectorAll("#model-select option").length >= 3 && !document.querySelector("#model-select").disabled, null, { polling: 200 });
+  await page.locator("#model-select").selectOption("");
+  await page.waitForFunction(() => document.querySelector("#model-label").textContent === "MiniMax-M3 · 企业模型网关", null, { polling: 100, timeout: 5_000 });
+  assert.equal((await page.evaluate(() => window.idou.modelOptions())).choice, null, "and back to following the default");
   // 飞书消息 (G9) and WorkBuddy's 测试通知. A development login is not a
   // Feishu account, so the test is refused by the real service before anything
   // is addressed -- and says why. A second press straight after sends nothing.
@@ -518,11 +566,15 @@ try {
   //     labelled as such -- and everything after that goes through the real
   //     service, store and in-app confirmation card.
   const seeded = new DatabaseSync(path.join(directory, "scheduled", "schedules.db"), { timeout: 5_000 });
-  const morningTask = seeded.prepare("SELECT tenant, id FROM schedules WHERE title LIKE '每天早上的 AI 早报%'").get();
-  const seed = seeded.prepare("INSERT INTO schedule_runs (tenant, schedule_id, id, due_at, started_at, finished_at, outcome, detail) VALUES (?,?,?,?,?,?,?,?)");
+  // Written as the store writes a run (schedule-store.js claim): with whose it
+  // is and what the task was called. The run list reads by owner alone -- a
+  // row without one belongs to nobody, and was never shown (it was not, from
+  // the day the list stopped guessing the owner from the task).
+  const morningTask = seeded.prepare("SELECT tenant, id, owner, title FROM schedules WHERE title LIKE '每天早上的 AI 早报%'").get();
+  const seed = seeded.prepare("INSERT INTO schedule_runs (tenant, schedule_id, id, due_at, started_at, finished_at, outcome, detail, owner, schedule_title) VALUES (?,?,?,?,?,?,?,?,?,?)");
   const hourAgo = Date.now() - 3_600_000;
-  seed.run(morningTask.tenant, morningTask.id, randomUUID(), hourAgo, hourAgo, hourAgo + 9_000, "failed", "冒烟测试写入的失败记录");
-  seed.run(morningTask.tenant, morningTask.id, randomUUID(), hourAgo + 60_000, hourAgo + 60_000, hourAgo + 70_000, "completed", "冒烟测试写入的完成记录");
+  seed.run(morningTask.tenant, morningTask.id, randomUUID(), hourAgo, hourAgo, hourAgo + 9_000, "failed", "冒烟测试写入的失败记录", morningTask.owner, morningTask.title);
+  seed.run(morningTask.tenant, morningTask.id, randomUUID(), hourAgo + 60_000, hourAgo + 60_000, hourAgo + 70_000, "completed", "冒烟测试写入的完成记录", morningTask.owner, morningTask.title);
   seeded.close();
   await page.locator(".schedule-tab", { hasText: "运行记录" }).click();
   const runRows = page.locator(".schedule-list .schedule-row");
@@ -602,10 +654,10 @@ try {
   await runRows.first().waitFor();
   assert.equal(await runRows.count(), 1);
   const olderStore = new DatabaseSync(path.join(directory, "scheduled", "schedules.db"), { timeout: 5_000 });
-  const seedOlder = olderStore.prepare("INSERT INTO schedule_runs (tenant, schedule_id, id, due_at, started_at, finished_at, outcome, detail) VALUES (?,?,?,?,?,?,?,?)");
+  const seedOlder = olderStore.prepare("INSERT INTO schedule_runs (tenant, schedule_id, id, due_at, started_at, finished_at, outcome, detail, owner, schedule_title) VALUES (?,?,?,?,?,?,?,?,?,?)");
   for (let n = 0; n < 14; n += 1) {
     const at = Date.now() - (2 + (n % 2)) * 86_400_000 - n * 60_000;
-    seedOlder.run(morningTask.tenant, morningTask.id, randomUUID(), at, at, at + 5_000, "completed", `冒烟测试写入的较早记录 ${n + 1}`);
+    seedOlder.run(morningTask.tenant, morningTask.id, randomUUID(), at, at, at + 5_000, "completed", `冒烟测试写入的较早记录 ${n + 1}`, morningTask.owner, morningTask.title);
   }
   olderStore.close();
   assert.equal(await runRows.count(), 1, "nothing changes until asked");

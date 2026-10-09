@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>i豆 管理后台</title>
+<link rel="icon" href="/admin/assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/admin/assets/app.css">
+<script type="module" src="/admin/assets/app.js"></script>
+</head>
+<body>
+<div class="shell" id="shell">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="#/overview"><img src="/admin/assets/mark.svg" alt="" width="28" height="28"><span><b>i豆</b> 管理后台</span></a>
+    <nav id="nav" aria-label="管理后台导航"></nav>
+    <div class="sidebar-foot" id="release"></div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-button menu-toggle" id="menu" type="button" aria-label="打开导航">☰</button>
+      <div class="crumbs" id="crumbs"></div>
+      <div class="search" id="search"></div>
+      <div class="whoami" id="whoami"></div>
+    </header>
+    <main class="content" id="content" tabindex="-1">
+      <div class="loading-page"><span class="spinner"></span>正在加载…</div>
+    </main>
+  </div>
+</div>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+</body>
+</html>

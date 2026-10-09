@@ -26,6 +26,16 @@ export function mcpToolName(message) {
   return match ? match[1] : null;
 }
 
+// What the card says the call is. Codex's message above is English and names
+// the server by its id; the card showed both as they came (`Allow the browser
+// MCP server to run tool "browser_preview"?` above a stray `browser`, in the
+// promo recorded on 2026-10-08). `title` is the connector as 技能中心 names it.
+// When the tool cannot be read from the message, the sentence still says what
+// is asked, never the English.
+export function mcpCallSentence({ title, tool }) {
+  return tool ? `「${title}」想运行「${tool}」` : `「${title}」想运行一个工具，运行时没有说明是哪一个`;
+}
+
 export function mcpApprovalPolicy(permission) {
   if (permission === "full") return "never";
   if (permission === "standard" || permission === "auto") return "grant";

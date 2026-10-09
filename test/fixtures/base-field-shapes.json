@@ -1,0 +1,1413 @@
+{
+ "recorded": "2026-10-06: lark-cli 1.0.94, --as user, a synthetic test Base with one field of each kind the CLI creates, linked to a second table. The `data` of each response; every id, file token and person replaced, the rest as Feishu sent it.",
+ "fieldList": {
+  "fields": [
+   {
+    "default_value": null,
+    "id": "fldShape01",
+    "name": "数量",
+    "style": {
+     "percentage": false,
+     "precision": 0,
+     "thousands_separator": false,
+     "type": "plain"
+    },
+    "type": "number"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape02",
+    "name": "条码",
+    "style": {
+     "type": "barcode"
+    },
+    "type": "text"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape03",
+    "name": "占比",
+    "style": {
+     "percentage": true,
+     "precision": 1,
+     "thousands_separator": false,
+     "type": "plain"
+    },
+    "type": "number"
+   },
+   {
+    "expression": "[截止日期]+7",
+    "id": "fldShape04",
+    "name": "公式日期",
+    "type": "formula"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape05",
+    "name": "完成度",
+    "style": {
+     "color": "Blue",
+     "percentage": true,
+     "type": "progress"
+    },
+    "type": "number"
+   },
+   {
+    "default_value": [
+     {
+      "$slot": "current_user"
+     }
+    ],
+    "id": "fldShape06",
+    "multiple": true,
+    "name": "协作人",
+    "type": "user"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape07",
+    "name": "开会时间",
+    "style": {
+     "format": "yyyy-MM-dd HH:mm"
+    },
+    "type": "datetime"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape08",
+    "name": "金额",
+    "style": {
+     "currency_code": "CNY",
+     "precision": 2,
+     "type": "currency"
+    },
+    "type": "number"
+   },
+   {
+    "bidirectional": false,
+    "id": "fldShape09",
+    "link_table": "tblShapeProjects",
+    "name": "关联项目",
+    "type": "link"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape10",
+    "name": "评分",
+    "style": {
+     "icon": "star",
+     "max": 5,
+     "min": 1,
+     "type": "rating"
+    },
+    "type": "number"
+   },
+   {
+    "expression": "SUM([关联项目].[预算])",
+    "id": "fldShape11",
+    "name": "项目预算合计",
+    "type": "formula"
+   },
+   {
+    "id": "fldShape12",
+    "multiple": true,
+    "name": "群",
+    "type": "group_chat"
+   },
+   {
+    "expression": "[关联项目].[项目名].ARRAYJOIN(\"、\")",
+    "id": "fldShape13",
+    "name": "项目名列表",
+    "type": "formula"
+   },
+   {
+    "id": "fldShape14",
+    "name": "创建时间",
+    "style": {
+     "format": "yyyy/MM/dd"
+    },
+    "type": "created_at"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape15",
+    "name": "官网",
+    "style": {
+     "type": "url"
+    },
+    "type": "text"
+   },
+   {
+    "expression": "[名称]&\"·\"&[数量]",
+    "id": "fldShape16",
+    "name": "公式文本",
+    "type": "formula"
+   },
+   {
+    "id": "fldShape17",
+    "name": "编号",
+    "style": {
+     "rules": [
+      {
+       "text": "T-",
+       "type": "text"
+      },
+      {
+       "length": 3,
+       "type": "incremental_number"
+      }
+     ]
+    },
+    "type": "auto_number"
+   },
+   {
+    "id": "fldShape18",
+    "name": "修改人",
+    "type": "updated_by"
+   },
+   {
+    "expression": "[数量]*[金额]",
+    "id": "fldShape19",
+    "name": "公式数字",
+    "type": "formula"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape20",
+    "multiple": true,
+    "name": "标签",
+    "options": [
+     {
+      "hue": "Wathet",
+      "lightness": "Lighter",
+      "name": "重点"
+     },
+     {
+      "hue": "Orange",
+      "lightness": "Lighter",
+      "name": "外部"
+     },
+     {
+      "hue": "Turquoise",
+      "lightness": "Lighter",
+      "name": "合同"
+     },
+     {
+      "hue": "Turquoise",
+      "lightness": "Lighter",
+      "name": "复盘"
+     }
+    ],
+    "type": "select"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape21",
+    "name": "截止日期",
+    "style": {
+     "format": "yyyy/MM/dd"
+    },
+    "type": "datetime"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape22",
+    "multiple": false,
+    "name": "状态",
+    "options": [
+     {
+      "hue": "Yellow",
+      "lightness": "Lighter",
+      "name": "进行中"
+     },
+     {
+      "hue": "Blue",
+      "lightness": "Lighter",
+      "name": "已完成"
+     },
+     {
+      "hue": "Purple",
+      "lightness": "Lighter",
+      "name": "暂停"
+     }
+    ],
+    "type": "select"
+   },
+   {
+    "id": "fldShape23",
+    "name": "附件",
+    "style": {
+     "type": "plain"
+    },
+    "type": "attachment"
+   },
+   {
+    "id": "fldShape24",
+    "name": "完成",
+    "type": "checkbox"
+   },
+   {
+    "id": "fldShape25",
+    "name": "位置",
+    "type": "location"
+   },
+   {
+    "default_value": [
+     {
+      "$slot": "current_user"
+     }
+    ],
+    "id": "fldShape26",
+    "multiple": false,
+    "name": "负责人",
+    "type": "user"
+   },
+   {
+    "id": "fldShape27",
+    "name": "更新时间",
+    "style": {
+     "format": "yyyy/MM/dd HH:mm"
+    },
+    "type": "updated_at"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape28",
+    "name": "名称",
+    "style": {
+     "type": "plain"
+    },
+    "type": "text"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape29",
+    "name": "电话",
+    "style": {
+     "type": "phone"
+    },
+    "type": "text"
+   },
+   {
+    "id": "fldShape30",
+    "name": "创建人",
+    "type": "created_by"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape31",
+    "name": "邮箱",
+    "style": {
+     "type": "email"
+    },
+    "type": "text"
+   }
+  ],
+  "total": 31
+ },
+ "recordList": {
+  "data": [
+   [
+    "任务 1：对接接口",
+    "任务 1：对接接口·0",
+    "13800000000",
+    "T-001",
+    [
+     "进行中"
+    ],
+    "[北极星官网](https://example.com/beiji)",
+    [
+     {
+      "file_token": "boxShape01",
+      "name": "合同扫描.png",
+      "size": 157
+     },
+     {
+      "file_token": "boxShape02",
+      "name": "现场照片.png",
+      "size": 153
+     }
+    ],
+    "175000.5",
+    "46030",
+    "北极星迁移（改名）、远山官网",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:57:14.000+08:00",
+    null,
+    [
+     "重点",
+     "外部",
+     "合同"
+    ],
+    0,
+    "2026-10-06T09:30:00.000+08:00",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    true,
+    [
+     {
+      "id": "recShape01"
+     },
+     {
+      "id": "recShape02"
+     }
+    ],
+    {
+     "full_address": "天安门，北京东城长安街北侧",
+     "lat": 39.908823,
+     "lng": 116.39747
+    },
+    0,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "6901234567890",
+    1,
+    "2026-01-01T00:00:00.000+08:00",
+    1000,
+    "owner0@example.com",
+    "0",
+    0,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ]
+   ],
+   [
+    "任务 2：整理需求",
+    "任务 2：整理需求·3",
+    "+8613900001111",
+    "T-002",
+    [
+     "已完成"
+    ],
+    "[https://example.org/page-1](https://example.org/page-1)",
+    [
+     {
+      "file_token": "boxShape03",
+      "name": "合同扫描.png",
+      "size": 157
+     }
+    ],
+    "45000.5",
+    "46062",
+    "远山官网",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:57:17.000+08:00",
+    null,
+    [
+     "复盘"
+    ],
+    0.25,
+    "2026-10-07T10:30:00.000+08:00",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    false,
+    [
+     {
+      "id": "recShape02"
+     }
+    ],
+    {
+     "full_address": "东华门街道，北京东城",
+     "lat": 39.91923,
+     "lng": 116.40742800000001
+    },
+    0.1,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "6901234567891",
+    2,
+    "2026-02-02T00:00:00.000+08:00",
+    1123.45,
+    "owner1@example.com",
+    "3370.35",
+    3,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ]
+   ],
+   [
+    "任务 3：评审设计",
+    "任务 3：评审设计·6",
+    "021-55556666",
+    "T-003",
+    [
+     "暂停"
+    ],
+    "[https://example.org/page-2](https://example.org/page-2)",
+    null,
+    "8800",
+    "46091",
+    "青禾客服",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    null,
+    null,
+    0.5,
+    "2026-10-08T11:30:00.000+08:00",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    true,
+    [
+     {
+      "id": "recShape03"
+     }
+    ],
+    {
+     "full_address": "东四街道，北京东城",
+     "lat": 39.929230000000004,
+     "lng": 116.417428
+    },
+    0.2,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "6901234567892",
+    3,
+    "2026-03-03T00:00:00.000+08:00",
+    1246.9,
+    "owner2@example.com",
+    "7481.4",
+    6,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ]
+   ],
+   [
+    "任务 4：上线检查",
+    "任务 4：上线检查·9",
+    "13800000000",
+    "T-004",
+    [
+     "进行中"
+    ],
+    "[北极星官网](https://example.com/beiji)",
+    null,
+    "430000",
+    "46123",
+    "白鹭数据平台、北极星迁移（改名）",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    null,
+    [
+     "重点",
+     "复盘"
+    ],
+    0.75,
+    "2026-10-09T12:30:00.000+08:00",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    false,
+    [
+     {
+      "id": "recShape04"
+     },
+     {
+      "id": "recShape01"
+     }
+    ],
+    {
+     "full_address": "中国中医科学院，北京东城东直门内南小街16号中国医史博物馆",
+     "lat": 39.938794,
+     "lng": 116.427134
+    },
+    0.3,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "6901234567893",
+    4,
+    "2026-04-04T00:00:00.000+08:00",
+    1370.35,
+    "owner3@example.com",
+    "12333.15",
+    9,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ]
+   ],
+   [
+    "任务 5：回访客户",
+    "任务 5：回访客户·12",
+    "+8613900001111",
+    "T-005",
+    [
+     "已完成"
+    ],
+    "[https://example.org/page-4](https://example.org/page-4)",
+    null,
+    "130000",
+    "46154",
+    "北极星迁移（改名）",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    null,
+    [
+     "重点",
+     "外部",
+     "合同"
+    ],
+    1,
+    "2026-10-10T13:30:00.000+08:00",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    true,
+    [
+     {
+      "id": "recShape01"
+     }
+    ],
+    {
+     "full_address": "万国城MOMA，北京东城东直门街道香河园路1号",
+     "lat": 39.9481,
+     "lng": 116.438346
+    },
+    0.4,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "6901234567894",
+    5,
+    "2026-05-05T00:00:00.000+08:00",
+    1493.8,
+    "owner4@example.com",
+    "17925.6",
+    12,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ]
+   ],
+   [
+    "任务 6：对接接口",
+    "任务 6：对接接口·15",
+    "021-55556666",
+    "T-006",
+    [
+     "暂停"
+    ],
+    "[https://example.org/page-5](https://example.org/page-5)",
+    null,
+    "45000.5",
+    "46186",
+    "远山官网",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    null,
+    [
+     "复盘"
+    ],
+    0,
+    "2026-10-11T14:30:00.000+08:00",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    false,
+    [
+     {
+      "id": "recShape02"
+     }
+    ],
+    {
+     "full_address": "静安里小区，北京朝阳静安东街1号",
+     "lat": 39.959378,
+     "lng": 116.446386
+    },
+    0.5,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "6901234567895",
+    1,
+    "2026-06-06T00:00:00.000+08:00",
+    1617.25,
+    "owner5@example.com",
+    "24258.75",
+    15,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ]
+   ],
+   [
+    "空行 6",
+    "空行 6·",
+    null,
+    "T-007",
+    null,
+    null,
+    null,
+    "0",
+    "7",
+    "",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    null,
+    null,
+    null,
+    null,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    null,
+    null,
+    null,
+    null,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    null,
+    null,
+    null,
+    null,
+    null,
+    "0",
+    null,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ]
+   ],
+   [
+    "任务 8：评审设计",
+    "任务 8：评审设计·21",
+    "+8613900001111",
+    "T-008",
+    [
+     "已完成"
+    ],
+    "[https://example.org/page-7](https://example.org/page-7)",
+    null,
+    "300000",
+    "46249",
+    "白鹭数据平台",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    null,
+    [
+     "重点",
+     "复盘"
+    ],
+    0.5,
+    "2026-10-13T16:30:00.000+08:00",
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "2026-10-06T09:56:57.000+08:00",
+    false,
+    [
+     {
+      "id": "recShape04"
+     }
+    ],
+    {
+     "full_address": "望京街道，北京朝阳",
+     "lat": 39.97923,
+     "lng": 116.467428
+    },
+    0.7,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ],
+    "6901234567897",
+    3,
+    "2026-08-08T00:00:00.000+08:00",
+    1864.15,
+    "owner7@example.com",
+    "39147.15",
+    21,
+    [
+     {
+      "id": "ou_Shape01",
+      "name": "张晓明"
+     }
+    ]
+   ]
+  ],
+  "field_id_list": [
+   "fldShape28",
+   "fldShape16",
+   "fldShape29",
+   "fldShape17",
+   "fldShape22",
+   "fldShape15",
+   "fldShape23",
+   "fldShape11",
+   "fldShape04",
+   "fldShape13",
+   "fldShape18",
+   "fldShape27",
+   "fldShape12",
+   "fldShape20",
+   "fldShape05",
+   "fldShape07",
+   "fldShape26",
+   "fldShape14",
+   "fldShape24",
+   "fldShape09",
+   "fldShape25",
+   "fldShape03",
+   "fldShape30",
+   "fldShape02",
+   "fldShape10",
+   "fldShape21",
+   "fldShape08",
+   "fldShape31",
+   "fldShape19",
+   "fldShape01",
+   "fldShape06"
+  ],
+  "field_type_list": [
+   "text",
+   "formula",
+   "text",
+   "auto_number",
+   "select",
+   "text",
+   "attachment",
+   "formula",
+   "formula",
+   "formula",
+   "updated_by",
+   "updated_at",
+   "group_chat",
+   "select",
+   "number",
+   "datetime",
+   "user",
+   "created_at",
+   "checkbox",
+   "link",
+   "location",
+   "number",
+   "created_by",
+   "text",
+   "number",
+   "datetime",
+   "number",
+   "text",
+   "formula",
+   "number",
+   "user"
+  ],
+  "fields": [
+   "名称",
+   "公式文本",
+   "电话",
+   "编号",
+   "状态",
+   "官网",
+   "附件",
+   "项目预算合计",
+   "公式日期",
+   "项目名列表",
+   "修改人",
+   "更新时间",
+   "群",
+   "标签",
+   "完成度",
+   "开会时间",
+   "负责人",
+   "创建时间",
+   "完成",
+   "关联项目",
+   "位置",
+   "占比",
+   "创建人",
+   "条码",
+   "评分",
+   "截止日期",
+   "金额",
+   "邮箱",
+   "公式数字",
+   "数量",
+   "协作人"
+  ],
+  "has_more": true,
+  "query_context": {
+   "field_scope": "all_fields",
+   "record_scope": "all_records"
+  },
+  "record_id_list": [
+   "recShape05",
+   "recShape06",
+   "recShape07",
+   "recShape08",
+   "recShape09",
+   "recShape10",
+   "recShape11",
+   "recShape12"
+  ],
+  "rev": 8,
+  "timezone": "Asia/Shanghai"
+ },
+ "linkedTableGet": {
+  "fields": [
+   {
+    "default_value": null,
+    "id": "fldShape32",
+    "name": "预算",
+    "style": {
+     "currency_code": "CNY",
+     "precision": 2,
+     "type": "currency"
+    },
+    "type": "number"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape33",
+    "name": "项目名",
+    "style": {
+     "type": "plain"
+    },
+    "type": "text"
+   }
+  ],
+  "table": {
+   "id": "tblShapeProjects",
+   "name": "项目",
+   "primary_field": "fldShape33"
+  },
+  "views": [
+   {
+    "_meta": {
+     "filter": null,
+     "group": [],
+     "sort": [],
+     "visible_fields": "2 fields"
+    },
+    "id": "vewShape01",
+    "name": "表格",
+    "type": "grid"
+   }
+  ]
+ },
+ "linkedRecordGet": {
+  "data": [
+   [
+    "北极星迁移（改名）"
+   ],
+   [
+    "远山官网"
+   ],
+   [
+    "青禾客服"
+   ],
+   [
+    "白鹭数据平台"
+   ]
+  ],
+  "field_id_list": [
+   "fldShape33"
+  ],
+  "field_type_list": [
+   "text"
+  ],
+  "fields": [
+   "项目名"
+  ],
+  "has_more": false,
+  "record_id_list": [
+   "recShape01",
+   "recShape02",
+   "recShape03",
+   "recShape04"
+  ],
+  "rev": 2,
+  "timezone": "Asia/Shanghai"
+ },
+ "tableList": {
+  "tables": [
+   {
+    "id": "tblShapeProjects",
+    "name": "项目",
+    "records_count": 4,
+    "rev": 2
+   },
+   {
+    "id": "tblShapeMain",
+    "name": "主表",
+    "records_count": 30,
+    "rev": 8
+   }
+  ],
+  "total": 2
+ },
+ "tableGet": {
+  "fields": [
+   {
+    "default_value": null,
+    "id": "fldShape22",
+    "multiple": false,
+    "name": "状态",
+    "options": [
+     {
+      "hue": "Yellow",
+      "lightness": "Lighter",
+      "name": "进行中"
+     },
+     {
+      "hue": "Blue",
+      "lightness": "Lighter",
+      "name": "已完成"
+     },
+     {
+      "hue": "Purple",
+      "lightness": "Lighter",
+      "name": "暂停"
+     }
+    ],
+    "type": "select"
+   },
+   {
+    "expression": "[名称]&\"·\"&[数量]",
+    "id": "fldShape16",
+    "name": "公式文本",
+    "type": "formula"
+   },
+   {
+    "bidirectional": false,
+    "id": "fldShape09",
+    "link_table": "tblShapeProjects",
+    "name": "关联项目",
+    "type": "link"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape15",
+    "name": "官网",
+    "style": {
+     "type": "url"
+    },
+    "type": "text"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape02",
+    "name": "条码",
+    "style": {
+     "type": "barcode"
+    },
+    "type": "text"
+   },
+   {
+    "expression": "[截止日期]+7",
+    "id": "fldShape04",
+    "name": "公式日期",
+    "type": "formula"
+   },
+   {
+    "id": "fldShape12",
+    "multiple": true,
+    "name": "群",
+    "type": "group_chat"
+   },
+   {
+    "default_value": [
+     {
+      "$slot": "current_user"
+     }
+    ],
+    "id": "fldShape06",
+    "multiple": true,
+    "name": "协作人",
+    "type": "user"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape31",
+    "name": "邮箱",
+    "style": {
+     "type": "email"
+    },
+    "type": "text"
+   },
+   {
+    "id": "fldShape24",
+    "name": "完成",
+    "type": "checkbox"
+   },
+   {
+    "expression": "[数量]*[金额]",
+    "id": "fldShape19",
+    "name": "公式数字",
+    "type": "formula"
+   },
+   {
+    "id": "fldShape27",
+    "name": "更新时间",
+    "style": {
+     "format": "yyyy/MM/dd HH:mm"
+    },
+    "type": "updated_at"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape21",
+    "name": "截止日期",
+    "style": {
+     "format": "yyyy/MM/dd"
+    },
+    "type": "datetime"
+   },
+   {
+    "id": "fldShape25",
+    "name": "位置",
+    "type": "location"
+   },
+   {
+    "id": "fldShape14",
+    "name": "创建时间",
+    "style": {
+     "format": "yyyy/MM/dd"
+    },
+    "type": "created_at"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape05",
+    "name": "完成度",
+    "style": {
+     "color": "Blue",
+     "percentage": true,
+     "type": "progress"
+    },
+    "type": "number"
+   },
+   {
+    "expression": "[关联项目].[项目名].ARRAYJOIN(\"、\")",
+    "id": "fldShape13",
+    "name": "项目名列表",
+    "type": "formula"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape28",
+    "name": "名称",
+    "style": {
+     "type": "plain"
+    },
+    "type": "text"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape08",
+    "name": "金额",
+    "style": {
+     "currency_code": "CNY",
+     "precision": 2,
+     "type": "currency"
+    },
+    "type": "number"
+   },
+   {
+    "id": "fldShape17",
+    "name": "编号",
+    "style": {
+     "rules": [
+      {
+       "text": "T-",
+       "type": "text"
+      },
+      {
+       "length": 3,
+       "type": "incremental_number"
+      }
+     ]
+    },
+    "type": "auto_number"
+   },
+   {
+    "id": "fldShape30",
+    "name": "创建人",
+    "type": "created_by"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape20",
+    "multiple": true,
+    "name": "标签",
+    "options": [
+     {
+      "hue": "Wathet",
+      "lightness": "Lighter",
+      "name": "重点"
+     },
+     {
+      "hue": "Orange",
+      "lightness": "Lighter",
+      "name": "外部"
+     },
+     {
+      "hue": "Turquoise",
+      "lightness": "Lighter",
+      "name": "合同"
+     },
+     {
+      "hue": "Turquoise",
+      "lightness": "Lighter",
+      "name": "复盘"
+     }
+    ],
+    "type": "select"
+   },
+   {
+    "default_value": [
+     {
+      "$slot": "current_user"
+     }
+    ],
+    "id": "fldShape26",
+    "multiple": false,
+    "name": "负责人",
+    "type": "user"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape10",
+    "name": "评分",
+    "style": {
+     "icon": "star",
+     "max": 5,
+     "min": 1,
+     "type": "rating"
+    },
+    "type": "number"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape01",
+    "name": "数量",
+    "style": {
+     "percentage": false,
+     "precision": 0,
+     "thousands_separator": false,
+     "type": "plain"
+    },
+    "type": "number"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape29",
+    "name": "电话",
+    "style": {
+     "type": "phone"
+    },
+    "type": "text"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape07",
+    "name": "开会时间",
+    "style": {
+     "format": "yyyy-MM-dd HH:mm"
+    },
+    "type": "datetime"
+   },
+   {
+    "id": "fldShape18",
+    "name": "修改人",
+    "type": "updated_by"
+   },
+   {
+    "expression": "SUM([关联项目].[预算])",
+    "id": "fldShape11",
+    "name": "项目预算合计",
+    "type": "formula"
+   },
+   {
+    "id": "fldShape23",
+    "name": "附件",
+    "style": {
+     "type": "plain"
+    },
+    "type": "attachment"
+   },
+   {
+    "default_value": null,
+    "id": "fldShape03",
+    "name": "占比",
+    "style": {
+     "percentage": true,
+     "precision": 1,
+     "thousands_separator": false,
+     "type": "plain"
+    },
+    "type": "number"
+   }
+  ],
+  "table": {
+   "id": "tblShapeMain",
+   "name": "主表",
+   "primary_field": "fldShape28"
+  },
+  "views": [
+   {
+    "_meta": {
+     "filter": null,
+     "group": [],
+     "sort": [],
+     "visible_fields": "31 fields"
+    },
+    "id": "vewShape02",
+    "name": "表格",
+    "type": "grid"
+   }
+  ]
+ },
+ "visibleFields": {
+  "visible_fields": [
+   "名称",
+   "电话",
+   "官网",
+   "邮箱",
+   "条码",
+   "数量",
+   "占比",
+   "金额",
+   "完成度",
+   "评分",
+   "状态",
+   "标签",
+   "截止日期",
+   "开会时间",
+   "完成",
+   "负责人",
+   "协作人",
+   "群",
+   "关联项目",
+   "编号",
+   "位置",
+   "附件",
+   "创建时间",
+   "更新时间",
+   "创建人",
+   "修改人",
+   "公式文本",
+   "公式数字",
+   "公式日期",
+   "项目预算合计",
+   "项目名列表"
+  ]
+ }
+}

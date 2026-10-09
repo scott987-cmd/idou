@@ -12,6 +12,7 @@ const NEGATIVE_AUTOMATED_CHOICES = new Set(["取消", "拒绝"]);
 export const MANUAL_CONFIRMATION_SMOKES = new Map(Object.entries({
   "smoke-agent-delete-desktop.js": ["M03"],
   "smoke-agent-feishu-desktop.js": ["M04"],
+  "smoke-agent-site-desktop.js": ["M09"],
   "smoke-base-desktop.js": ["M04"],
   "smoke-app-review-desktop.js": ["M09"],
   "smoke-apps-desktop.js": ["M09"],
@@ -35,6 +36,7 @@ export const MANUAL_CONFIRMATION_SMOKES = new Map(Object.entries({
   "smoke-runtime-desktop.js": ["M09"],
   "smoke-schedules-desktop.js": ["M03", "M10"],
   "smoke-sites-desktop.js": ["M09"],
+  "smoke-site-list-desktop.js": ["M05"],
   "smoke-skill-mcp-desktop.js": ["M08"],
   "smoke-web-identity-desktop.js": ["M10"],
   "smoke-web-search-live.js": ["M01"],

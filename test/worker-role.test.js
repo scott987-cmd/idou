@@ -222,7 +222,18 @@ test("a worker runs with the queue's key alone, as a database role that reaches 
   await refused("DELETE FROM idou_run_queue", "remove runs");
   await refused("UPDATE idou_run_queue SET payload = ''", "rewrite what a run carries");
   await refused("CREATE TABLE mine (id int)", "make tables");
+  // Its heartbeat (docs/service-status.md §1): its own row, seen by the
+  // coordinator, gone when it stops; the role reads no other worker's state.
+  for (const until = Date.now() + 10_000; !(await queue.workers()).length && Date.now() < until;) await wait(50);
+  const beats = await queue.workers();
+  assert.deepEqual(beats.map((beat) => beat.name), ["worker-1"], worker.output.slice(-1500));
+  assert.ok(beats[0].state.runs.limit >= 1 && beats[0].beatAt > Date.now() - 30_000);
+  assert.doesNotMatch(worker.output, /heartbeat-refused/);
+  await refused("SELECT state FROM idou_run_worker_beats", "another worker's state");
+  await refused("UPDATE idou_run_worker_beats SET name = 'x'", "rename a worker");
+  await refused("DELETE FROM idou_run_worker_beats", "remove workers' rows");
   worker.child.kill("SIGTERM"); await worker.closed;
+  assert.deepEqual((await queue.workers()).map((beat) => [beat.name, beat.state.stopped]), [["worker-1", true]], "stopped cleanly: said so in its row");
 });
 
 test("the queue's key comes from the sealing key one way, and the worker's file is never overwritten", async (t) => {

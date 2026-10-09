@@ -345,6 +345,23 @@ export function loadAdminAlerts(env = process.env) {
   return admins;
 }
 
+// Where bin/backup.js writes (its --to), for the server's 备份 check
+// (docs/service-status.md §4). Unset, there is no such check.
+export function loadBackupDir(env = process.env) {
+  const value = env.IDOU_BACKUP_DIR;
+  if (value === undefined || value === "") return null;
+  if (!path.isAbsolute(value)) throw new Error("IDOU_BACKUP_DIR 要用绝对路径（备份的 --to 目录）");
+  return path.resolve(value);
+}
+
+// What this process is called on the 服务状态 page; by default its role and port.
+export function loadProcessName(role, port, env = process.env) {
+  const value = env.IDOU_PROCESS_NAME;
+  if (value === undefined || value === "") return port ? `${role}-${port}` : role;
+  if (!/^[a-z][a-z0-9-]{0,31}$/.test(value)) throw new Error("IDOU_PROCESS_NAME 只能是小写字母开头、由小写字母数字和连字符组成的名字（最长 32 个字符）");
+  return value;
+}
+
 // Whether scheduled tasks may run while nobody is signed in. Off unless asked
 // for, and every prerequisite is named rather than silently required: without
 // one of them the feature is not merely degraded, it cannot obtain a credential
@@ -417,6 +434,42 @@ export function loadSitesConfig(env = process.env) {
     console = { origin: at.origin, port: adminPort };
   }
   return { origin: parsed.origin, port, bind, directory, anonymousAllowed, allow, admins, console };
+}
+
+// The administration console (docs/admin-console.md): its own origin and port,
+// and who may open it. Independent of the published sites -- a deployment
+// with no sites still has people to administer -- but never on their origin
+// or port when it has them: a published page is script, and from the
+// console's origin it could read the console. Unset IDOU_ADMIN_URL, no console.
+export function loadAdminConsoleConfig(env = process.env) {
+  if (env.IDOU_ADMIN_URL === undefined || env.IDOU_ADMIN_URL === "") return null;
+  let at;
+  try { at = new URL(String(env.IDOU_ADMIN_URL).trim()); } catch { throw new Error("IDOU_ADMIN_URL 不是合法的地址"); }
+  if (!["http:", "https:"].includes(at.protocol) || at.pathname !== "/" || at.search || at.hash) throw new Error("IDOU_ADMIN_URL 只能是协议加主机名（可带端口），例如 https://admin.example.com");
+  const port = Number(env.IDOU_ADMIN_PORT ?? 3045);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error("IDOU_ADMIN_PORT 无效");
+  const bind = String(env.IDOU_SITES_BIND ?? "127.0.0.1").trim();
+  if (!/^[A-Za-z0-9.:_-]{1,64}$/.test(bind)) throw new Error("IDOU_SITES_BIND 无效");
+  if (env.IDOU_SITES === "1") {
+    const sites = String(env.IDOU_SITES_URL ?? "").trim();
+    try { if (new URL(sites).origin === at.origin) throw new Error("same"); }
+    catch (error) { if (error.message === "same") throw new Error("IDOU_ADMIN_URL 不能和 IDOU_SITES_URL 同源：发布的网页会读到管理台。换一个主机名或端口"); }
+    if (port === Number(env.IDOU_SITES_PORT ?? 3042)) throw new Error("IDOU_ADMIN_PORT 不能和 IDOU_SITES_PORT 相同");
+  }
+  let admins, allow = null;
+  try { admins = { users: adminUsers(env.IDOU_ADMIN_USERS), chatId: adminChat(env.IDOU_ADMIN_CHAT) }; }
+  catch (error) { throw new Error(`管理员配置无效：${error.message}`); }
+  try { allow = addressAllowlist(env.IDOU_SITES_ALLOW); }
+  catch (error) { throw new Error(`IDOU_SITES_ALLOW ${error.message}`); }
+  return { origin: at.origin, port, bind, admins, allow };
+}
+
+// How long the audit trail is kept, in days (audit-log.js). 180 unless set.
+export function loadAuditRetention(env = process.env) {
+  if (env.IDOU_AUDIT_RETENTION_DAYS === undefined || env.IDOU_AUDIT_RETENTION_DAYS === "") return 180;
+  const days = Number(env.IDOU_AUDIT_RETENTION_DAYS);
+  if (!Number.isSafeInteger(days) || days < 1 || days > 3650) throw new Error("IDOU_AUDIT_RETENTION_DAYS 要在 1 到 3650 之间");
+  return days;
 }
 
 // Called only by server entry points. The source file is never copied, logged,

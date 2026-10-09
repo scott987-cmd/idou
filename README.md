@@ -6,6 +6,11 @@
 
 介绍视频和实测数据见 [项目主页](https://scott987-cmd.github.io/idou/)。
 
+> **非飞书官方软件。** i豆 是从零开发的独立开源项目，不是字节跳动或飞书 / Lark 的产品，没有得到它们的授权、认可或背书，也不是任何飞书客户端的修改版、分支或插件。它只通过飞书开放平台的公开接口和开源的飞书命令行工具，访问你本人在飞书里有权限的数据。完整说明见文末的[免责声明](#免责声明)。
+>
+> *Not an official Feishu / Lark product: i豆 is an independent open-source project written from scratch, not affiliated with, authorized or endorsed by ByteDance or Feishu / Lark. See the [disclaimer](#免责声明).*
+
+
 ## 能做什么
 
 - **飞书消息**：一句话替你发出去；默认先弹确认卡，你点了才发。
@@ -120,4 +125,15 @@ npm run check          # 全部单元和集成测试，不花钱、不连真实�
 
 Apache License 2.0，见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。随应用分发的第三方组件及其许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、`third_party/`。
 
-i豆 是独立项目，与字节跳动、飞书（Lark）、豆包和 OpenAI 没有隶属、背书或赞助关系；这些名称是各自所有者的商标，这里只用来说明本软件和什么配合使用。
+## 免责声明
+
+- **i豆 不是飞书官方软件。** 它不是字节跳动或飞书 / Lark 的产品，没有得到它们的授权、认可、背书或赞助，和它们没有隶属或合作关系。
+- **i豆 是从零开发的独立开源项目**，不是飞书或任何飞书客户端的修改版、分支或插件。它只通过飞书开放平台的公开接口和开源的飞书命令行工具（lark-cli），访问你本人在飞书里有权限的数据。
+- 本仓库、项目主页、宣传视频和 i豆 软件里的任何内容都不代表飞书官方，也不是飞书的官方说明。飞书的功能、规则、收费和数据安全，以飞书官方的说明为准。
+- 使用 i豆 时，你的飞书账号仍受飞书用户协议和你所在企业的规定约束；企业的飞书管理员决定是否允许使用第三方应用。
+- i豆 的问题请在本仓库的 [Issues](https://github.com/scott987-cmd/idou/issues) 反馈，不要联系飞书客服；飞书客服不了解、也不负责这个项目。
+- 项目早期叫「我的豆包（MyDouBao）」，代码和设置里还能看到 `MYDOUBAO_*` 等旧名。这个旧名和字节跳动的豆包产品没有任何关系。
+- i豆 按「原样」提供，不提供任何明示或默示的担保（见 Apache-2.0 许可证第 7、8 条）；因使用 i豆 造成的任何损失，作者不承担责任。
+- 「飞书」「Lark」「豆包」是字节跳动的商标，「OpenAI」「Codex」是 OpenAI 的商标；这里提到只为说明 i豆 配合什么使用，不表示任何关联。
+
+*Disclaimer: i豆 is not an official Feishu / Lark product and is not affiliated with, authorized, endorsed or sponsored by ByteDance, Feishu / Lark or OpenAI. It is an independent project written from scratch that uses Feishu's public Open Platform APIs and the open-source Feishu CLI; it is not a modified version, fork or plug-in of any Feishu client. Nothing here is an official Feishu statement. Its early name "MyDouBao" is unrelated to ByteDance's Doubao. Provided "as is" without warranty under the Apache License 2.0. Feishu, Lark and Doubao are trademarks of ByteDance; OpenAI and Codex are trademarks of OpenAI.*

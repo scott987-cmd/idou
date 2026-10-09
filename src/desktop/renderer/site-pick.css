@@ -1,0 +1,24 @@
+/* 预览窗口上的「选中修改」工具栏。颜色和字体沿用 app.css 的那一套。 */
+:root{color-scheme:light dark;--paper:light-dark(#ffffff,#252525);--text:light-dark(#1f2329,#dee0e3);--muted:light-dark(#646a73,#8f959e);--line:light-dark(#dee0e3,#3a3a3a);--tint:light-dark(#eef3ff,#2a3247);--action:light-dark(#3370ff,#4e83fd);--warn:light-dark(#9a4a12,#f0b27a);--pick:#e07a24;font:13px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--text)}
+html,body{margin:0;background:transparent;overflow:hidden}
+/* The view is laid in the window's bottom-right corner; what it shows sits in that corner of it too. */
+body{box-sizing:border-box;height:100vh;padding:2px;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-end}
+.panel{box-sizing:border-box;width:100%}
+button,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--paper);border-radius:7px;padding:5px 12px;white-space:nowrap}
+button:hover{background:var(--tint)}
+button:focus-visible,textarea:focus-visible{outline:2px solid var(--action);outline-offset:1px}
+[hidden]{display:none!important}
+.bar{display:flex;align-items:center;gap:8px;width:max-content;max-width:100%;border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:5px 6px;box-shadow:0 4px 16px rgba(0,0,0,.14)}
+#pick-toggle[aria-pressed=true]{border-color:var(--pick);color:var(--pick);background:light-dark(#fdf3ea,#3a2a1c)}
+.hint{color:var(--muted);font-size:12px;padding-right:6px;white-space:nowrap}
+.panel{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);background:var(--paper);border-radius:12px;padding:12px;box-shadow:0 8px 26px rgba(0,0,0,.18)}
+.picked{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picked .label{color:var(--muted);font-size:12px}
+.picked strong{font-weight:500}
+textarea{display:block;box-sizing:border-box;width:100%;resize:none;border:1px solid var(--line);border-radius:8px;background:transparent;padding:7px 9px}
+.error{margin:0;color:var(--warn);font-size:12px}
+.actions{display:flex;gap:6px;justify-content:flex-end}
+.primary{background:var(--action);border-color:var(--action);color:#fff}
+.primary:hover{background:var(--action);filter:brightness(1.08)}
+@media (prefers-reduced-motion:no-preference){.panel,.bar{transition:box-shadow .15s ease}}

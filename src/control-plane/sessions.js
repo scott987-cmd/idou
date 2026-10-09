@@ -2,6 +2,9 @@ import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { runtimeBinding } from "../apps/runtime-grant.js";
 import { ExpiryQueue } from "./limits.js";
+// Refused by the access list, with the code a client can show.
+import { AccessRefused } from "./access-list.js";
+export { AccessRefused };
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
@@ -84,14 +87,20 @@ export class SessionRegistry extends EventEmitter {
   #checking = null;
   #checkAgain = false;
 
-  constructor({ now = Date.now, state = null, routeKey = null, log = () => {} } = {}) {
+  // `access`: who may not use this deployment right now (access-list.js). Asked
+  // before any session is accepted or issued, so a person an administrator has
+  // disabled or signed out is refused by every service at once, without each
+  // of them having to remember to ask.
+  constructor({ now = Date.now, state = null, routeKey = null, access = null, log = () => {} } = {}) {
     super();
     if (routeKey !== null && (!Buffer.isBuffer(routeKey) || routeKey.length < 32)) throw new Error("A route key is at least 32 bytes");
     if (state !== null && (typeof state.put !== "function" || typeof state.present !== "function")) throw new Error("Invalid session store");
+    if (access !== null && typeof access.refusal !== "function") throw new Error("Invalid access list");
     this.now = now;
     this.sessions = new Map();
     this.state = state;
     this.routeKey = routeKey;
+    this.access = access;
     this.log = log;
     this.closed = false;
     if (state) {
@@ -104,7 +113,10 @@ export class SessionRegistry extends EventEmitter {
     }
   }
 
-  issue({ tenantId, userId, deviceId, ttlMs = 15 * 60_000, authProvider = "development", appId = null, displayName = null, deviceProof = null, cliIdentityChecks = false, cliBridge = false, cliDocumentWrites = false, cliMessageWrites = false, cliDriveWrites = false, cliDestructiveWrites = false }) {
+  // `purpose` is not stored: it only tells whoever listens for "issued" (the
+  // console's directory of people) what kind of login this was -- a person at
+  // a desktop, or a scheduled run acting for them.
+  issue({ tenantId, userId, deviceId, ttlMs = 15 * 60_000, authProvider = "development", appId = null, displayName = null, deviceProof = null, cliIdentityChecks = false, cliBridge = false, cliDocumentWrites = false, cliMessageWrites = false, cliDriveWrites = false, cliDestructiveWrites = false, purpose = "sign-in" }) {
     if (![tenantId, userId, deviceId].every((id) => typeof id === "string" && id.length > 0)) {
       throw new Error("Session identity is required");
     }
@@ -118,12 +130,19 @@ export class SessionRegistry extends EventEmitter {
     for (const [name, value] of [["document", cliDocumentWrites], ["message", cliMessageWrites], ["drive", cliDriveWrites], ["destructive", cliDestructiveWrites]]) {
       if (typeof value !== "boolean" || value && (!cliBridge || authProvider !== "feishu")) throw new Error(`Feishu CLI ${name} writes require the verified bridge`);
     }
+    // A new login begins now, so only "disabled" can refuse it: being signed
+    // out refuses what was issued before, and this was not.
+    if (this.access?.refusal(tenantId, userId, Infinity)) throw new AccessRefused(this.access.refusal(tenantId, userId, Infinity));
     this.prune();
     const id = randomUUID();
+    // `issuedAt` is when this login began. Rotations and children copy it, so
+    // signing a person out refuses the whole family, however often it renewed.
     const session = Object.freeze({ id, familyId: id, tenantId, userId, deviceId,
       authProvider, appId, displayName, deviceProof, ...(cliIdentityChecks ? { cliIdentityChecks: true } : {}), ...(cliBridge ? { cliBridge: true } : {}), ...(cliDocumentWrites ? { cliDocumentWrites: true } : {}), ...(cliMessageWrites ? { cliMessageWrites: true } : {}), ...(cliDriveWrites ? { cliDriveWrites: true } : {}), ...(cliDestructiveWrites ? { cliDestructiveWrites: true } : {}),
-      audience: "codex-model-gateway", scopes: Object.freeze(["models:responses"]), expiresAt: this.now() + ttlMs });
-    return this.#keep(session);
+      audience: "codex-model-gateway", scopes: Object.freeze(["models:responses"]), issuedAt: this.now(), expiresAt: this.now() + ttlMs });
+    const issued = this.#keep(session);
+    this.emit("issued", session, { kind: ["sign-in", "resume", "unattended"].includes(purpose) ? purpose : "sign-in" });
+    return issued;
   }
 
   issueForSkills(parentToken) {
@@ -201,7 +220,10 @@ export class SessionRegistry extends EventEmitter {
     if (!parent || parent.authProvider !== "feishu" || parent.parentKey || parent.audience !== "codex-model-gateway") throw new Error("Verified parent required");
     if (!Number.isInteger(ttlMs) || ttlMs < 1 || ttlMs > 900000) throw new Error("Invalid session lifetime");
     this.prune();
-    return this.#keep(Object.freeze({ ...parent, id: randomUUID(), expiresAt: this.now() + ttlMs }));
+    const session = Object.freeze({ ...parent, id: randomUUID(), expiresAt: this.now() + ttlMs });
+    const issued = this.#keep(session);
+    this.emit("issued", session, { kind: "renewal" });
+    return issued;
   }
 
   issueForMcp(parentToken, { connectionId, policyDigest, tools }) {
@@ -228,7 +250,68 @@ export class SessionRegistry extends EventEmitter {
       this.#drop(key);
       return null;
     }
+    // Disabled, or signed out since this login began. Dropped here only: the
+    // administrator's action takes the person's sessions out of the shared
+    // store itself (revokePerson), and every replica hears that.
+    if (this.refusal(session)) { this.#drop(key); return null; }
     return shared || !this.#loaded.has(key) ? session : null;
+  }
+
+  // Why this session may not be used, if it may not: "account_disabled",
+  // "signed_out", or null. A session from before this field existed began, as
+  // far as anyone can tell, at the beginning of time.
+  refusal(session) {
+    if (!this.access || !session) return null;
+    return this.access.refusal(session.tenantId, session.userId, Number.isSafeInteger(session.issuedAt) ? session.issuedAt : 0);
+  }
+
+  // The devices this person is signed in on right now, for the console: one
+  // entry per device, its newest login. Read from the shared store when there
+  // is one -- a replica holds only the sessions it has seen.
+  async devices(tenantId, userId) {
+    const found = new Map();
+    const consider = (session) => {
+      if (!session || session.parentKey || session.tenantId !== tenantId || session.userId !== userId || session.audience !== "codex-model-gateway") return;
+      if (session.expiresAt <= this.now()) return;
+      const held = found.get(session.deviceId);
+      if (held && held.expiresAt >= session.expiresAt) return;
+      found.set(session.deviceId, { device: String(session.deviceId).slice(0, 10), signedInAt: Number.isSafeInteger(session.issuedAt) ? session.issuedAt : null, expiresAt: session.expiresAt });
+    };
+    for (const session of this.sessions.values()) consider(session);
+    if (this.state) {
+      let after = null;
+      for (let pages = 0; pages < 20; pages += 1) {
+        const page = await this.state.list(STORED, { owner: `${tenantId}\n${userId}`, limit: 1000, after });
+        for (const record of page) consider(revive(record.value));
+        if (page.length < 1000) break;
+        after = page.at(-1).key;
+      }
+    }
+    return [...found.values()].sort((a, b) => b.expiresAt - a.expiresAt);
+  }
+
+  // Every session this person holds, on every device and every replica, gone:
+  // the families are taken out of the shared store in one statement each, and
+  // the store's notification drops them wherever they were held. Resolves to
+  // how many logins ended.
+  async revokePerson(tenantId, userId) {
+    const families = new Set();
+    for (const [key, session] of [...this.sessions]) {
+      if (session.tenantId !== tenantId || session.userId !== userId) continue;
+      families.add(session.familyId);
+      this.#drop(key);
+    }
+    if (this.state) {
+      let after = null;
+      for (;;) {
+        const page = await this.state.list(STORED, { owner: `${tenantId}\n${userId}`, limit: 1000, after });
+        for (const record of page) { const session = revive(record.value); if (session) families.add(session.familyId); }
+        if (page.length < 1000) break;
+        after = page.at(-1).key;
+      }
+      for (const family of families) await this.state.deleteChildren(STORED, family);
+    }
+    return families.size;
   }
 
   issueForMedia(parentToken, kind) {

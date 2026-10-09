@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { listWorkspaceFiles, readWorkspaceFile, inspectWorkspaceFile, workspaceOpenTarget, createArtifactServer } from "../src/application/workspace-files.js";
+import { listWorkspaceFiles, readWorkspaceFile, inspectWorkspaceFile, workspaceOpenTarget, createArtifactServer, MAX_PREVIEW_FILE_BYTES } from "../src/application/workspace-files.js";
+import { contractFiles, CONTRACT_DATA_PATH, MAX_DATA_FILE_BYTES } from "../src/application/table-contract.js";
+import { SLICE_LIMITS } from "../src/application/table-slice.js";
 import { openWorkspaceItem } from "../src/desktop/workspace-open.js";
 
 test("workspace files and static preview reject traversal, secrets and symlink escapes", async (t) => {
@@ -34,6 +36,31 @@ test("workspace files and static preview reject traversal, secrets and symlink e
 // 2026-09-23, while recording: a site's page with an .mp4 on it showed an empty
 // player in the local preview -- the preview served only the types a site
 // could then hold, and the video was a 404.
+// 2026-10-08: a table read into a site came to a 21.3 MB data file (13 fields,
+// 20,000 rows), and the site's preview showed a dashboard of 0 rows -- the
+// preview stopped at 20 MiB and answered the data file with a 404, while a slice
+// may be 24 MiB. The limit is now the largest data file a slice can write.
+test("the preview serves a table site's data file as large as a slice can make it", async (t) => {
+  // The largest: a snapshot at the slice limit, under a schema of the most fields.
+  const fields = Array.from({ length: SLICE_LIMITS.fields }, (_, i) => ({ id: `fld${String(i).padStart(7, "0")}`, name: `字段名字可以写得很长很长的第 ${i} 列`, type: "text", format: { kind: "text" } }));
+  const schema = { version: 1, sliceId: "s".repeat(32), source: { kind: "base", token: "SyntheticBaseToken01", tableId: "tblSynthetic", viewId: null, title: "名".repeat(120) }, fields, rows: { limit: SLICE_LIMITS.rows, truncated: false } };
+  const empty = { sliceId: "s".repeat(32), readAt: 1, truncated: false, rowCount: 1, rows: [], digest: "d".repeat(64) };
+  const room = SLICE_LIMITS.bytes - Buffer.byteLength(JSON.stringify(empty)) - Buffer.byteLength('{"id":"rec1","values":{"fld0000000":""}}');
+  const snapshot = { ...empty, rows: [{ id: "rec1", values: { fld0000000: "x".repeat(room) } }] };
+  assert.equal(Buffer.byteLength(JSON.stringify(snapshot)), SLICE_LIMITS.bytes);
+  const largest = Buffer.byteLength(contractFiles({ schema, snapshot }).get(CONTRACT_DATA_PATH));
+  assert.ok(largest <= MAX_DATA_FILE_BYTES, `a slice at its limit writes ${largest} bytes, over MAX_DATA_FILE_BYTES`);
+  assert.ok(MAX_PREVIEW_FILE_BYTES >= MAX_DATA_FILE_BYTES);
+  // And the preview serves it -- the size that was a 404.
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "idou-preview-table-")); t.after(() => rm(cwd, { recursive: true, force: true }));
+  await mkdir(path.join(cwd, "data"));
+  await writeFile(path.join(cwd, CONTRACT_DATA_PATH), Buffer.alloc(21_331_737, 0x20));
+  const server = await createArtifactServer(cwd); t.after(server.close);
+  const answer = await fetch(server.url(CONTRACT_DATA_PATH));
+  assert.equal(answer.status, 200);
+  assert.equal((await answer.arrayBuffer()).byteLength, 21_331_737);
+});
+
 test("the preview serves a page's video, and in the pieces a player asks for", async (t) => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "idou-preview-video-")); t.after(() => rm(cwd, { recursive: true, force: true }));
   const video = Buffer.from(Array.from({ length: 32 }, (_, i) => i));

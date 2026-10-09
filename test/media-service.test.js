@@ -136,7 +136,10 @@ test("a failed check on a job is recorded with its code only, never the provider
   const token = await f.lease("video"), made = await f.create(token, { kind: "video" }); await f.settle();
   f.advance(10000); await f.post("/v1/media/job", token, { id: made.body.id }); await f.settle();
   // MiniMax's own status code is kept: 1004 is a bad key, 1008 an empty balance.
-  assert.deepEqual(events, [{ event: "media-poll-failed", job: made.body.id, kind: "video", code: "media_provider_rejected", state: "running", providerCode: "1004" }]);
+  // The job's start is a line of its own (for the administration console's
+  // trail): which job, which kind, which model -- never the prompt.
+  assert.deepEqual(events[0], { event: "media-submitted", job: made.body.id, kind: "video", model: events[0].model });
+  assert.deepEqual(events.slice(1), [{ event: "media-poll-failed", job: made.body.id, kind: "video", code: "media_provider_rejected", state: "running", providerCode: "1004" }]);
   assert.doesNotMatch(JSON.stringify(events), /authorization failed|3000123/);
 });
 
@@ -294,4 +297,15 @@ test("the real media service answers every route the stand-in claims", async (t)
   const f = await fixture(t, () => assert.fail("No paid dispatch"));
   for (const route of MEDIA_ROUTES) assert.equal((await fetch(f.origin + route, { method: "POST" })).status, 401, route);
   assert.equal((await fetch(`${f.origin}/v1/media/other`, { method: "POST" })).status, 404);
+});
+
+// An administrator turned video off for this person (policy.js): no token to
+// make one is given, so nothing paid can start.
+test("a kind an administrator turned off for this person gets no token, and nothing is made", async (t) => {
+  let calls = 0;
+  const f = await fixture(t, async () => { calls += 1; return ok({ task_id: "1" }); }, { policy: { permits: async (who, feature) => feature !== "mediaVideo" } });
+  const refused = await f.post("/auth/media-token", f.parent.token, { kind: "video" });
+  assert.deepEqual([refused.status, refused.body.error.code], [403, "media_not_allowed_by_policy"]);
+  assert.equal((await f.post("/auth/media-token", f.parent.token, { kind: "image" })).status, 200, "pictures are still allowed");
+  assert.equal(calls, 0);
 });

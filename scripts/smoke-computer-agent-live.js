@@ -68,10 +68,12 @@ try {
     for (const approval of snapshot.approvals) {
       if (handled.has(approval.id)) continue; handled.add(approval.id);
       let args = null; try { args = JSON.parse(approval.command); } catch { /* not a tool-argument card */ }
-      const tool = String(approval.reason ?? "").match(/computer_[a-z]+/)?.[0] ?? null;
+      // The tool read from Codex's message, as its own field: the card's
+      // sentence is the product's words, not something to parse.
+      const tool = typeof approval.tool === "string" ? approval.tool : null;
       const keys = args !== null && typeof args === "object" ? Object.keys(args).sort().join(",") : null;
       // Only computer_type takes a text field, so typing is recognised by its
-      // arguments even if the card's wording never names the tool.
+      // arguments even if Codex's message could not be read for the tool.
       const typing = keys === "app,text" && args.app === "TextEdit" && args.text === MARKER && (tool === null || tool === "computer_type");
       const looking = tool === "computer_windows" && keys === "app" && args.app === "TextEdit";
       const accept = approval.kind === "mcp" && approval.cwd === "computer" && (typing || looking);

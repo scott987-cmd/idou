@@ -592,7 +592,7 @@ test("a probe asks for the login's permissions except offline_access, and retain
   const probeUrl = new URL(provider.authorizationUrl({ redirectUri: "https://example.test/cb", state: "s", challenge: "c", scopes: provider.probeScopes }));
   assert.equal(probeUrl.searchParams.get("scope"), "docx:document:readonly");
   const seen = await provider.probeIdentity({ code: "code", verifier: "verifier", redirectUri: "https://example.test/cb" });
-  assert.deepEqual(seen, { tenantId: "allowed-tenant", userId: "ou_synthetic", appId: "cli_synthetic" });
+  assert.deepEqual(seen, { tenantId: "allowed-tenant", userId: "ou_synthetic", appId: "cli_synthetic", name: "" });
   assert.equal(JSON.parse(calls[0].body).scope, "docx:document:readonly", "the exchange asks for the same, without offline_access");
   assert.doesNotMatch(JSON.stringify(seen), /probe-access|probe-refresh/);
 });

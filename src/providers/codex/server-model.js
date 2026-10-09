@@ -208,6 +208,15 @@ export const modelProblem = known => unsupported(known)
 export const modelFields = known => isChatModel(known?.model)
   ? { model: known.model, modelLabel: chatModelLabel(known.model), modelVendor: chatModelVendor(known.model), modelConfirmed: true, modelSynthesisTokens: CHAT_MODELS[known.model].sideCalls.synthesis.maxOutputTokens }
   : { model: null, modelLabel: MODEL_UNCONFIRMED, modelVendor: "", modelConfirmed: false, modelNotice: modelProblem(known), modelUnsupported: unsupported(known) };
+// The model this person's tasks run on, from ServerModel#options(): their pick
+// while it is offered, else the default. `model` above stays the server's
+// default -- the knowledge consent names that one, and synthesis is bound to it
+// -- so the composer, which says what the next turn will use, reads this. It
+// read `model` until 2026-10-08, and a person who had picked GLM-5.3 saw
+// MiniMax-M3 beside the send button while their turns ran on GLM.
+export const taskModelFields = options => isChatModel(options?.current)
+  ? { taskModel: options.current, taskModelLabel: chatModelLabel(options.current), taskModelVendor: chatModelVendor(options.current) }
+  : {};
 
 // The gateway's answer when a request names a model other than the one it
 // enforces: this machine could not learn it, or the server changed model since.

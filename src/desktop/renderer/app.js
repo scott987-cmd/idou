@@ -1,4 +1,5 @@
 import { readableError } from "./errors.js";
+import { qrSvg } from "../../application/qr-code.js";
 import { searchOnPause } from "./search-on-pause.js";
 import { knowledgeDiscoveryUi } from "./knowledge-discovery.js";
 import { knowledgeGraphUi } from "./knowledge-graph.js";
@@ -624,8 +625,11 @@ async function openKnowledgeMenu() {
 async function loadPermissionModes() {
   permissionModes = await api.permissionModes().catch(() => []);
   $("#permission-menu").replaceChildren(...permissionModes.map(row => {
-    const item = menuChoice(row.label, row.summary);
+    const item = menuChoice(row.label, row.disabled ? row.disabledReason : row.summary);
     item.dataset.permission = row.id;
+    // Withheld by the administrators: shown, so its absence is not a mystery,
+    // but not choosable (control-plane/policy.js).
+    if (row.disabled) { item.disabled = true; return item; }
     item.onclick = () => { closePermissionMenu(); return choosePermission(row.id); };
     return item;
   }));
@@ -643,6 +647,46 @@ for (const type of ["click", "auxclick"]) $("#messages").addEventListener(type, 
   if (type === "click" && event.button === 0) void api.openExternalLink(link.dataset.externalLink).catch(cause => error(readableError(cause)));
 });
 document.addEventListener("keydown", event => { if (event.key === "Escape") closeKnowledgeMenu(); });
+// 模型, as Codex's /model and WorkBuddy's model chip: the same choices as 设置 →
+// 对话 / 编程模型 and /model, kept by the server, from the next turn on. Until
+// 2026-10-08 this was a label that looked like this control and did nothing.
+function closeModelMenu() {
+  $("#model-menu").hidden = true;
+  $("#model-toggle").setAttribute("aria-expanded", "false");
+}
+async function openModelMenu() {
+  const menu = $("#model-menu");
+  if (!menu.hidden) { closeModelMenu(); return; }
+  const options = await api.modelOptions();
+  const kept = options.kept === "server", passedOver = new Set((options.unavailable ?? []).map((row) => row.slug));
+  const label = (slug) => options.available.find((model) => model.slug === slug)?.label ?? slug;
+  const item = (title, hint, chosen, slug) => {
+    const node = menuChoice(title, hint);
+    node.setAttribute("aria-checked", chosen ? "true" : "false");
+    node.onclick = () => action(async () => {
+      closeModelMenu();
+      const updated = await api.selectModel(slug);
+      await updateConnection(); modelNote(updated);
+    });
+    return node;
+  };
+  const rows = [
+    ...(kept && options.default ? [item(`跟随服务端默认（${label(options.default)}）`, "管理员改默认时自动跟着改", options.choice === null, null)] : []),
+    ...options.available.map((model) => item(`${model.label}${passedOver.has(model.slug) ? "（暂不可用）" : ""}`,
+      [model.vendor, model.images === false ? "不能看图" : "能看图"].filter(Boolean).join(" · "),
+      kept ? options.choice === model.slug : options.current === model.slug, model.slug)),
+  ];
+  const single = options.available.length < 2;
+  if (single) for (const row of rows) row.disabled = true;
+  const note = element("small", single ? "服务端当前只提供这一个模型。" : kept ? "保存在服务端，下一轮生效；之后的任务和定时任务都用它。" : "本连接使用，下一轮生效。", "model-menu-note");
+  menu.replaceChildren(...rows, note);
+  menu.hidden = false;
+  placeMenu(menu, $("#model-toggle"));
+  $("#model-toggle").setAttribute("aria-expanded", "true");
+}
+$("#model-toggle").onclick = () => action(() => openModelMenu());
+document.addEventListener("keydown", event => { if (event.key === "Escape") closeModelMenu(); });
+document.addEventListener("pointerdown", event => { if (!$("#model-field").contains(event.target) && !$("#model-menu").contains(event.target)) closeModelMenu(); }, true);
 $("#permission-toggle").onclick = () => {
   const menu = $("#permission-menu"), opening = menu.hidden;
   menu.hidden = !opening;
@@ -652,8 +696,16 @@ $("#permission-toggle").onclick = () => {
 // Anywhere else, and Escape, put it away again.
 document.addEventListener("keydown", event => { if (event.key === "Escape") closePermissionMenu(); });
 document.addEventListener("pointerdown", event => { if (!$("#permission-field").contains(event.target) && !$("#permission-menu").contains(event.target)) closePermissionMenu(); }, true);
+// The window itself never scrolls; its lists and panels do. Bringing something
+// into view (scrollIntoView, a focus) also scrolls every ancestor that can, and
+// the shell could be pushed: on 2026-10-08 the whole window sat 48px up, its top
+// bar cut off and a blank band below, until something put it back. Whatever
+// pushes it, it goes straight back.
+const pinShell = () => { for (const node of [document.documentElement, document.body]) if (node.scrollTop || node.scrollLeft) node.scrollTo(0, 0); };
+window.addEventListener("scroll", pinShell);
+document.body.addEventListener("scroll", pinShell);
 // Placed where its chip was when it opened, so it does not outlive the chip moving.
-window.addEventListener("resize", () => { closePermissionMenu(); closeKnowledgeMenu(); });
+window.addEventListener("resize", () => { closePermissionMenu(); closeKnowledgeMenu(); closeModelMenu(); });
 async function action(fn) { try { error(""); return await fn(); } catch (cause) { error(readableError(cause)); } }
 // Feishu's own unread count, on the tab that leads to it. The embedded messenger
 // keeps counting while the person is anywhere else in the app, which is the only
@@ -752,8 +804,15 @@ async function setTaskMetadata(taskId, patch) {
 // Renaming happens in place on the row, so the name is edited where it is read.
 function startRename(row, button, item) {
   const input = element("input"); input.className = "rename-input"; input.value = item.title; input.setAttribute("aria-label", "任务名称"); input.maxLength = 60;
+  // Once. Taking the input out of the page blurs it, and the blur commits
+  // again from inside that same replaceWith -- which then had nothing left to
+  // replace, and the error banner showed Chromium's "Failed to execute
+  // 'replaceWith' on 'Element': The node to be removed is no longer a child of
+  // this node" (acceptance, 2026-10-09; only when the window had focus).
+  let done = false;
   const commit = (save) => action(async () => {
-    if (!input.isConnected) return;
+    if (done || !input.isConnected) return;
+    done = true; input.onblur = null;
     const value = input.value.trim();
     input.replaceWith(button);
     if (!save || !value || value === item.title) return;
@@ -873,7 +932,21 @@ function restoreConversationScroll(messages = $("#messages")) {
   requestAnimationFrame(() => { restoringScroll = false; });
   refreshLatestButton();
 }
+// A repaint replaces the conversation's nodes, cards and their fields with them.
+// A field marked data-focus-key that had the focus gets it back, caret and all
+// (2026-10-08: typing an answer to the Agent's question lost the field every
+// second). See also the clock below, which does not repaint under a typist.
 function renderConversation() {
+  const active = document.activeElement, key = active?.dataset?.focusKey;
+  const caret = key && typeof active.selectionStart === "number" ? [active.selectionStart, active.selectionEnd] : null;
+  renderConversationNow();
+  if (!key || document.activeElement?.dataset?.focusKey === key) return;
+  const again = [...document.querySelectorAll("[data-focus-key]")].find((node) => node.dataset.focusKey === key);
+  if (!again) return;
+  again.focus({ preventScroll: true });
+  if (caret) try { again.setSelectionRange(...caret); } catch { /* not a text field */ }
+}
+function renderConversationNow() {
   const current = task(); if (!current) return;
   placedApprovalIds.clear();
   renderMcpLabel();
@@ -909,6 +982,7 @@ function renderConversation() {
     if (item.role === "notice") node.append(element("span", "需要你核查", "author"));
     if (item.context) node.append(element("span", contextPresentation(item.context), "context-reference"));
     if (item.role === "user" && item.steered) node.append(element("span", "运行中补充", "context-reference steer-reference"));
+    if (item.role === "user" && item.continuation) node.append(element("span", "输出被截断，i豆 自动接着写", "context-reference continuation-reference"));
     if (item.mentions?.length) node.append(element("span", `@ 的对象：${item.mentions.map(entry => entry.kind === "group" ? `${entry.name}（群）` : `${entry.name}${entry.department ? ` · ${entry.department}` : ""}`).join("、")}`, "context-reference"));
     if (item.references?.length) node.append(element("span", `引用：${item.references.map(reference => reference.kind === "diff" ? `${reference.path} · ${reference.side === "old" ? "旧" : "新"}侧第 ${reference.startLine}${reference.endLine === reference.startLine ? "" : `–${reference.endLine}`} 行 · ${reference.revision.slice(0, 8)} · ${reference.comment}` : reference.kind === "page" ? `${reference.title} · ${reference.address} · ${reference.revision.slice(0, 8)}` : reference.path).join("、")}`, "context-reference"));
     if (item.skill) node.append(element("span", `${String(item.skill.id ?? "").startsWith("local-") ? "本机技能" : "企业技能"}：${item.skill.title} · ${item.skill.version}`, "context-reference"));
@@ -1152,6 +1226,8 @@ function renderCodingTurns(current) {
       if (message.references?.length) asked.append(element("span", `引用：${message.references.map(reference => reference.kind === "diff" ? `${reference.path} · ${reference.side === "old" ? "旧" : "新"}侧第 ${reference.startLine}${reference.endLine === reference.startLine ? "" : `–${reference.endLine}`} 行 · ${reference.revision.slice(0, 8)} · ${reference.comment}` : reference.kind === "page" ? `${reference.title} · ${reference.address} · ${reference.revision.slice(0, 8)}` : reference.path).join("、")}`, "context-reference"));
       if (message.skill) asked.append(element("span", `${String(message.skill.id ?? "").startsWith("local-") ? "本机技能" : "企业技能"}：${message.skill.title} · ${message.skill.version}`, "context-reference"));
       if (message.command) asked.append(element("span", `项目命令：/${message.command.name} · ${message.command.source}`, "context-reference"));
+      // Sent by the application, not the person (task-service.js MAX_CONTINUATIONS).
+      if (message.continuation) asked.append(element("span", "输出被截断，i豆 自动接着写", "context-reference continuation-reference"));
       asked.append(element("div", message.text, "message-text"));
       if (message.images?.length) asked.append(sentImages(current.id, message.images));
       // Back to before this turn, as Claude Code's rewind and Codex's Esc Esc.
@@ -1276,6 +1352,7 @@ function renderApprovalCard(item, current) {
         }
         if (question.isOther) {
           const own = element("input"); own.type = "text"; own.placeholder = question.options.length ? "或者写下你的回答" : "写下你的回答";
+          own.dataset.focusKey = `question\n${key}`;
           if (!question.options.some((option) => option.label === questionDrafts.get(key))) own.value = questionDrafts.get(key) ?? "";
           own.oninput = () => questionDrafts.set(key, own.value);
           group.append(own);
@@ -1299,7 +1376,7 @@ function renderApprovalCard(item, current) {
       const technical = element("details", undefined, "approval-technical");
       technical.append(element("summary", "技术详情"), element("pre", presentation.detail)); box.append(technical);
     } else if (presentation.detail) box.append(element("pre", presentation.detail));
-    box.append(element("small", item.cwd));
+    if (presentation.note) box.append(element("small", presentation.note));
     // 本轮同类都允许 reaches no further than this turn: every turn runs in its own
     // Codex process. What is remembered for the project (Claude Code's "don't ask
     // again … in this project") is named on the button, word for word. An MCP
@@ -1444,7 +1521,12 @@ function placeConfirmations() {
 }
 // Closing a modal would otherwise leave an unanswered card inside it, out of
 // sight and out of reach, until the main process times the operation out.
-for (const node of document.querySelectorAll("dialog")) node.addEventListener("close", () => { placeConfirmations(); syncNativeBounds(); });
+// Every dialog, including the ones made as they are needed (the sharing panel,
+// 历史版本): one of those removed on closing took the card inside it, and the
+// container every later card goes into, with it (review of phase 0,
+// 2026-10-03). Heard in the capture phase, before the dialog's own handler
+// removes it.
+document.addEventListener("close", (event) => { if (event.target instanceof HTMLDialogElement) { placeConfirmations(); syncNativeBounds(); } }, true);
 // A temporary result belongs to the media panel of the task it was shown in.
 // Leaving that panel by its own tabs took it down (switchTab); leaving the task
 // or the section did not, and the result's view stayed on the window, out of
@@ -1707,11 +1789,19 @@ function hidePreview() {
 // Reopening lands in the directory last worked in, without a file dialog, and
 // the rest of the list is right there. A work task needs no directory, so this
 // is only ever loaded for coding.
+//
+// Except that an unsent coding draft comes back with the folder it was being
+// written for: the text is kept under draft:coding while away, and landing it
+// in whichever folder was used last sends it somewhere nobody chose. On
+// 2026-10-08 a request typed into a site's own folder (用编程任务修改) came back
+// from 设置 sitting in another project, one 发送 away from going there.
+let codingDraftWorkspace = null;
 async function loadRecentProjects(epoch) {
   const recents = await api.recentWorkspaces().catch(() => []);
   if (epoch !== viewEpoch || state.section !== "coding") return;
-  state.recents = recents;
-  if (!state.draftWorkspace && !task()) state.draftWorkspace = recents[0] || null;
+  const kept = codingDraftWorkspace; codingDraftWorkspace = null;
+  state.recents = kept && !recents.some((item) => item.path === kept.path) ? [kept, ...recents] : recents;
+  if (!state.draftWorkspace && !task()) state.draftWorkspace = kept || recents[0] || null;
   render();
 }
 // Reopening lands where the last session was working. Only the two task
@@ -1733,6 +1823,7 @@ async function switchSection(section) {
   saveDraft(); await flushTaskUi().catch(() => {}); const closing = hidePreview(), epoch = viewEpoch; clearArtifact();
   rememberSection(section);
   if (activeWorkbenchLayout.sidebarOverlay) state.sidebarPreference = "closed";
+  if (state.section === "coding" && !state.taskId && state.draftWorkspace) codingDraftWorkspace = state.draftWorkspace;
   state.section = section; state.taskId = null; state.draftPermission = null; state.draftWorkspace = null; state.recents = []; state.tab = "chat";
   // Forgotten on the way out so that coming back re-binds from whatever chat is
   // open then, rather than trusting a key from the last visit.
@@ -1766,6 +1857,9 @@ async function switchSection(section) {
 // server has confirmed one the label is 模型未确认 and says why, never a name.
 const modelUnconfirmed = () => state.connection.modelConfirmed === false;
 function modelName() { return state.connection.modelLabel || state.connection.model || ""; }
+// What the composer says: the model this person's next turn runs on (their
+// pick, kept by the server), unless the server has confirmed none at all.
+function taskModelName() { return modelUnconfirmed() ? modelName() : state.connection.taskModelLabel || modelName(); }
 function modelPhrase() { return modelUnconfirmed() ? `${modelName()}（${state.connection.modelNotice}）` : [modelName(), state.connection.modelVendor].filter(Boolean).join(" · "); }
 // Reading the connection is what has the main process ask an unconfirmed server
 // again (at most every 10 s), so it is read again soon rather than leaving
@@ -1776,8 +1870,8 @@ async function updateConnection() {
   state.connection = await api.connection();
   $("#account-name").textContent = state.connection.identity || "未登录";
   $("#connection-state").textContent = state.connection.connected ? "模型网关已连接" : "未连接模型服务";
-  $("#model-label").textContent = modelName() ? `${modelName()} · 企业模型网关` : "企业模型网关";
-  $("#model-label").title = modelUnconfirmed() ? state.connection.modelNotice || "" : state.connection.modelVendor || "";
+  $("#model-label").textContent = taskModelName() ? `${taskModelName()} · 企业模型网关` : "企业模型网关";
+  $("#model-toggle").title = modelUnconfirmed() ? state.connection.modelNotice || "" : `${[taskModelName(), state.connection.taskModelVendor || state.connection.modelVendor].filter(Boolean).join(" · ")}；点此换模型`;
   synthesisConsent?.();
   if (!modelRecheck && modelUnconfirmed() && !state.connection.modelUnsupported) modelRecheck = setTimeout(() => { modelRecheck = null; updateConnection().catch(() => {}); }, 10_000);
   if (state.section === "settings" && $("#login-renewal")) {
@@ -1835,6 +1929,9 @@ async function renderLogin(library) {
   if (status.stage === "waiting") scheduleLoginPolling(); else stopLoginPolling();
   const card = element("section", undefined, "login-card"); card.id = "feishu-login";
   card.append(element("h2", "飞书账号"), element("p", "使用飞书确认你的身份。模型密钥和飞书应用密钥保留在服务端。"));
+  // Said where somebody signs in, and again in 设置: this is not Feishu's own
+  // software, so nothing it says is Feishu's word (2026-10-09).
+  card.append(element("p", "i豆 不是飞书官方软件，是从零开发的独立开源项目，与字节跳动、飞书 / Lark 没有隶属或授权关系。它通过飞书开放平台的公开接口，用你本人的权限读写飞书；飞书的规则和数据安全以飞书官方说明为准，i豆 的问题不要找飞书客服。", "login-unofficial"));
   card.append(element("small", status.configured ? `企业服务端：${status.serverUrl}` : "尚未配置企业服务端。请由管理员设置 IDOU_SERVER_URL；不要在客户端填写应用密钥。"));
   const summary = element("p"); summary.id = "login-status";
   summary.textContent = loginSummary(status);
@@ -2065,7 +2162,7 @@ async function renderLibrary() {
     action(async () => {
       const options = await api.modelOptions(); if (state.section !== section) return;
       drawModels(options);
-      modelSelect.onchange = () => action(async () => { const updated = await api.selectModel(modelSelect.value === "" ? null : modelSelect.value); if (updated) drawModels(updated); });
+      modelSelect.onchange = () => action(async () => { const updated = await api.selectModel(modelSelect.value === "" ? null : modelSelect.value); if (updated) drawModels(updated); await updateConnection(); });
     });
     // What each coding project may run without asking again (approval-rules.js),
     // each forgotten here -- as Claude Code lists its rules under /permissions.
@@ -3229,6 +3326,29 @@ $("#settings").onclick = () => action(() => switchSection("settings"));
 api.onOpenScheduleRuns?.(() => { pendingScheduleTab = "runs"; void action(() => switchSection("schedules")); });
 // A card's notification, clicked: open the task the card waits in, from
 // wherever the person is (main.js announceConfirmation).
+// 选中修改 (docs/sites-phase1.md §1.2): a place picked in a site's preview and
+// what the person wants it changed to, put into the composer of that site's
+// coding task -- the most recent one on its folder, or a new one -- for them
+// to read and send. Added after anything already typed there, never over it.
+api.onSitePick?.((value = {}) => void action(async () => {
+  if (typeof value.text !== "string" || typeof value.path !== "string") return;
+  await switchSection("coding");
+  state.snapshot = await api.snapshot();
+  const existing = state.snapshot.tasks.find((row) => row.mode === "coding" && row.cwd === value.path);
+  if (existing) await openTask(existing);
+  else {
+    state.draftWorkspace = { id: value.workspaceId, path: value.path, name: value.name };
+    state.recents = [state.draftWorkspace, ...state.recents.filter((item) => item.path !== value.path)];
+    render();
+  }
+  const box = $("#prompt"), before = box.value.trim();
+  box.value = before ? `${before}\n\n${value.text}` : value.text;
+  // The caret after the person's own sentence -- its first line -- so that is
+  // what shows, and what they would add to.
+  const said = (before ? before.length + 2 : 0) + value.text.split("\n")[0].length;
+  box.focus(); box.setSelectionRange(said, said); box.scrollTop = 0;
+  saveDraft(); renderComposerState();
+}));
 api.onOpenTask?.(({ taskId } = {}) => void action(async () => {
   if (typeof taskId !== "string") return;
   const target = state.snapshot.tasks.find((row) => row.id === taskId) ?? (await api.snapshot()).tasks.find((row) => row.id === taskId);
@@ -3267,8 +3387,10 @@ for (const id of ["#refresh-files", "#reveal-folder", "#show-document-url", "#sh
 document.addEventListener("keydown", (event) => {
   const opened = mention.open ? { menu: $("#mention-menu"), close: closeMentions, focus: $("#prompt") }
     : !$("#permission-menu").hidden ? { menu: $("#permission-menu"), close: closePermissionMenu, focus: $("#permission-toggle") }
+      : !$("#model-menu").hidden ? { menu: $("#model-menu"), close: closeModelMenu, focus: $("#model-toggle") }
       : !$("#knowledge-scope-menu").hidden ? { menu: $("#knowledge-scope-menu"), close: closeKnowledgeMenu, focus: $("#knowledge-scope-toggle") }
-        : !$("#file-menu").hidden ? { menu: $("#file-menu"), close: closeFileMenu, focus: $("#file-menu-toggle") } : null;
+        : !$("#file-menu").hidden ? { menu: $("#file-menu"), close: closeFileMenu, focus: $("#file-menu-toggle") }
+          : $("#site-menu") && !$("#site-menu").hidden ? { menu: $("#site-menu"), close: closeSiteMenu, focus: document.querySelector('.site-more[aria-expanded="true"]') } : null;
   if (!opened) return;
   if (event.key === "Escape") {
     event.preventDefault(); event.stopImmediatePropagation(); opened.close(); opened.focus.focus(); return;
@@ -3458,7 +3580,7 @@ function pickMention(index) {
   if (entry.kind === "command") { closeMentions(); $("#prompt").value = ""; saveDraft(); void action(() => runSlashCommand(entry.name)); return; }
   if (entry.kind === "model") {
     closeMentions(); $("#prompt").value = ""; saveDraft();
-    void action(async () => { const chosen = await api.selectModel(entry.slug); modelNote(chosen); });
+    void action(async () => { const chosen = await api.selectModel(entry.slug); await updateConnection(); modelNote(chosen); });
     return;
   }
   if (entry.kind === "review") { closeMentions(); sendReview(entry.target, entry.message); return; }
@@ -3588,11 +3710,33 @@ function sitePublishWarning(problems) {
   const named = problems.slice(0, 3).map((item) => item.path ? `${item.path}（${item.reason}）` : item.reason);
   return `发布前要处理：${named.join("、")}${problems.length > 3 ? ` 等 ${problems.length} 处` : ""}`;
 }
+// Why an administrator or the content checks stand between a site and its
+// readers, and what to do: a whole line that wraps, never cut off.
+// An administrator's own words, set inside a sentence of ours: without the
+// stop they may have ended on, or it reads 「……删掉手机号。。改好后……」.
+const theirWords = (words, otherwise) => String(words ?? "").trim().replace(/[\s。．.！!？?；;，,、：:]+$/u, "") || otherwise;
+function siteState(site) {
+  if (!site.published) return "";
+  if (site.held) return `原因：${theirWords(site.held.reason, "未写明")}。要恢复请联系管理员。`;
+  if (site.review?.state === "pending") return `原因：${site.review.reason || "公开网站要管理员审核"}`;
+  if (site.review?.state === "rejected") return `原因：${theirWords(site.review.reason, "未写明")}。改好后点「更新线上」，会重新检查。`;
+  return "";
+}
 function siteLine(site) {
   const when = site.lastReadAt ? new Date(site.lastReadAt).toLocaleString("zh-CN", { hour12: false }) : null;
+  // An administrator's take-down or review comes first: it is why the link does
+  // not open, and what to do about it is not the same as for a site its
+  // owner took down. The reason is a line of its own (siteState), in full.
   const where = !site.published ? "未发布"
+    : site.held ? "管理员下线了"
+    : site.review?.state === "pending" ? "等待管理员审核"
+    : site.review?.state === "rejected" ? "审核没通过"
     : site.offline ? "已下线（版本还在，可重新发布）"
     : `已发布 · ${site.publishedInherit ? "跟随表格权限" : scopeWord(site.publishedScope)}`;
+  // On the server only: published from another computer, or moved out of this list while up.
+  if (site.remote) return `${site.kind === "table" ? "接了表格" : "只有文件"} · 这台电脑上没有它的目录 · ${where}`;
+  // Downloaded here: it follows its table on the server, read by the computer that set it up.
+  if (site.kind === "table" && !site.readsHere) return `接了表格，由发布它的那台电脑读取 · ${where}`;
   if (site.kind !== "table") return `只有文件，不接表格 · ${where}`;
   const every = site.refreshSeconds % 60 === 0 ? `${site.refreshSeconds / 60} 分钟` : `${site.refreshSeconds} 秒`;
   // The reading is done here, with this person's own Feishu identity, so it
@@ -3620,7 +3764,7 @@ function pickShare(site, { anonymousAllowed }) {
     let chosen = site.publishedScope ?? "invited";
     let inherit = site.publishedInherit === true || (site.kind === "table" && !site.published);
     const options = element("div", undefined, "share-scopes");
-    const paint = () => {
+    let paint = () => {
       options.replaceChildren();
       if (site.kind === "table") {
         const row = element("label", undefined, "share-scope");
@@ -3639,30 +3783,401 @@ function pickShare(site, { anonymousAllowed }) {
         options.append(row);
       }
     };
-    paint();
+    // Collaborators (docs/sites-phase0.md §0.4): who 仅邀请的人 lets in besides
+    // the owner. Each is a handle the main process resolves when this is sent.
+    const members = (site.members ?? []).map((member) => ({ ...member }));
+    const people = element("div", undefined, "share-members"); people.id = "share-members";
+    const chips = element("div", undefined, "share-member-chips");
+    const search = element("input"); search.type = "search"; search.id = "share-member-search"; search.maxLength = 50;
+    search.placeholder = "添加协作者：搜人、群或部门";
+    const results = element("div", undefined, "share-member-results");
+    const hint = element("small", "", "share-detail");
+    const KIND = { user: "人", chat: "群", department: "部门" };
+    const drawChips = () => {
+      chips.replaceChildren(...(members.length ? members.map((member, index) => {
+        const chip = element("span", undefined, "share-member-chip");
+        chip.append(element("span", member.name || KIND[member.type], "share-member-name"), element("small", KIND[member.type]));
+        const remove = element("button", "×"); remove.type = "button"; remove.setAttribute("aria-label", `去掉${member.name || KIND[member.type]}`);
+        remove.onclick = () => { members.splice(index, 1); drawChips(); };
+        chip.append(remove);
+        return chip;
+      }) : [element("small", "只有你自己。添加的人、群里的人、部门里的人才能打开。", "share-detail")]));
+    };
+    let searching = 0, timer = null;
+    search.oninput = () => {
+      clearTimeout(timer);
+      const text = search.value.trim();
+      if (!text) { results.replaceChildren(); return; }
+      timer = setTimeout(async () => {
+        const mine = ++searching;
+        results.replaceChildren(element("small", "正在搜索……", "share-detail"));
+        let found;
+        try { found = await api.siteMemberSearch(text); } catch (error) { if (mine === searching) results.replaceChildren(element("small", `没搜到：${error.message}`, "share-detail")); return; }
+        if (mine !== searching) return;
+        const rows = [...found.users, ...found.groups, ...found.departments];
+        results.replaceChildren(...rows.map((row) => {
+          const pick = element("button", undefined, "share-member-result"); pick.type = "button";
+          pick.append(element("strong", row.name), element("small", `${KIND[row.type]}${row.detail ? ` · ${row.detail}` : ""}`));
+          pick.onclick = () => {
+            if (members.length >= 200) { hint.textContent = "协作者最多 200 个。"; return; }
+            // One handle per person, group or department (main.js memberHandle): two people of the same name are two.
+            if (!members.some((member) => member.handle === row.handle)) members.push({ handle: row.handle, type: row.type, name: row.name });
+            search.value = ""; results.replaceChildren(); drawChips();
+          };
+          return pick;
+        }));
+        if (!rows.length) results.append(element("small", "没有找到。", "share-detail"));
+        hint.textContent = found.departmentsAvailable ? "按群邀请需要 i豆 的应用机器人在群里。" : "按群邀请需要 i豆 的应用机器人在群里。按部门邀请要等管理员同步组织架构。";
+      }, 300);
+    };
+    people.append(element("strong", "协作者"), chips, search, results, hint);
+    const showPeople = () => { people.hidden = inherit || chosen !== "invited"; };
+    const repaint = paint;
+    paint = () => { repaint(); showPeople(); };
+    drawChips(); paint();
     const note = element("p", site.kind === "table"
       ? "网页上显示的是你选定的那些字段。发布出去，就等于把这份数据交给能打开它的人。"
       : "发布的是这个目录里的静态文件。", "diff-dialog-note");
     const go = element("button", site.published ? "保存" : "发布", "primary"); go.type = "button"; go.id = "share-confirm";
+    // Who else may open it was not read from the server this time: saved as
+    // it looks, every collaborator would be taken off.
+    if (site.published && !Array.isArray(site.members)) {
+      go.disabled = true;
+      people.replaceChildren(element("strong", "协作者"), element("small", "这次没有从服务端读到协作者（服务端暂时没有答复）。刷新网站列表后再改，免得把已有的协作者去掉。", "share-detail"));
+    }
     let answer = null;
-    go.onclick = () => { answer = { scope: inherit ? "invited" : chosen, inherit, members: [] }; dialog.close(); };
-    body.append(options, note, go);
+    go.onclick = () => {
+      const invited = !inherit && chosen === "invited";
+      answer = { scope: inherit ? "invited" : chosen, inherit, members: invited ? members.map((member) => ({ handle: member.handle })) : [] };
+      dialog.close();
+    };
+    body.append(options, people, note, go);
     dialog.append(head, body);
     dialog.onclose = () => { dialog.remove(); resolve(answer); };
     document.body.append(dialog); dialog.showModal();
   });
 }
+// Drawn again when the clock says something changed -- but not under an open
+// ⋯ menu: a table read every 15 seconds closed it under the person's hand.
+// The menu closing draws what was put off.
+function redrawSites() {
+  if ($("#site-menu") && !$("#site-menu").hidden) { sitesStale = true; return Promise.resolve(); }
+  return renderLibrary().catch((cause) => error(readableError(cause)));
+}
+// One menu for the whole list, on <body>: inside the list's own scrolling it
+// was cut off at the last row. Opens below its button when there is room.
+function closeSiteMenu() {
+  const menu = $("#site-menu");
+  if (!menu || menu.hidden) return;
+  menu.hidden = true;
+  for (const toggle of document.querySelectorAll('.site-more[aria-expanded="true"]')) toggle.setAttribute("aria-expanded", "false");
+  if (sitesStale && state.section === "sites") queueMicrotask(() => { void redrawSites(); });
+}
+function openSiteMenu(toggle, items) {
+  const open = toggle.getAttribute("aria-expanded") === "true";
+  closeSiteMenu();
+  if (open) return;
+  let menu = $("#site-menu");
+  if (!menu) {
+    menu = element("div"); menu.id = "site-menu"; menu.setAttribute("role", "menu"); menu.setAttribute("aria-label", "更多操作"); menu.hidden = true;
+    document.body.append(menu);
+  }
+  menu.replaceChildren(...items.map((item) => {
+    const choice = element("button", item.label); choice.type = "button"; choice.className = item.className; choice.setAttribute("role", "menuitem");
+    if (item.danger) choice.dataset.danger = "true";
+    choice.onclick = () => { closeSiteMenu(); toggle.focus(); action(item.run); };
+    return choice;
+  }));
+  menu.hidden = false; toggle.setAttribute("aria-expanded", "true");
+  const box = toggle.getBoundingClientRect();
+  const below = innerHeight - box.bottom >= menu.offsetHeight + 14;
+  menu.style.top = below ? `${box.bottom + 6}px` : "";
+  menu.style.bottom = below ? "" : `${Math.max(8, innerHeight - box.top + 6)}px`;
+  menu.style.left = `${Math.max(8, Math.min(box.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8))}px`;
+  menu.querySelector("button")?.focus();
+}
+document.addEventListener("pointerdown", (event) => {
+  if (!$("#site-menu")?.contains(event.target) && !event.target.closest?.(".site-more")) closeSiteMenu();
+}, true);
+document.addEventListener("scroll", (event) => { if (!$("#site-menu")?.contains(event.target)) closeSiteMenu(); }, true);
+
+// A site's link to hand on (docs/sites-phase1.md §1.4): as a QR code drawn here
+// -- a link sent to a service to be drawn is a link given away -- to copy as an
+// image or save for a poster; or into a Feishu group. The QR code's link says
+// it came from one (?from=qr), for 访问统计. Sending is the person's own message,
+// so it stops at a card -- after this dialog closes, since a card behind a
+// modal dialog cannot be pressed. Resolves to { chat, note } to send, or null.
+const withQuery = (url, key, value) => `${url}${url.includes("?") ? "&" : "?"}${key}=${value}`;
+function qrPng(svg, edge) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas"); canvas.width = edge; canvas.height = edge;
+      const context = canvas.getContext("2d"); context.imageSmoothingEnabled = false; context.drawImage(image, 0, 0, edge, edge);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    image.onerror = () => reject(new Error("二维码图片没能生成"));
+    image.src = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+  });
+}
+function showSiteSharing(site) {
+  return new Promise((resolve) => {
+    const link = withQuery(site.url, "from", "qr");
+    const svg = qrSvg(link, { scale: 6 });
+    const dialog = element("dialog", undefined, "diff-dialog share-dialog sharing-dialog"); dialog.id = "site-sharing";
+    const head = element("header");
+    head.append(element("strong", `${site.name} · 二维码和发到群`));
+    const close = element("button", "关闭"); close.type = "button"; close.onclick = () => dialog.close();
+    head.append(close);
+    const body = element("div", undefined, "diff-dialog-body");
+    const said = element("p", "", "share-detail sharing-said"); said.setAttribute("role", "status");
+    const attempt = (run) => async () => { said.textContent = ""; try { said.textContent = (await run()) || ""; } catch (cause) { said.textContent = readableError(cause); } };
+    // The QR code and what to do with it.
+    const code = element("div", undefined, "sharing-code");
+    const picture = element("img"); picture.alt = `「${site.name}」的二维码，扫码打开 ${site.url}`; picture.className = "sharing-qr";
+    picture.src = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+    const beside = element("div", undefined, "sharing-beside");
+    // Shown as people read it; copied and drawn as it is sent.
+    const readable = (() => { try { return decodeURI(site.url); } catch { return site.url; } })();
+    beside.append(element("small", readable, "sharing-url"));
+    const copyLink = element("button", "复制链接"); copyLink.type = "button"; copyLink.className = "sharing-copy-link";
+    copyLink.onclick = attempt(async () => (await api.copyText(site.url)) ? "已复制链接。" : "没能复制链接。");
+    const copyImage = element("button", "复制二维码图片"); copyImage.type = "button"; copyImage.className = "sharing-copy-qr";
+    copyImage.onclick = attempt(async () => { await api.copyImage(await qrPng(svg, 600)); return "已复制二维码图片，可以直接粘贴到飞书或文档里。"; });
+    const saveImage = element("button", "保存二维码图片"); saveImage.type = "button"; saveImage.className = "sharing-save-qr";
+    saveImage.onclick = attempt(async () => { const saved = await api.saveImage({ dataUrl: await qrPng(svg, 1200), name: `${site.name}-二维码` }); return saved ? `已保存：${saved.name}` : ""; });
+    const actions = element("div", undefined, "sharing-actions"); actions.append(copyLink, copyImage, saveImage);
+    beside.append(actions, element("small", "扫码的人照样要能打开这个网站：谁可以打开，看「分享设置」。", "share-detail"));
+    code.append(picture, beside);
+    // Into a group the person is in.
+    const group = element("div", undefined, "share-members sharing-group");
+    const search = element("input"); search.type = "search"; search.id = "sharing-chat-search"; search.maxLength = 64; search.placeholder = "搜索你所在的群";
+    const results = element("div", undefined, "share-member-results");
+    const note = element("textarea"); note.id = "sharing-note"; note.maxLength = 1000; note.rows = 2; note.placeholder = "附一句话（可以不写）";
+    let chosen = null;
+    const send = element("button", "发到这个群", "primary"); send.type = "button"; send.id = "sharing-send"; send.disabled = true;
+    let searching = 0, timer = null;
+    search.oninput = () => {
+      clearTimeout(timer);
+      const text = search.value.trim();
+      if (!text) { results.replaceChildren(); return; }
+      timer = setTimeout(async () => {
+        const mine = ++searching;
+        results.replaceChildren(element("small", "正在搜索……", "share-detail"));
+        let found;
+        try { found = await api.siteChatSearch(text); } catch (cause) { if (mine === searching) results.replaceChildren(element("small", `没搜到：${readableError(cause)}`, "share-detail")); return; }
+        if (mine !== searching) return;
+        results.replaceChildren(...found.map((row) => {
+          const pick = element("button", undefined, "share-member-result sharing-chat"); pick.type = "button";
+          pick.append(element("strong", row.name), element("small", row.description || "群"));
+          pick.onclick = () => { chosen = row; search.value = row.name; results.replaceChildren(); send.disabled = false; send.textContent = `发到「${row.name}」`; };
+          return pick;
+        }));
+        if (!found.length) results.append(element("small", "没有找到你所在的这个群。", "share-detail"));
+      }, 300);
+    };
+    let answer = null;
+    send.onclick = () => { if (!chosen) return; answer = { chat: chosen.handle, note: note.value }; dialog.close(); };
+    group.append(element("strong", "发到飞书群"), search, results, note, send, element("small", "以你的身份在群里发一条消息，发之前会再确认一次。", "share-detail"));
+    body.append(code, said, group);
+    dialog.append(head, body);
+    dialog.onclose = () => { dialog.remove(); resolve(answer); };
+    document.body.append(dialog); dialog.showModal();
+  });
+}
+// Who opened a site, for the person who published it: the last 30 days, day
+// by day, the departments people came from and where they opened it. Numbers
+// only -- the server keeps nobody's name, and a department with fewer than a
+// few people is shown with the others.
+const SOURCE_WORDS = { feishu: "在飞书里打开", qr: "扫二维码", direct: "直接打开链接" };
+async function showSiteStats(site) {
+  const seen = await api.siteStats(site.id);
+  const dialog = element("dialog", undefined, "diff-dialog share-dialog stats-dialog"); dialog.id = "site-stats";
+  const head = element("header");
+  head.append(element("strong", `${site.name} · 访问统计`));
+  const close = element("button", "关闭"); close.type = "button"; close.onclick = () => dialog.close();
+  head.append(close);
+  const body = element("div", undefined, "diff-dialog-body");
+  const totals = element("div", undefined, "stats-totals");
+  const figure = (value, label) => { const box = element("div", undefined, "stats-figure"); box.append(element("strong", String(value)), element("small", label)); return box; };
+  totals.append(figure(seen.people, "人看过"), figure(seen.views, "次打开"), ...(seen.anonymous ? [figure(seen.anonymous, "次未登录访问")] : []));
+  // Each day of the period: a bar for how many people, its height to one scale.
+  const days = seen.days ?? [];
+  const most = Math.max(1, ...days.map((day) => day.people || (day.views ? 1 : 0)));
+  // Only the bars are drawn in the SVG, which is scaled to the dialog; its
+  // words are the page's, so they stay the page's size and never sit on a bar.
+  const width = 600, height = 120, gap = 2, bar = Math.max(2, (width - gap * (days.length - 1)) / Math.max(1, days.length));
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`); svg.setAttribute("preserveAspectRatio", "none"); svg.setAttribute("class", "stats-chart"); svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `近 ${days.length} 天每天看过的人数，最多一天 ${most} 人`);
+  days.forEach((day, index) => {
+    const value = day.people || (day.views ? 1 : 0);
+    const tall = value ? Math.max(2, (value / most) * height) : 1;
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute("x", String(index * (bar + gap))); rect.setAttribute("y", String(height - tall)); rect.setAttribute("width", String(bar)); rect.setAttribute("height", String(tall));
+    rect.setAttribute("class", value ? "stats-bar" : "stats-bar stats-bar-empty");
+    const tip = document.createElementNS("http://www.w3.org/2000/svg", "title"); tip.textContent = `${day.day}：${day.people} 人 · ${day.views} 次`;
+    rect.append(tip); svg.append(rect);
+  });
+  const dayLabel = (day) => (day ? day.day.slice(5).replace("-", "/") : "");
+  const chart = element("figure", undefined, "stats-figure-chart");
+  const scale = element("small", `一天最多 ${most} 人`, "stats-axis");
+  const axis = element("div", undefined, "stats-axis-row");
+  axis.append(element("small", dayLabel(days[0]), "stats-axis"), element("small", dayLabel(days.at(-1)), "stats-axis"));
+  chart.append(scale, svg, axis);
+  const departments = element("div", undefined, "stats-list");
+  departments.append(element("strong", "来自哪些部门"));
+  const people = Math.max(1, ...(seen.departments ?? []).map((row) => row.people));
+  for (const row of seen.departments ?? []) {
+    const line = element("div", undefined, "stats-row");
+    const fill = element("span", undefined, "stats-fill"); fill.style.width = `${Math.round((row.people / people) * 100)}%`;
+    const track = element("span", undefined, "stats-track"); track.append(fill);
+    line.append(element("span", row.name, "stats-name"), track, element("small", `${row.people} 人`));
+    departments.append(line);
+  }
+  if (!(seen.departments ?? []).length) departments.append(element("small", seen.people ? "看过的人还没有对应到部门（要等管理员同步组织架构）。" : "还没有人看过。", "share-detail"));
+  const sources = element("p", Object.entries(seen.sources ?? {}).filter(([, count]) => count).map(([source, count]) => `${SOURCE_WORDS[source] ?? source} ${count} 次`).join(" · ") || "还没有人打开过。", "share-detail stats-sources");
+  const note = element("p", `近 ${days.length} 天。只记人数，不记是谁；少于 ${seen.smallest ?? 3} 人的部门合在「其他部门」里。同一个人一天里打开多次算 1 人。`, "diff-dialog-note");
+  body.append(totals, chart, departments, element("strong", "从哪里打开"), sources, note);
+  dialog.append(head, body);
+  dialog.onclose = () => dialog.remove();
+  document.body.append(dialog); dialog.showModal();
+}
+// A name for a site's address, set from here: the server says at once whether
+// it is free, and the dialog stays open to try another. Resolves to whether
+// anything changed.
+function pickAddress(site) {
+  return new Promise((resolve) => {
+    const dialog = element("dialog", undefined, "diff-dialog ask-dialog address-dialog"); dialog.id = "site-address-dialog";
+    const head = element("header");
+    head.append(element("strong", `${site.name} · 地址名`));
+    const close = element("button", "取消"); close.type = "button"; close.onclick = () => dialog.close();
+    head.append(close);
+    const body = element("div", undefined, "diff-dialog-body");
+    const row = element("div", undefined, "address-row");
+    const input = element("input"); input.type = "text"; input.id = "site-address-input"; input.maxLength = 40; input.placeholder = "例如 销售周报";
+    input.value = site.address ?? "";
+    const ok = element("button", "保存", "primary"); ok.type = "button"; ok.id = "site-address-save";
+    row.append(input, ok);
+    const problem = element("p", "", "site-problems"); problem.setAttribute("role", "alert");
+    const note = element("p", "链接会变成 /s/地址名/，谁能打开不变。改名后，原来的链接还能打开。2 到 40 个字，可以用文字、数字、- 和 _。", "diff-dialog-note");
+    let changed = false;
+    const save = async (address) => {
+      problem.textContent = ""; ok.disabled = true;
+      try { await api.siteAddress({ id: site.id, address }); changed = true; dialog.close(); }
+      catch (cause) { problem.textContent = readableError(cause); }
+      finally { ok.disabled = false; }
+    };
+    ok.onclick = () => { const value = input.value.trim(); if (value) void save(value); };
+    input.onkeydown = (event) => { if (event.key === "Enter") { event.preventDefault(); ok.click(); } };
+    body.append(row, problem, note);
+    if (site.address) {
+      const plain = element("button", "不用地址名"); plain.type = "button"; plain.className = "site-address-clear";
+      plain.onclick = () => void save(null);
+      body.append(plain);
+    }
+    dialog.append(head, body);
+    dialog.onclose = () => { dialog.remove(); resolve(changed); };
+    document.body.append(dialog); dialog.showModal(); input.focus(); input.select();
+  });
+}
+// The versions a published site keeps on the server (docs/sites-phase0.md
+// §0.6): each to look at, and any but the one up to go back to. Resolves to
+// the version chosen to go back to, or null.
+async function showSiteVersions(site) {
+  const { versions } = await api.siteVersions(site.id);
+  return new Promise((resolve) => {
+    const dialog = element("dialog", undefined, "diff-dialog share-dialog"); dialog.id = "site-versions";
+    const head = element("header");
+    head.append(element("strong", `${site.name} · 历史版本`));
+    const close = element("button", "关闭"); close.type = "button"; close.onclick = () => dialog.close();
+    head.append(close);
+    const body = element("div", undefined, "diff-dialog-body");
+    const list = element("div", undefined, "site-version-list");
+    const problem = element("p", "", "site-problems"); problem.setAttribute("role", "alert");
+    let chosen = null;
+    const attempt = (run) => async () => {
+      problem.textContent = "";
+      try { await run(); } catch (cause) { problem.textContent = readableError(cause); }
+    };
+    for (const row of versions) {
+      const item = element("div", undefined, "site-version"); item.dataset.version = row.version;
+      const text = element("div", undefined, "site-version-text");
+      const when = element("strong", row.publishedAt ? `${new Date(row.publishedAt).toLocaleString("zh-CN", { hour12: false })} 发布` : "更早发布的版本");
+      if (row.current) when.append(element("span", site.offline ? "当前版本 · 网站没有上线" : "正在线上", "site-version-live"));
+      text.append(when, element("small", `${row.files} 个文件 · ${fileSize(row.bytes)}`));
+      const buttons = element("div", undefined, "site-version-actions");
+      const look = element("button", "预览"); look.type = "button"; look.className = "site-version-preview";
+      look.onclick = attempt(() => api.siteVersionPreview({ id: site.id, version: row.version }));
+      buttons.append(look);
+      if (!row.current) {
+        const back = element("button", "回到这一版"); back.type = "button"; back.className = "site-version-rollback";
+        back.onclick = () => { chosen = row.version; dialog.close(); };
+        buttons.append(back);
+      }
+      item.append(text, buttons);
+      list.append(item);
+    }
+    if (!versions.length) list.append(element("small", "服务端没有这个网站的版本记录。", "share-detail"));
+    const note = element("p", "服务端为每个网站保留最近 3 个版本。回到某一版就是把那一版重新发布：线上立刻换成它，现在的这一版也留着，可以再回来。本机目录里的文件不变。", "diff-dialog-note");
+    body.append(list, problem, note);
+    dialog.append(head, body);
+    dialog.onclose = () => { dialog.remove(); resolve(chosen); };
+    document.body.append(dialog); dialog.showModal();
+  });
+}
+// Whether the hidden sites are unfolded: kept across a redraw of the list.
+let hiddenSitesShown = false;
+// What each site is in the middle of (docs/sites-phase0.md §0.7), as the main
+// process says it: drawn on the row, the buttons that would start another
+// change held until it is done. Kept across a redraw. 预览, 复制链接 and ⋯
+// stay -- 取消发布 is what someone reaches for to stop a publish.
+const sitesWorking = new Map();
+function paintSiteWorking(row) {
+  const text = sitesWorking.get(row.dataset.site) ?? null;
+  row.querySelector(".site-progress")?.remove();
+  if (text) row.querySelector(".site-text")?.append(element("small", text, "site-progress"));
+  row.setAttribute("aria-busy", text ? "true" : "false");
+  for (const button of row.querySelectorAll(".site-publish, .site-share, .site-update, .site-republish, .site-download, .site-refresh")) button.disabled = Boolean(text);
+}
+api.onSiteProgress?.(({ id, text } = {}) => {
+  if (typeof id !== "string") return;
+  if (text) sitesWorking.set(id, String(text)); else sitesWorking.delete(id);
+  for (const row of document.querySelectorAll(".site-row[data-site]")) if (row.dataset.site === id) paintSiteWorking(row);
+});
+// Since when, rather than "last good": a read that worked and a push that did
+// not both leave the page as it was, and only the first moves lastReadAt.
+const troubleText = (trouble) => `数据没有更新：${theirWords(trouble.reason, "原因不明")}。从${agoText(trouble.since)}起已连续失败 ${trouble.failures} 次，之后会隔一段时间再试。`;
+// How long ago, the way a person says it.
+function agoText(at) {
+  const minutes = Math.floor((Date.now() - at) / 60_000);
+  if (minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} 小时前`;
+  return new Date(at).toLocaleString("zh-CN", { hour12: false });
+}
+// Only the newest drawing of the list draws: two that overlapped -- the clock's
+// and an action's own -- each appended a whole list (review of phase 0).
+let sitesDrawing = 0, sitesStale = false;
 async function renderSites(library) {
+  closeSiteMenu();
+  const drawing = ++sitesDrawing;
+  sitesStale = false;
   const rows = await api.sites().catch(() => []);
   // Whether this deployment allows a link with no sign-in at all is the
-  // server's answer, not a checkbox here.
-  const anonymousAllowed = (await api.sitePublished().catch(() => null))?.anonymousAllowed === true;
+  // server's answer, not a checkbox here; and what else it can do.
+  const served = await api.sitePublished().catch(() => null);
+  if (drawing !== sitesDrawing) return;
+  const anonymousAllowed = served?.anonymousAllowed === true;
+  const features = Array.isArray(served?.features) ? served.features : [];
   const head = element("div", undefined, "site-actions");
   const create = element("button", "新建网站", "primary"); create.type = "button"; create.id = "site-new";
   head.append(create);
   const hint = element("p", "放在这里的网站可以发布给别人打开：接了飞书表格的，数值会跟着表格走；只有文件的（比如自己写的小游戏），发布出去就能玩。页面本身在编程任务里写。", "sc-hint");
   const list = element("div", undefined, "site-list"); list.id = "site-list";
-  if (!rows.length) list.append(element("p", "还没有网站。", "sc-hint"));
+  // Hidden on this computer: still up, listed apart (docs/sites-phase0.md §0.5).
+  const shown = rows.filter((site) => !site.hidden), tucked = rows.filter((site) => site.hidden);
+  if (!shown.length) list.append(element("p", "还没有网站。", "sc-hint"));
   // The templates themselves, each openable as a live page with sample data in
   // it -- you can sort it, filter it and play the game before choosing. 妙搭's
   // case centre does the same thing, and it is the most honest thing this
@@ -3672,17 +4187,36 @@ async function renderSites(library) {
   // the second site too, and it is the one place that shows what this can look
   // like.
   const gallery = element("section", undefined, "site-gallery"); gallery.id = "site-gallery";
-  for (const site of rows) {
+  for (const site of shown) {
     const row = element("div", undefined, "site-row"); row.dataset.site = site.id;
     const text = element("div", undefined, "site-text");
     text.append(element("strong", site.name, "site-name"), element("small", siteLine(site), "site-meta"));
+    if (siteState(site)) text.append(element("small", siteState(site), "site-problems site-state"));
     // What 发布 would refuse, named here first rather than by the refusal.
     if (site.problems?.length) text.append(element("small", sitePublishWarning(site.problems), "site-problems"));
+    // Its automatic reading keeps failing: the page is showing old numbers.
+    if (site.refreshTrouble) text.append(element("small", troubleText(site.refreshTrouble), "site-problems site-refresh-trouble"));
+    if (site.note) text.append(element("small", site.note, "site-meta site-note"));
     const actions = element("div", undefined, "site-row-actions");
     // Looking comes before deciding who else may look, so it comes first here.
+    // A site only the server has is looked at as it is up there.
     const look = element("button", "预览"); look.type = "button"; look.className = "site-preview";
-    look.onclick = () => action(() => api.sitePreview(site.id));
+    look.onclick = () => action(() => site.remote ? api.siteVersionPreview({ id: site.id, version: null }) : api.sitePreview(site.id));
     actions.append(look);
+    // Nothing of it on this computer to edit: it comes here first.
+    if (site.remote) {
+      const take = element("button", "下载到这台电脑"); take.type = "button"; take.className = "site-download";
+      take.title = "把线上的这一版放进这台电脑的一个新目录，之后可以用编程任务修改、再更新线上。";
+      take.onclick = () => action(async () => {
+        const made = await api.siteDownload(site.id);
+        if (!made) return;
+        await renderLibrary();
+        const arrived = document.querySelector(`.site-row[data-site="${made.id}"]`);
+        arrived?.scrollIntoView({ block: "center" }); arrived?.classList.add("site-row-new");
+        if (made.sourced) arrived?.querySelector(".site-text")?.append(element("small", "这个网站接了飞书表格：线上的数据照旧由发布它的那台电脑读取；这台电脑只改页面。", "site-meta site-note"));
+      });
+      actions.append(take);
+    }
     const edit = element("button", "用编程任务修改"); edit.type = "button"; edit.className = "site-edit";
     // The page is written in a coding task, on this site's own folder: the
     // section owns what the site is, the coding task owns how it is built.
@@ -3693,26 +4227,34 @@ async function renderSites(library) {
       render();
       $("#prompt").focus();
     });
-    actions.append(edit);
-    if (site.kind === "table") {
+    if (!site.remote) actions.append(edit);
+    if (site.readsHere) {
       const refresh = element("button", "重新读取"); refresh.type = "button"; refresh.className = "site-refresh";
       refresh.onclick = () => action(async () => { await api.siteRefresh(site.id); await renderLibrary(); });
       actions.append(refresh);
     }
+    // What is used less often sits behind ⋯ (siteMenu): a row of nine buttons
+    // wrapped in the middle of words.
+    const more = [];
     // Changing the look afterwards. A style is one stylesheet, so this replaces
     // one file and leaves the page's structure and behaviour alone.
-    if (site.kind === "table" || site.style) {
-      const restyle = element("button", "换风格"); restyle.type = "button"; restyle.className = "site-restyle";
-      restyle.onclick = () => action(async () => {
+    if (!site.remote && (site.kind === "table" || site.style)) {
+      more.push({ label: "换风格", className: "site-restyle", run: async () => {
         const style = await pickStyle(site);
         if (!style) return;
         const done = await api.siteRestyle({ id: site.id, style });
         if (!done) return;
         await renderLibrary();
         await api.sitePreview(site.id).catch(() => {});
-      });
-      actions.append(restyle);
+      } });
     }
+    // The versions the server keeps (docs/sites-phase0.md §0.6).
+    // Going back stops at a card, and a card behind a modal dialog cannot be
+    // pressed: the dialog closes first, as the sharing panel does before 发布.
+    if (site.published && features.includes("versions")) more.push({ label: "历史版本", className: "site-versions", run: async () => {
+      const version = await showSiteVersions(site);
+      if (version && await api.siteRollback({ id: site.id, version })) await renderLibrary();
+    } });
     const publish = element("button", site.published && !site.offline ? "分享设置" : site.published ? "分享设置" : "发布");
     publish.type = "button"; publish.className = site.published ? "site-share" : "site-publish";
     publish.onclick = () => action(async () => {
@@ -3722,7 +4264,9 @@ async function renderSites(library) {
       if (done) await renderLibrary();
     });
     actions.append(publish);
-    if (site.published && site.offline) {
+    if (site.published && site.held) {
+      // Held by an administrator: nothing here brings it back.
+    } else if (site.published && site.offline && !site.review) {
       // Taken offline, not deleted: the version is still there, so putting it
       // back is one click and not another upload.
       const back = element("button", "重新发布", "primary"); back.type = "button"; back.className = "site-republish";
@@ -3733,31 +4277,77 @@ async function renderSites(library) {
       // this machine until this is pressed. Without it, editing a published
       // site in a coding task -- or changing its style -- changed nothing
       // anybody else could see, and nothing said so.
-      const update = element("button", "更新线上"); update.type = "button"; update.className = "site-update";
-      update.onclick = () => action(async () => { if (await api.sitePublish({ id: site.id })) await renderLibrary(); });
-      actions.append(update);
+      if (!site.remote) {
+        const update = element("button", "更新线上"); update.type = "button"; update.className = "site-update";
+        update.onclick = () => action(async () => { if (await api.sitePublish({ id: site.id })) await renderLibrary(); });
+        actions.append(update);
+      }
       const link = element("button", "复制链接"); link.type = "button"; link.className = "site-link";
       link.onclick = () => action(async () => {
         if (!await api.copyText(site.url)) throw new Error("没能复制链接");
         link.textContent = "已复制"; setTimeout(() => { link.textContent = "复制链接"; }, 1500);
       });
-      const down = element("button", "取消发布"); down.type = "button"; down.className = "site-unpublish";
-      down.onclick = () => action(async () => { if (await api.siteUnpublish(site.id)) await renderLibrary(); });
-      actions.append(link, down);
+      actions.append(link);
+      more.push({ label: "取消发布", className: "site-unpublish", run: async () => { if (await api.siteUnpublish(site.id)) await renderLibrary(); } });
     }
-    const forget = element("button", "移出列表", "row-action"); forget.type = "button"; forget.className = "site-forget";
-    forget.onclick = () => action(async () => { if (await api.siteForget(site.id)) await renderLibrary(); });
-    actions.append(forget);
+    // Sharing its link (docs/sites-phase1.md §1.4): a QR code, or into a group.
+    if (site.published && !site.held && site.url) more.push({ label: "二维码和发到群", className: "site-share-out", run: async () => {
+      const send = await showSiteSharing(site);
+      if (send && await api.siteSendToChat({ id: site.id, ...send })) await renderLibrary();
+    } });
+    // Who opened it (docs/sites-phase1.md §1.5).
+    if (site.published && features.includes("stats")) more.push({ label: "访问统计", className: "site-stats", run: () => showSiteStats(site) });
+    // A link people can say and remember (docs/sites-phase1.md §1.6).
+    if (site.published && features.includes("addresses")) more.push({ label: site.address ? "改地址名" : "起地址名", className: "site-address", run: async () => {
+      if (await pickAddress(site)) await renderLibrary();
+    } });
+    // A published site is on the server whatever this list says: it is taken
+    // out of this computer's list and stays up, or it is deleted there.
+    if (site.published) {
+      if (!site.remote) more.push({ label: "只在这台电脑隐藏", className: "site-hide", run: async () => { await api.siteHide(site.id); await renderLibrary(); } });
+      more.push({ label: "下线并删除", className: "site-erase", danger: true, run: async () => { if (await api.siteErase(site.id)) await renderLibrary(); } });
+    } else {
+      // A folder the application made can go to the Trash with its site; one of
+      // the person's own only leaves the list (main.js site-delete).
+      if (site.deletable) more.push({ label: "删除", className: "site-delete", danger: true, run: async () => { if (await api.siteDelete(site.id)) await renderLibrary(); } });
+      more.push({ label: "移出列表", className: "site-forget", danger: true, run: async () => { if (await api.siteForget(site.id)) await renderLibrary(); } });
+    }
+    const toggle = element("button", "⋯"); toggle.type = "button"; toggle.className = "site-more";
+    toggle.setAttribute("aria-haspopup", "menu"); toggle.setAttribute("aria-expanded", "false"); toggle.setAttribute("aria-label", `「${site.name}」的更多操作`);
+    toggle.onclick = () => openSiteMenu(toggle, more);
+    actions.append(toggle);
     row.append(text, actions);
+    paintSiteWorking(row);
     list.append(row);
+  }
+  // Hidden on this computer, still up: listed apart, folded until asked for.
+  const apart = element("section", undefined, "site-hidden"); apart.id = "site-hidden";
+  if (tucked.length) {
+    const fold = element("button", `只在这台电脑隐藏的网站（${tucked.length} 个，照常在线）`, "site-hidden-toggle"); fold.type = "button";
+    const hiddenList = element("div", undefined, "site-list site-hidden-list"); hiddenList.hidden = !hiddenSitesShown;
+    fold.setAttribute("aria-expanded", String(hiddenSitesShown));
+    fold.onclick = () => { hiddenSitesShown = !hiddenSitesShown; hiddenList.hidden = !hiddenSitesShown; fold.setAttribute("aria-expanded", String(hiddenSitesShown)); };
+    for (const site of tucked) {
+      const row = element("div", undefined, "site-row"); row.dataset.site = site.id;
+      const text = element("div", undefined, "site-text");
+      text.append(element("strong", site.name, "site-name"), element("small", `${site.offline ? "已下线" : "照常在线"}${site.readsHere ? " · 数据照常读取（应用开着时）" : ""} · 目录：${site.path}`, "site-meta"));
+      if (site.refreshTrouble) text.append(element("small", troubleText(site.refreshTrouble), "site-problems site-refresh-trouble"));
+      const back = element("button", "取消隐藏"); back.type = "button"; back.className = "site-unhide";
+      back.onclick = () => action(async () => { await api.siteUnhide(site.id); await renderLibrary(); });
+      const actions = element("div", undefined, "site-row-actions"); actions.append(back);
+      row.append(text, actions); hiddenList.append(row);
+    }
+    apart.append(fold, hiddenList);
   }
   create.onclick = () => action(async () => {
     const template = await pickTemplate();
-    if (template) await createSite(template, template.style);
+    if (template?.material) await createFromMaterial(template.material, template.style);
+    else if (template) await createSite(template, template.style);
   });
-  library.append(hint, head, list, gallery);
+  library.append(hint, head, list, apart, gallery);
   {
     const offered = await api.siteTemplates(siteStyleChoice()).catch(() => null);
+    if (drawing !== sitesDrawing) return;
     if (offered) {
       const bar = element("div", undefined, "style-bar");
       const grid = element("div", undefined, "template-list");
@@ -3859,10 +4449,10 @@ function pickStyle(site) {
 
 // Making one, from either place it can be started: the picker, or a card on the
 // section's front page.
-async function createSite(template, style) {
+async function createSite(template, style, given = null) {
   let made = null;
   if (template.table) {
-    const url = await askForText(`${template.name} · 选一张表`, "贴一个多维表格或电子表格的链接");
+    const url = given ?? await askForText(`${template.name} · 选一张表`, "贴一个多维表格或电子表格的链接");
     if (!url) return;
     const picked = await pickSlice(url);
     if (!picked) return;
@@ -3913,11 +4503,60 @@ function pickTemplate() {
       })));
     };
     await paint();
-    body.append(styleBar, list);
+    // 从材料开始 (docs/sites-phase1.md §1.3): something the person already
+    // has, turned into a site by a coding task -- in the style chosen above.
+    const materials = element("div", undefined, "material-list"); materials.id = "material-list";
+    for (const row of SITE_MATERIALS) {
+      const card = element("button", undefined, "material-card"); card.type = "button"; card.dataset.material = row.id;
+      card.append(element("strong", row.name), element("small", row.summary));
+      card.onclick = () => { answer = { material: row.id, style }; dialog.close(); };
+      materials.append(card);
+    }
+    body.append(element("h3", "从材料开始", "dialog-section-title"), materials,
+      element("p", "在任务对话里，也可以直接让智能体「把这些做成网站」，它做好后会问你要不要发布。", "sc-hint"),
+      element("h3", "或者从模板开始", "dialog-section-title"), styleBar, list);
     dialog.append(head, body);
     dialog.onclose = () => { dialog.remove(); resolve(answer); };
     document.body.append(dialog); dialog.showModal();
   }).catch(reject); });
+}
+const SITE_MATERIALS = [
+  { id: "link", name: "飞书文档或知识库", summary: "贴一个链接，按文档的内容做成网站。" },
+  { id: "folder", name: "本机文件夹", summary: "选一个放着资料的文件夹，只读不改。" },
+  { id: "text", name: "一段描述", summary: "说说想做个什么网站。" },
+  { id: "table", name: "多维表格或电子表格", summary: "接一张表，数值跟着表格走。" },
+];
+// A site from material: its folder made with the chosen style, then a coding
+// task on it given the first message -- which the person has just said, in
+// these dialogs, is what they want. A table link goes the table's own way.
+async function createFromMaterial(kind, style) {
+  const dashboard = { id: "dashboard", name: "表格看板", table: true };
+  if (kind === "table") return createSite(dashboard, style);
+  let input = null, suggested = "";
+  if (kind === "link") {
+    const link = await askForText("从飞书文档开始", "贴一个飞书文档或知识库的链接");
+    if (!link) return;
+    input = { kind, link };
+    if ((await api.siteFromMaterial({ ...input, check: true })).table) return createSite(dashboard, style, link);
+  } else if (kind === "folder") {
+    const picked = await api.siteMaterialFolder();
+    if (!picked) return;
+    input = { kind, handle: picked.handle }; suggested = picked.name;
+  } else {
+    const description = await askForText("想做个什么网站？", "比如：给新同事的入职指南，讲报销、请假和常用系统");
+    if (!description) return;
+    input = { kind, description };
+  }
+  const name = await askForText("起个名字", "网站名字", suggested);
+  if (!name) return;
+  const made = await api.siteFromMaterial({ ...input, name, style });
+  if (made?.table) return createSite(dashboard, style, made.link);
+  const created = await api.createTask({ mode: "coding", workspaceId: made.workspaceId, permission: preferredPermission() });
+  await api.send(created.id, made.prompt);
+  // Called what it is making, not after the start of its first message --
+  // after it is sent, since the first message names a task (task-service.js).
+  await api.renameTask(created.id, made.name).catch(() => {});
+  await openSkillTask(created, "coding");
 }
 // Which style was last chosen. A convenience only -- it is never the reason a
 // site looks one way, that is written into the site's own site.css.
@@ -3929,7 +4568,7 @@ function rememberSiteStyle(value) {
 }
 // One line of text, asked for in the page rather than in a native prompt: the
 // renderer has no `prompt()` and a native dialog cannot be driven in a smoke.
-function askForText(title, placeholder) {
+function askForText(title, placeholder, initial = "") {
   return new Promise((resolve) => {
     const dialog = element("dialog", undefined, "diff-dialog ask-dialog");
     const head = element("header");
@@ -3937,9 +4576,11 @@ function askForText(title, placeholder) {
     const close = element("button", "取消"); close.type = "button"; close.onclick = () => { dialog.close(); resolve(null); };
     head.append(close);
     const body = element("div", undefined, "diff-dialog-body");
-    const input = element("input"); input.type = "text"; input.id = "ask-input"; input.placeholder = placeholder;
+    const input = element("input"); input.type = "text"; input.id = "ask-input"; input.placeholder = placeholder; input.value = initial;
     const ok = element("button", "确定", "primary"); ok.type = "button"; ok.id = "ask-ok";
-    const done = () => { const value = input.value.trim(); if (!value) return; dialog.close(); resolve(value); };
+    // Gone at once, not when its close event comes round: the next question
+    // may be asked straight after, and two of these at a time share their ids.
+    const done = () => { const value = input.value.trim(); if (!value) return; dialog.close(); dialog.remove(); resolve(value); };
     ok.onclick = done;
     input.onkeydown = (event) => { if (event.key === "Enter") { event.preventDefault(); done(); } };
     body.append(input, ok);
@@ -3963,13 +4604,21 @@ function pickSlice(url) {
     const body = element("div", undefined, "diff-dialog-body");
     const picked = new Set();
     const nameInput = element("input"); nameInput.type = "text"; nameInput.id = "site-name"; nameInput.placeholder = "网站名字";
-    const rowsInput = element("input"); rowsInput.type = "number"; rowsInput.min = "1"; rowsInput.max = "5000"; rowsInput.value = "500"; rowsInput.id = "table-rows";
+    const rowsInput = element("input"); rowsInput.type = "number"; rowsInput.min = "1"; rowsInput.max = "20000"; rowsInput.value = "500"; rowsInput.id = "table-rows";
     const refresh = element("select"); refresh.id = "table-refresh";
     // 15 秒是切片本来就允许的下限：一张 5000 行的表分页读也只有 1.7 次/秒，远在
     // 飞书的速率之下，而一块盯着看的看板需要的就是这个。
     for (const [value, label] of [[15, "每 15 秒"], [60, "每分钟"], [300, "每 5 分钟"], [1800, "每 30 分钟"], [3600, "每小时"]]) {
       const option = element("option", label); option.value = String(value); refresh.append(option);
     }
+    // 超过 5000 行的表最快每分钟读一次，读飞书的节奏和 5000 行每 15 秒一样
+    // （table-slice.js 的 bigRows，那里才是真正拦的地方）：更快的选项不给选，
+    // 而不是选了再被拒。
+    rowsInput.oninput = () => {
+      const big = Number(rowsInput.value) > 5000;
+      for (const option of refresh.options) option.disabled = big && Number(option.value) < 60;
+      if (refresh.selectedOptions[0]?.disabled) refresh.value = "60";
+    };
     const build = element("button", "读取并建站", "primary"); build.type = "button"; build.id = "table-build";
     const note = element("p", "", "diff-dialog-note"); note.id = "table-note";
     const fields = element("div", undefined, "table-fields"); fields.id = "table-fields";
@@ -4754,7 +5403,10 @@ api.onChange((snapshot) => {
 // A table a site follows changed and the background read has landed. Redraw
 // only when that list is what the person is looking at: the numbers in it went
 // stale the moment the read finished, and a section they are not on can wait.
-api.onSitesChange(() => { if (state.section === "sites") void action(renderLibrary); });
+// Redrawn in the background: what the person was last told -- a publish that
+// timed out, one refused because the site changed while it was checked -- stays
+// up; only their own next action replaces it (fourth review before .270).
+api.onSitesChange(() => { if (state.section === "sites") void redrawSites(); });
 api.onPreviewNavigation?.((page) => {
   if (state.tab !== "browser" || !state.preview || page?.taskId !== state.taskId || page.previewId !== state.previewPage?.previewId) return;
   state.previewPage = page; $("#preview-title").textContent = page.title; $("#preview-address").textContent = page.address; renderContext();
@@ -4894,6 +5546,8 @@ await action(async () => {
   // Under draftKey(), as switchSection does: a start straight into a Feishu
   // section must know the cowork draft's revision before its composer saves.
   await restoreTaskUi(); await updateConnection(); await loadPermissionModes(); render();
+  // The administrators' word on 完全访问 can change while the app is open.
+  api.onPermissionModesChanged?.(() => { void loadPermissionModes(); });
   const warnings = [...state.snapshot.warnings, ...navigation.warnings]; if (warnings.length) error(warnings.join("\n"));
 });
 if (state.section === "coding") await action(() => loadRecentProjects(viewEpoch));
@@ -4902,4 +5556,15 @@ if (logoutNotice) { sessionStorage.removeItem("logout-notice"); error(logoutNoti
 setInterval(() => updateConnection().catch(() => {}), 30_000);
 // A running turn produces no snapshot change while the model is thinking, so
 // the elapsed-time label needs its own tick to keep moving.
-setInterval(() => { if (RUNNING_STATUSES.has(task()?.status) && !$("#conversation").hidden) renderConversation(); }, 1000);
+// ...but not while somebody types into a card in it: a repaint would take the
+// field out from under an input method's half-typed word. The task is waiting
+// for that answer anyway; only the clock moves.
+setInterval(() => {
+  const current = task();
+  if (!RUNNING_STATUSES.has(current?.status) || $("#conversation").hidden) return;
+  if (document.activeElement?.closest?.(".approval") && document.activeElement.dataset.focusKey) {
+    $("#task-status").textContent = `${statuses[current.status]} · ${elapsed(current.startedAt ?? current.updatedAt)}`;
+    return;
+  }
+  renderConversation();
+}, 1000);

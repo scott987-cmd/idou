@@ -19,6 +19,7 @@ import { UnattendedConsent } from "./unattended-consent.js";
 import { ScheduleReportArchive, ScheduleArchiveError, reportCandidates } from "./schedule-report-archive.js";
 import { ScheduleDelivery } from "./schedule-delivery.js";
 import { ScheduleReminders } from "./schedule-reminders.js";
+import { runTrail, scheduleTrail, unattendedTrail } from "./audit-trail.js";
 
 // Everything a scheduled task needs, assembled in one place: the rules on disk,
 // the clock that reads them, the container each run happens in, the one address
@@ -170,6 +171,11 @@ export async function startScheduledTasks({
   // Told how each run ended, each bot push and each suspension -- never what a
   // run said -- for the administrators' checks (health-monitor.js).
   observe = () => {},
+  // A line for the administration console's audit trail (audit-trail.js):
+  // who changed which task, and how each run ended.
+  trail = () => {},
+  // What the administrators allow each person (policy.js); asked per run too.
+  policy = null,
 } = {}) {
   // `sourceAccess` is optional on purpose. Without it a schedule can still be
   // written, listed and deleted -- it simply cannot run, and says so at every
@@ -293,7 +299,10 @@ export async function startScheduledTasks({
     if (!provider) throw new Error("无人值守定时任务需要飞书登录提供方");
     const credentials = openCredentials ? await openCredentials() : await UnattendedCredentialStore.open({ directory: path.join(dataDir, "unattended"), now });
     unattendedConsent = new UnattendedConsent({ store: credentials, sessions, provider, allowedTenants,
-      windowDays: unattended.windowDays, now, audit: (event) => log(JSON.stringify({ component: "schedule-unattended", ...event })) });
+      windowDays: unattended.windowDays, now, audit: (event, context) => {
+        log(JSON.stringify({ component: "schedule-unattended", ...event }));
+        const row = unattendedTrail(event, context); if (row) trail(row);
+      } });
     const held = await credentials.count();
     log(`定时任务：无人值守运行已开启（最长 ${unattended.windowDays} 天），当前保存了 ${held} 份长效凭据于 ${credentials.directory === "postgres" ? "共享数据库" : path.join(dataDir, "unattended")}。`);
   }
@@ -306,6 +315,7 @@ export async function startScheduledTasks({
     onEvent: (event) => {
       if (event.kind === "suspended") { reminders.suspended(event.schedule, event.reason); observe("suspended", event.reason ?? null); }
       else if (["completed", "failed"].includes(event.kind)) observe(event.kind);
+      const row = runTrail(event); if (row) trail(row);
     },
     // A scheduled task only ever runs inside the lifetime of the login that
     // created it. `sourceAccess` is the only thing that knows whether one is
@@ -319,6 +329,10 @@ export async function startScheduledTasks({
     // granted the session-scoped consent, a run uses that identity and no
     // refresh token is spent -- the durable credential is not even read.
     authorize: async (schedule) => {
+      // Turned off for this person by an administrator: suspended, and said so.
+      if (policy && !(await policy.permits({ tenantId: schedule.tenant, userId: schedule.owner }, "scheduledTasks"))) {
+        return { ok: false, reason: "管理员关闭了你的定时任务，任务已暂停。" };
+      }
       const live = liveSession(schedule.tenant, schedule.owner);
       if (live?.token) return { ok: true, parentToken: live.token };
       if (!unattendedConsent) return { ok: false, reason: "登录已过期或未授权定时任务，任务已暂停，重新登录并授权后自动恢复" };
@@ -333,7 +347,8 @@ export async function startScheduledTasks({
     // refused like any other write, logged once, and the run is unaffected.
     notify: notifyOwner({ push, store, bot, log, observe }) });
 
-  const service = new ScheduleService({ sessions, store, scheduler, consent, allowDevelopment, unattended: unattendedConsent, grants, feishu, resourceResolver: sourceAccess, push, now });
+  const service = new ScheduleService({ sessions, store, scheduler, consent, allowDevelopment, unattended: unattendedConsent, grants, feishu, resourceResolver: sourceAccess, push, now, policy,
+    audit: (event, context) => { const row = scheduleTrail(event, context); if (row) trail(row); } });
   // Containers and run tokens outlive a control plane that was killed; both are
   // cleared at start rather than left to expire on their own.
   let recoverySafe = false;

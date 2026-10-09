@@ -9,6 +9,7 @@ import { agentKnowledgeActions } from "../src/application/agent-knowledge-action
 import { agentMediaActions } from "../src/application/agent-media-actions.js";
 import { agentDeliveryActions } from "../src/application/agent-delivery-actions.js";
 import { agentScheduleActions } from "../src/application/agent-schedule-actions.js";
+import { agentSiteActions } from "../src/application/agent-site-actions.js";
 
 // Found by a real send to a real group: the Agent's request died while the
 // person's confirmation card was still on screen. The bridge created an abort
@@ -75,6 +76,7 @@ function applicationBridge({ getScope, confirm }) {
     ...agentFeishuActions({ getScope, confirm }), ...agentKnowledgeActions({ getScope }),
     ...agentMediaActions({ getScope, confirm, openPreview: never }), ...agentDeliveryActions({ getScope, confirm }),
     ...agentScheduleActions({ getSchedules: () => null, confirm, confirmRemoval: confirm, openDraft: never, unattended: () => false }),
+    ...agentSiteActions({ getScope, confirm, sites: { publishFolder: never, list: never } }),
   }, readOnly: [...AGENT_READS] });
 }
 function ask(env, action, params) {
@@ -114,10 +116,10 @@ test("a job's status is answered while the same task's stop-card is still up", a
 test("the reads the bridge lets through beside a card are exactly the operations that never ask", () => {
   // Each of these raises a card or a dialog; none may run beside another write.
   for (const write of ["doc-replace", "doc-create", "doc-append", "run", "event-delete", "task-delete", "media-create", "media-save", "media-cancel",
-    "doc-share", "schedule-draft", "schedule-pause", "schedule-resume", "schedule-delete", "schedule-run-now"]) {
+    "doc-share", "schedule-draft", "schedule-pause", "schedule-resume", "schedule-delete", "schedule-run-now", "site-publish"]) {
     assert.equal(AGENT_READS.includes(write), false, `${write} asks the person and must stay the task's one write in flight`);
   }
-  for (const read of ["kb-search", "kb-read", "media-status", "media-preview", "media-verify", "media-folder", "doc-share-search", "doc-share-members", "schedule-list"]) {
+  for (const read of ["kb-search", "kb-read", "media-status", "media-preview", "media-verify", "media-folder", "doc-share-search", "doc-share-members", "schedule-list", "site-list"]) {
     assert.ok(AGENT_READS.includes(read), `${read} only reads and must not wait behind a card`);
   }
 });

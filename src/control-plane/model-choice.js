@@ -124,7 +124,9 @@ export class ModelChoiceService {
   async offered(who) {
     const visible = this.visibility ? await this.visibility.visible(who) : null;
     if (!visible) return [...this.models];
-    const narrowed = this.models.filter((model) => visible.includes(model));
+    // In the policy's order: the default it names first (policy.js), then the
+    // server's order -- which is all the file's rules ever give.
+    const narrowed = visible.filter((model) => this.models.includes(model));
     return narrowed.length ? narrowed : [this.models[0]];
   }
 

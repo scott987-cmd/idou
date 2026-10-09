@@ -23,6 +23,18 @@ test("work approvals lead with the business action and keep the command as detai
   assert.match(unknown.detail, /custom-tool/);
 });
 
+// 2026-10-08: an MCP card was headed 「确认 MCP 工具调用」 and showed its server's
+// id, `browser`, as a line of its own by 允许这一次. It is headed the way its
+// step is (使用工具, cowork-timeline.js), names the connector only by title,
+// and a command still shows the folder it runs in.
+test("an MCP card is headed in the person's words and never shows the server's id", () => {
+  const card = approvalPresentation({ kind: "mcp", reason: "「浏览器操作」想运行「browser_preview」", command: '{\n  "path": "index.html"\n}', cwd: "browser", tool: "browser_preview", target: "浏览器操作" }, "coding");
+  assert.deepEqual([card.title, card.target, card.note], ["确认使用工具", "浏览器操作", ""]);
+  assert.match(card.detail, /index\.html/);
+  assert.equal(approvalPresentation({ kind: "mcp", cwd: "browser" }, "coding").target, "", "no title, no server id in its place");
+  assert.equal(approvalPresentation({ kind: "command", command: "npm test", cwd: "/repo" }, "coding").note, "/repo");
+});
+
 test("task-bound application confirmations are hidden from every other task", () => {
   assert.equal(confirmationVisibleForTask({ taskId: "task-a", status: "pending" }, "task-a"), true);
   assert.equal(confirmationVisibleForTask({ taskId: "task-a", status: "pending" }, "task-b"), false);

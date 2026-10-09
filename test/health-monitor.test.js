@@ -184,6 +184,44 @@ test("an alert goes to each administrator through the bot, and counts as told wh
   assert.match(logged[0], /alert-not-sent.*230013/);
   const nobody = alertAdministrators({ directory: { recipients: async () => ["ou_gone"] }, bot });
   assert.equal(await nobody("x"), false, "nobody reached: tried again at the next sweep");
+  // Each one sent is kept for the console's list, with how many got it.
+  const kept = [];
+  const listed = alertAdministrators({ directory: { recipients: async () => ["ou_one", "ou_gone"] }, bot, sent: (entry) => kept.push(entry) });
+  await listed("i豆 服务端严重告警：备份失败", { level: "critical" });
+  assert.deepEqual(kept, [{ text: "i豆 服务端严重告警：备份失败", level: "critical", recipients: 2, reached: 1 }]);
+});
+
+// docs/service-status.md §3: every sweep is kept, so the page can say since when.
+test("every sweep's answers are handed on to be kept, and failing to keep them fails nothing", async () => {
+  const kept = [], logged = [];
+  const check = { name: "disk", label: "数据盘", run: () => ({ level: "warning", summary: "数据盘还剩 1.5 GB" }) };
+  const health = new HealthMonitor({ checks: [check], record: (status) => kept.push(status), log: (line) => logged.push(line) });
+  await health.sweep();
+  assert.deepEqual(kept.map((status) => status.checks.map((entry) => [entry.name, entry.level])), [[["disk", "warning"]]]);
+  const broken = new HealthMonitor({ checks: [check], record: () => { throw new Error("database gone"); }, log: (line) => logged.push(line) });
+  assert.equal((await broken.sweep()).level, "warning");
+  assert.match(logged.at(-1), /history-not-kept/);
+});
+
+// docs/service-status.md §4: the last backup, from what bin/backup.js wrote beside it.
+test("backup: fine within a day and a half of one that worked, then a warning, then critical; one that failed is critical", async () => {
+  const { backupCheck } = await import("../src/control-plane/health-monitor.js");
+  const at = Date.parse("2026-10-03T08:00:00Z");
+  const success = (hoursAgo) => ({ ok: true, endedAt: new Date(at - hoursAgo * 3600_000).toISOString(), files: 41, bytes: 52 * 1048576, sealed: true, shipped: true });
+  const level = async (status) => backupCheck({ dir: "/home/idou/backups", now: () => at, read: async () => status }).run();
+  const none = await level(null);
+  assert.equal(none.level, "warning");
+  assert.match(none.summary, /还没有备份记录/);
+  const fine = await level({ last: success(20), lastSuccess: success(20) });
+  assert.deepEqual([fine.level, fine.value], ["ok", 20 * 3600]);
+  assert.match(fine.summary, /20 小时前，41 个文件，52\.0 MB，加密副本已送出/);
+  assert.equal((await level({ last: success(40), lastSuccess: success(40) })).level, "warning");
+  assert.equal((await level({ last: success(80), lastSuccess: success(80) })).level, "critical");
+  const failed = await level({ last: { ok: false, endedAt: new Date(at).toISOString(), error: "pg_dump 没有完成" }, lastSuccess: success(2) });
+  assert.equal(failed.level, "critical");
+  assert.match(failed.summary, /最近一次备份失败了（pg_dump 没有完成），最近一次成功是 2 小时前/);
+  const coordinator = (await import("../src/control-plane/health-monitor.js")).coordinatorChecks({ dataDirectory: "/var/lib/idou", backupDir: "/home/idou/backups" });
+  assert.deepEqual(coordinator.map((check) => check.name), ["disk", "backup"]);
 });
 
 test("the coordinator checks what this server has, and nothing it does not", async () => {

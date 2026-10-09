@@ -27,6 +27,12 @@ function commandIntent(command) {
   if (has("schedule-list")) return ["读取定时任务", ""];
   if (has("schedule-draft")) return ["准备定时任务", ""];
   if (has("schedule-pause", "schedule-resume", "schedule-delete", "schedule-run-now")) return ["更新定时任务", ""];
+  if (has("event-delete")) return ["删除飞书日程", ""];
+  if (has("task-delete")) return ["删除飞书任务", ""];
+  if (has("site-publish")) return ["发布网站", option("site-publish", "name")];
+  if (has("site-list")) return ["查看我的网站", ""];
+  if (has("skill-enable")) return ["启用技能", basename(option("skill-enable", "dir"))];
+  if (has("run")) return ["处理飞书内容", ""];
   if (shortcut?.domain === "calendar" && ["agenda", "freebusy", "suggestion", "search-event", "get"].includes(shortcut.verb)) return ["读取飞书日程", ""];
   if (shortcut?.domain === "task" && ["get-my-tasks", "get-related-tasks", "search", "tasklist-search"].includes(shortcut.verb)) return ["读取飞书任务", ""];
   if (shortcut?.domain === "sheets") return ["处理飞书电子表格", ""];

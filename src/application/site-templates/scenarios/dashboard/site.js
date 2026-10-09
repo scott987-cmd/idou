@@ -6,7 +6,17 @@
   "use strict";
   var BLANK = "未填写";
   var fields = Table.fields();
-  var numeric = fields.filter(function (field) { return field.kind === "number"; });
+  // 能加起来的数字列：百分比（占比、完成度）加起来没有意义，不放进合计。
+  function summable(field) {
+    if (field.kind !== "number") return false;
+    var rows = Table.rows();
+    for (var i = 0; i < rows.length; i += 1) {
+      var cell = rows[i].cell(field.name);
+      if (cell && typeof cell.value === "number") return cell.style !== "percent";
+    }
+    return true;
+  }
+  var numeric = fields.filter(summable);
   var q = document.getElementById("q");
   // 排序和分类筛选的当前状态。都是页面自己的事，不回头去读表。
   var sort = { field: null, direction: 1 };
@@ -159,31 +169,51 @@
     return (numeric ? (left < right ? -1 : 1) : String(left).localeCompare(String(right), "zh-CN")) * sort.direction;
   }
 
-  function draw() {
+  // A page at a time: thousands of rows drawn at once took a second and more,
+  // and every keystroke drew them all again (2026-10-04). 显示更多 draws the
+  // next page; a new search, filter or sort starts from the first.
+  var PAGE = 100, shown = PAGE, waiting = null;
+  var more = document.createElement("button"); more.type = "button"; more.className = "more"; more.hidden = true;
+  more.addEventListener("click", function () { shown += PAGE; draw(true); });
+  function drawMore(total, after) {
+    var rest = total - shown;
+    more.hidden = rest <= 0;
+    more.textContent = rest > 0 ? "再显示 " + Math.min(PAGE, rest) + " 条（还有 " + rest + " 条）" : "";
+    if (more.parentNode !== after.parentNode || more.previousSibling !== after) after.parentNode.insertBefore(more, after.nextSibling);
+  }
+  function typed() { clearTimeout(waiting); waiting = setTimeout(function () { draw(); }, 150); }
+
+  function draw(keep) {
+    if (!keep) shown = PAGE;
     var needle = (q.value || "").trim().toLowerCase();
     var rows = Table.rows().filter(function (row) {
       if (facet && picked && row.text(facet.field.name).trim() !== picked) return false;
       if (!needle) return true;
-      return fields.some(function (field) { return row.text(field.name).toLowerCase().indexOf(needle) >= 0; });
+      return row.matches(needle);
     }).sort(compare);
     drawChart(rows);
     rowsBody.replaceChildren();
-    rows.forEach(function (row) {
+    rows.slice(0, shown).forEach(function (row) {
       var tr = document.createElement("tr");
       fields.forEach(function (td) {
         var cell = make("td");
         if (!row.has(td.name)) { text(cell, "无权查看"); cell.className = "blank"; }
         else {
           // 按字段的含义画：单选是标签，人员是名字，链接是链接，日期是日期，钱是钱。
-          Table.paint(cell, row.cell(td.name));
+          // 一格一行，太长的截断、指上去看全文：几十列的表一换行，每列都被挤成一两个字宽。
+          var inner = make("span", undefined, "clip");
+          Table.paint(inner, row.cell(td.name));
+          cell.append(inner);
           if (td.kind === "number") cell.className = "num";
-          if (!cell.textContent && !cell.firstElementChild) { text(cell, "—"); cell.className = "blank"; }
+          if (!inner.textContent && !inner.firstElementChild) { text(cell, "—"); cell.className = "blank"; }
+          else if (inner.textContent.length > 12) inner.title = inner.textContent;
         }
         tr.append(cell);
       });
       rowsBody.append(tr);
     });
     empty.hidden = rows.length > 0;
+    drawMore(rows.length, rowsBody.closest(".scroll") || rowsBody.closest("table"));
     text(count, rows.length === Table.rowCount() ? Table.rowCount() + " 条" : rows.length + " / " + Table.rowCount() + " 条");
   }
 
@@ -197,16 +227,16 @@
 
   function redraw() {
     fields = Table.fields();
-    numeric = fields.filter(function (field) { return field.kind === "number"; });
+    numeric = fields.filter(summable);
     var named = (Table.schema().source || {}).title;
     text(document.getElementById("title"), named || "数据看板");
     text(document.getElementById("eyebrow"), named ? "数据看板" : "飞书表格");
     facet = chooseFacet();
     if (facet && facet.values.indexOf(picked) < 0) picked = "";
-    drawTiles(); drawFacet(); drawHead(); draw(); drawStamp();
+    drawTiles(); drawFacet(); drawHead(); draw(true); drawStamp();
   }
 
-  q.addEventListener("input", draw);
+  q.addEventListener("input", typed);
   Table.onChange(redraw);
   redraw();
 })();

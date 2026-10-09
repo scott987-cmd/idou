@@ -18,6 +18,8 @@ import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { namedDatabase } from "./database-names.js";
+import { numbered } from "./admin-db.js";
+import { UsageReports, summarySchema } from "./usage-reports.js";
 
 export const USAGE_LIMITS = Object.freeze({
   // Rows are one per person, model and day, so this is years of a large
@@ -67,6 +69,10 @@ export class ModelUsage {
         downgraded INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
         PRIMARY KEY(person, model, day)
       ) STRICT; PRAGMA user_version=1;`);
+      // The console's reports (usage-reports.js): an index by tenant and day, and
+      // the finished days added up once. Neither changes what an older build
+      // reads, so neither moves the version.
+      this.db.exec(summarySchema("sqlite", "model_usage"));
       if (this.db.prepare("PRAGMA quick_check").get().quick_check !== "ok") throw new Error("模型用量账本已损坏");
       this.add = this.db.prepare(`INSERT INTO model_usage
         (person, tenant, user_id, model, day, requests, input_tokens, output_tokens, total_tokens, downgraded, updated_at)
@@ -79,6 +85,7 @@ export class ModelUsage {
           downgraded = downgraded + excluded.downgraded,
           updated_at = excluded.updated_at`);
     } catch (error) { this.db.close(); throw error; }
+    this.reports = new UsageReports({ run: async (sql, params) => this.db.prepare(sql).all(...params), table: "model_usage", keyFor, now: () => this.now() });
   }
 
   // One answered request. Never called for a refused one: a request that never
@@ -161,7 +168,8 @@ const PG_SCHEMA = `
     requests bigint NOT NULL DEFAULT 0, input_tokens bigint NOT NULL DEFAULT 0, output_tokens bigint NOT NULL DEFAULT 0,
     total_tokens bigint NOT NULL DEFAULT 0, downgraded bigint NOT NULL DEFAULT 0, updated_at bigint NOT NULL,
     PRIMARY KEY (person, model, day));
-  CREATE INDEX IF NOT EXISTS idou_model_usage_day ON idou_model_usage (day);`;
+  CREATE INDEX IF NOT EXISTS idou_model_usage_day ON idou_model_usage (day);
+  ${summarySchema("postgres", "idou_model_usage")}`;
 
 export class PostgresModelUsage {
   static async open({ pool, now = Date.now, flushMs = 1000, log = () => {} }) {
@@ -179,6 +187,8 @@ export class PostgresModelUsage {
 
   constructor({ pool, now, flushMs, log }) {
     Object.assign(this, { pool, now, log });
+    this.reports = new UsageReports({ run: async (sql, params) => (await this.pool.query(numbered(sql), params)).rows, table: "idou_model_usage",
+      keyFor, flush: () => this.flush(), now: () => this.now() });
     this.pending = new Map();
     this.writing = Promise.resolve();
     this.timer = setInterval(() => { void this.flush(); }, flushMs);

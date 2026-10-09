@@ -53,9 +53,10 @@ export function baseCellText(value, { maxValue = BASE_COVERAGE.maxValue } = {}) 
     if (typeof item === "boolean") return item ? "TRUE" : "FALSE";
     if (Array.isArray(item)) return item.map(flatten).filter(Boolean).join("、");
     if (typeof item === "object") {
-      // Person, link, document reference, attachment, formula result: each
-      // carries the label a reader sees under a different key.
-      for (const key of ["text", "name", "en_name", "link", "file_name", "value"]) {
+      // Person, link, document reference, attachment, formula result, a
+      // location (its address, recorded live): each carries the label a reader
+      // sees under a different key.
+      for (const key of ["text", "name", "en_name", "full_address", "link", "file_name", "value"]) {
         if (item[key] !== undefined && item[key] !== null) return flatten(item[key]);
       }
       return "（未展开内容）";

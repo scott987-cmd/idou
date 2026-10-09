@@ -92,3 +92,23 @@ test("a Feishu shortcut counts only when the CLI runs it", () => {
   assert.equal(larkShortcut(`cat > notes.md <<'EOF'\nlark-cli sheets +write 之后再核对\nEOF`), null);
   assert.equal(step(`echo "改用 sheets +write 写回"`).title, "处理任务");
 });
+
+// Every command bin/agent.js offers is named for what it does, in the steps of a
+// work task and on its cards: skill-enable, and 发布网站 when it came (sites
+// phase 1.1), read 「处理任务」 -- which says nothing to the person deciding.
+test("every command the Agent's channel offers has a name of its own", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const text = await readFile(new URL("../bin/agent.js", import.meta.url), "utf8");
+  const specs = text.slice(text.indexOf("const SPECS = {"), text.indexOf("};", text.indexOf("const SPECS = {")));
+  const actions = [...specs.matchAll(/^  "([a-z-]+)": \{/gm)].map((match) => match[1]);
+  assert.ok(actions.length >= 20 && actions.includes("site-publish"), actions.join(", "));
+  for (const action of [...actions, "run"]) {
+    const command = `/bin/zsh -c "node \\"${AGENT}\\" ${action} --x y"`;
+    assert.notEqual(step(command).title, "处理任务", `${action}: titled in a work task's steps`);
+  }
+  // A card is raised only by what changes something; each of those is named on it.
+  for (const action of ["doc-create", "doc-replace", "doc-append", "doc-share", "media-create", "media-save", "schedule-draft", "schedule-delete", "site-publish", "skill-enable"]) {
+    const command = `/bin/zsh -c "node \\"${AGENT}\\" ${action} --x y"`;
+    assert.notEqual(approvalPresentation({ kind: "command", command }, "cowork").title, "确认处理任务", `${action}: named on its card`);
+  }
+});

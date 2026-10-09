@@ -63,6 +63,38 @@ async function readJson(req, maxBytes) {
   catch { throw new RequestError(400, "invalid_json"); }
 }
 
+// Every Codex request carries the whole conversation, screenshots and all. An
+// agent checking a WebGL game by its screen took 27 of them, and from then on
+// every request -- and the compaction meant to shrink the conversation -- was
+// refused as too large (2026-10-08): the task could neither go on nor be
+// compacted. Past the limit the oldest screenshots give way, a line saying so
+// in each one's place, until the request fits; the latest ones, which are what
+// the model is looking at now, go last. Nothing else is touched, and a request
+// that still does not fit with every picture gone is refused as before.
+export const OMITTED_IMAGE = "[这里原有一张截图，为了控制请求大小已省略]";
+export function fitImages(body, limit) {
+  let size = Buffer.byteLength(JSON.stringify(body));
+  if (size <= limit || !body || typeof body !== "object") return { size, omitted: 0 };
+  const images = [];
+  const walk = (node, parent, key) => {
+    if (Array.isArray(node)) node.forEach((value, index) => walk(value, node, index));
+    else if (node && typeof node === "object") {
+      if (node.type === "input_image") images.push({ parent, key, node });
+      else for (const [name, value] of Object.entries(node)) walk(value, node, name);
+    }
+  };
+  walk(body.input);
+  let omitted = 0;
+  const replacement = { type: "input_text", text: OMITTED_IMAGE }, replaced = Buffer.byteLength(JSON.stringify(replacement));
+  for (const image of images) {
+    if (size <= limit) break;
+    image.parent[image.key] = { ...replacement };
+    size -= Buffer.byteLength(JSON.stringify(image.node)) - replaced;
+    omitted += 1;
+  }
+  return { size, omitted };
+}
+
 function prepareRequest(body, { provider, model, upstreamModel }, session, maxOutputTokens) {
   if (!body || Array.isArray(body) || typeof body !== "object") throw new RequestError(400, "invalid_request");
   if (Object.keys(body).some((key) => !REQUEST_FIELDS.has(key))) throw new RequestError(400, "unsupported_request_field");
@@ -159,8 +191,18 @@ export function responseEndWatch(onEnd) {
 // came roughly 2.6 seconds apart.
 export function createModelGateway({ models, apiKey, sessions, provider = "minimax", upstreamOrigin = "https://api.minimaxi.com",
   model = "MiniMax-M3", upstreamModel = model, fetchImpl = fetch, maxBodyBytes = 8 * 1024 * 1024,
+  // What is read off the wire may be larger than what goes upstream: the
+  // difference is screenshots, and the oldest of them give way (fitImages).
+  maxReadBytes = 32 * 1024 * 1024,
   maxOutputTokens = 16384, maxConcurrent = 8, maxConcurrentPerUser = maxConcurrent, requestsPerMinute = 90, timeoutMs = 180_000, visibility = null, usage = null,
-  audit = () => {}, authHandler = null, health = null }) {
+  // `policy` (policy.js): what each person may use -- their models, a daily
+  // token quota with a model to move to past it, how many requests at once.
+  // It answers the visibility question too. `meter` counts today's tokens.
+  policy = null, meter = null,
+  // `traffic` (process-status.js TrafficMeter): how each model request ended
+  // and how long the model took to start answering, for 服务状态.
+  audit = () => {}, authHandler = null, health = null, traffic = null }) {
+  if (policy && !visibility) visibility = policy;
   for (const [name, value] of [["maxConcurrent", maxConcurrent], ["maxConcurrentPerUser", maxConcurrentPerUser], ["requestsPerMinute", requestsPerMinute]]) {
     if (!Number.isSafeInteger(value) || value < 1) throw new Error(`Invalid model gateway ${name}`);
   }
@@ -191,7 +233,7 @@ export function createModelGateway({ models, apiKey, sessions, provider = "minim
   // slot the server has.
   let active = 0;
   const holding = new Map();
-  const counters = { requests: 0, rejected: { perMinute: 0, server: 0, person: 0 } };
+  const counters = { requests: 0, rejected: { perMinute: 0, server: 0, person: 0, quota: 0 } };
   // Expired rate buckets are dropped at most once a second. Dropping them on
   // every request walked every session's bucket each time.
   let swept = 0;
@@ -208,7 +250,9 @@ export function createModelGateway({ models, apiKey, sessions, provider = "minim
     let timer;
     let acquired = false;
     let status = 500;
-    let identity, served = null, asked = null, spent = null;
+    let identity, served = null, asked = null, spent = null, original = null, quotaDowngraded = false, personal = null, imagesOmitted = 0;
+    const begun = performance.now();
+    let counted = false, refused = null, firstMs = null;
     try {
       // Every route on this server authenticates here or in authHandler. With
       // several replicas, a token this one did not issue is read from the shared
@@ -244,15 +288,22 @@ export function createModelGateway({ models, apiKey, sessions, provider = "minim
       const bucket = existing && existing.until > now ? existing : { count: 0, until: now + 60_000 };
       const person = `${identity.tenantId}\n${identity.userId}`, held = holding.get(person) ?? 0;
       counters.requests += 1;
-      const refusal = bucket.count >= requestsPerMinute ? "perMinute" : active >= maxConcurrent ? "server" : held >= maxConcurrentPerUser ? "person" : null;
-      if (refusal) { counters.rejected[refusal] += 1; throw new RequestError(429, "request_limit_reached"); }
+      counted = true;
+      // The administrators' word on this person, held for a minute (policy.js).
+      personal = policy ? await policy.effective(identity) : null;
+      const perPerson = Math.min(maxConcurrentPerUser, personal?.quota.concurrency ?? Infinity);
+      const refusal = bucket.count >= requestsPerMinute ? "perMinute" : active >= maxConcurrent ? "server" : held >= perPerson ? "person" : null;
+      if (refusal) { counters.rejected[refusal] += 1; refused = refusal; throw new RequestError(429, "request_limit_reached"); }
       bucket.count += 1;
       buckets.set(identity.id, bucket);
       active += 1;
       holding.set(person, held + 1);
       acquired = person;
       timer = setTimeout(() => { controller.abort(); sendError(res, 504, "upstream_timeout", requestId); req.resume(); }, timeoutMs);
-      const requestBody = await readJson(req, maxBodyBytes);
+      const requestBody = await readJson(req, Math.max(maxReadBytes, maxBodyBytes));
+      const fitted = fitImages(requestBody, maxBodyBytes);
+      if (fitted.size > maxBodyBytes) throw new RequestError(413, "request_too_large");
+      imagesOmitted = fitted.omitted;
       // Route by the slug the client asked for; an unconfigured model is refused.
       asked = requestBody?.model;
       if (!routes.has(asked)) throw new RequestError(403, "model_not_allowed");
@@ -264,6 +315,19 @@ export function createModelGateway({ models, apiKey, sessions, provider = "minim
       const allowed = visibility ? await visibility.visible(identity) : null;
       const permits = (model) => !allowed || allowed.includes(model);
       if (!permits(asked)) throw new RequestError(403, "model_not_allowed");
+      // A day's quota, softly: past it the request goes to the model the
+      // administrators chose for that, and only without one is it refused --
+      // in words that say it is the quota, not a fault. Said in a header too,
+      // so a client can tell the person which model is answering now.
+      original = asked;
+      if (personal?.quota.dailyTokens && meter) {
+        const used = await meter.used(identity);
+        if (used >= personal.quota.dailyTokens) {
+          const to = personal.quota.downgradeTo;
+          if (!to || !routes.has(to) || !permits(to)) { counters.rejected.quota += 1; refused = "quota"; throw new RequestError(429, "quota_exhausted"); }
+          asked = to; quotaDowngraded = true;
+        }
+      }
       // A model the upstream has stopped serving is passed over for the next in
       // the server's order (model-health.js); one that fails that way here is
       // marked and the request tried once on each other model that can answer.
@@ -289,7 +353,7 @@ export function createModelGateway({ models, apiKey, sessions, provider = "minim
           headers: { authorization: `Bearer ${route.apiKey}`, "content-type": "application/json", accept: body.stream ? "text/event-stream" : "application/json" },
           body: JSON.stringify(body),
         });
-        if (response.ok) { health?.succeed(candidate); served = candidate; break; }
+        if (response.ok) { health?.succeed(candidate); served = candidate; firstMs = performance.now() - begun; break; }
         // Do not reflect provider errors, headers, keys, or echoed prompts to clients/logs.
         const lasting = health ? lastingFailure(response.status, await boundedText(response)) : null;
         if (!health) await response.body?.cancel();
@@ -309,7 +373,8 @@ export function createModelGateway({ models, apiKey, sessions, provider = "minim
       }
       status = 200;
       res.writeHead(200, { "content-type": expected, "cache-control": "no-store", "x-request-id": requestId, "x-accel-buffering": "no",
-        "x-idou-model": served, ...(served !== asked ? { "x-idou-model-requested": asked } : {}) });
+        "x-idou-model": served, ...(served !== original ? { "x-idou-model-requested": original } : {}), ...(quotaDowngraded ? { "x-idou-quota": "downgraded" } : {}),
+        ...(imagesOmitted ? { "x-idou-images-omitted": String(imagesOmitted) } : {}) });
       // The repair sees the provider's own stream first; LiteLLM's answers are then
       // put back in the client's terms; MCP names are restored last. The MiniMax
       // route has nothing to normalise and stays exactly as it was. The end watch
@@ -350,12 +415,18 @@ export function createModelGateway({ models, apiKey, sessions, provider = "minim
         const left = (holding.get(acquired) ?? 1) - 1;
         if (left > 0) holding.set(acquired, left); else holding.delete(acquired);
       }
+      if (counted && traffic) {
+        // The person stopping it is not the model failing.
+        // "limited" is this server's own refusal; the provider's 429 is the provider failing to answer.
+        const outcome = status === 200 ? "ok" : controller.signal.reason === hangUp ? "cancelled" : refused ? "limited" : status === 429 || status >= 500 ? "upstream" : "client";
+        try { traffic.record({ model: served ?? (routes.has(asked) ? asked : ""), outcome, firstMs, refusal: refused }); } catch {}
+      }
       // Metadata only. Audit failures must not cause unhandled HTTP rejections.
-      try { await audit({ requestId, sessionId: identity?.id, status, ...(served ? { model: served } : {}), ...(served && served !== asked ? { requested: asked } : {}) }); } catch {}
+      try { await audit({ requestId, sessionId: identity?.id, status, ...(served ? { model: served } : {}), ...(served && served !== asked ? { requested: asked } : {}), ...(imagesOmitted ? { imagesOmitted } : {}) }); } catch {}
       // Counted only when a provider actually answered: a refused request cost
       // nothing, and counting it would overstate everybody.
       if (usage && served && status === 200 && identity?.tenantId && identity?.userId) {
-        try { usage.record({ who: identity, model: served, usage: spent, downgraded: served !== asked }); }
+        try { const counted = usage.record({ who: identity, model: served, usage: spent, downgraded: served !== (original ?? asked) }); meter?.add(identity, counted?.total ?? 0); }
         catch (error) { process.stderr.write(`${JSON.stringify({ component: "model-usage", event: "record-failed", message: String(error?.message ?? error).slice(0, 200) })}\n`); }
       }
     }

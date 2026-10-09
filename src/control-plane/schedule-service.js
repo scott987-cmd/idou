@@ -96,9 +96,20 @@ export class ScheduleService {
   // FeishuLoginService). Without it there is no way to obtain one.
   // `push` is what delivers a finished task's result (SchedulePush); here it
   // only sends a person's 测试通知 to that person.
-  constructor({ sessions, store, scheduler = null, consent = null, allowDevelopment = false, unattended = null, grants = null, feishu = null, resourceResolver = null, push = null, now = Date.now }) {
+  // `audit(event, context)`: a line for the administration console's trail
+  // (audit-trail.js) for each change a person makes -- which task, never what
+  // it says.
+  // `policy` (policy.js): whether the administrators let this person have
+  // scheduled tasks at all, and run them unattended.
+  constructor({ sessions, store, scheduler = null, consent = null, allowDevelopment = false, unattended = null, grants = null, feishu = null, resourceResolver = null, push = null, audit = () => {}, policy = null, now = Date.now }) {
     if (!sessions || !store) throw new Error("Schedule service requires sessions and a store");
-    Object.assign(this, { sessions, store, scheduler, consent, allowDevelopment, unattended, grants, feishu, resourceResolver, push, now });
+    Object.assign(this, { sessions, store, scheduler, consent, allowDevelopment, unattended, grants, feishu, resourceResolver, push, audit, policy, now });
+  }
+
+  async #permitted(who, feature) {
+    if (this.policy && !(await this.policy.permits(who, feature))) {
+      throw new ScheduleError(403, feature === "unattended" ? "管理员没有给你开放无人值守运行。" : "管理员没有给你开放定时任务。");
+    }
   }
 
   #tested = new Map();
@@ -153,6 +164,7 @@ export class ScheduleService {
   // The credential is stored by the callback below, and only for this person.
   async unattendedAuthorize(who) {
     if (!this.unattended || !this.grants) throw new ScheduleError(503, "unattended_not_available");
+    await this.#permitted(who, "unattended");
     const begun = this.#grant(() => this.grants.begin(who, async (redeemed) => {
       if (redeemed.tenantId !== who.tenantId || redeemed.userId !== who.userId) throw new Error("authorization_for_someone_else");
       const granted = await this.unattended.grantRedeemed(redeemed);
@@ -216,13 +228,23 @@ export class ScheduleService {
       // request was in flight must not still be acted on.
       this.#who(req);
       const method = METHODS[route] ?? route;
-      this.#send(res, 200, await this[method](who, body, this.#token(req)));
+      const value = await this[method](who, body, this.#token(req));
+      this.#trail(route, who, body, value);
+      this.#send(res, 200, value);
     } catch (error) {
       req.resume();
       const status = error instanceof ScheduleError ? error.status : 400;
       this.#send(res, status, { error: error?.message ?? "schedule_request_failed" });
     }
     return true;
+  }
+
+  #trail(route, who, body, value) {
+    try {
+      const schedule = value?.schedule ?? null;
+      this.audit({ route, scheduleId: schedule?.id ?? (typeof body?.id === "string" ? body.id : null), title: schedule?.title ?? "",
+        state: typeof body?.state === "string" ? body.state : null }, { who });
+    } catch { /* an audit line never decides a request */ }
   }
 
   #send(res, status, value) {
@@ -255,6 +277,7 @@ export class ScheduleService {
   }
 
   async create(who, body, token) {
+    await this.#permitted(who, "scheduledTasks");
     const resources = await this.#resolveResources(body?.resources ?? [], token);
     const deliveries = (await this.#resolveDeliveries(who, body?.deliveries, token)) ?? [];
     const capabilityBinding = this.feishu
@@ -363,6 +386,7 @@ export class ScheduleService {
   // One run now, outside the rule, through the same path as a due one. A
   // development server manages schedules but does not execute them, and says so.
   async runNow(who, body) {
+    await this.#permitted(who, "scheduledTasks");
     const target = id(body?.id);
     if (!target) throw new ScheduleError(400, "invalid_schedule_id");
     const row = await this.store.get(who, target);

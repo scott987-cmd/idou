@@ -5,6 +5,7 @@ import { acceptFeishuCliSequencePrepare, acceptFeishuCliSequenceStep, startFeish
 import { feishuCliSemanticRead, validateFeishuCliSemanticRead } from "../providers/feishu/cli-read-contract.js";
 import { feishuCliRefusal, openApiPath } from "../providers/feishu/openapi.js";
 import { ownHeader } from "../product-names.js";
+import { FEISHU_FEATURES } from "./policy.js";
 
 const PROXY_ROUTE = "/v1/feishu/cli-proxy";
 const WRITE_GRANT_ROUTE = "/v1/feishu/cli-write-grants";
@@ -80,12 +81,15 @@ export const WRITE_GRANTS = Object.freeze({ perPerson: 100, max: 20_000, issuesP
 
 export class FeishuCliProxyService {
   #expiry = new ExpiryQueue();
-  constructor({ sourceAccess, fetchImpl = fetch, now = Date.now, audit = () => {}, maxConcurrent = 16, maxConcurrentPerUser = maxConcurrent }) {
+  // `policy` (policy.js): whether the administrators let this person's Agent
+  // make this kind of write at all. Asked before a grant is issued, beside the
+  // session's own capabilities and the deployment's list of actions.
+  constructor({ sourceAccess, fetchImpl = fetch, now = Date.now, audit = () => {}, maxConcurrent = 16, maxConcurrentPerUser = maxConcurrent, policy = null }) {
     if (![maxConcurrent, maxConcurrentPerUser].every((value) => Number.isSafeInteger(value) && value >= 1) || maxConcurrentPerUser > maxConcurrent) throw new Error("Invalid Feishu CLI proxy concurrency");
     if (!sourceAccess?.cliProxyEnabled) throw new Error("Feishu CLI proxy requires enabled server-side OAuth source access");
     if (typeof audit !== "function") throw new Error("Feishu CLI proxy audit sink is invalid");
     if (!sourceAccess.feishu?.openApi) throw new Error("Feishu CLI proxy requires a deployment that speaks OpenAPI");
-    this.sourceAccess = sourceAccess; this.upstream = sourceAccess.feishu.openApi; this.fetch = fetchImpl; this.now = now; this.audit = audit;
+    this.sourceAccess = sourceAccess; this.upstream = sourceAccess.feishu.openApi; this.fetch = fetchImpl; this.now = now; this.audit = audit; this.policy = policy;
     this.active = 0; this.closed = false; this.grants = new CountedMap((grant) => grant.person); this.operations = new Map();
     this.issues = new Rates({ windowMs: 60_000, max: WRITE_GRANTS.issuesPerMinute, perPerson: WRITE_GRANTS.issuesPerMinutePerPerson, now, name: "write grants a minute" });
     // Calls in flight for the whole server and for each person, so one busy
@@ -111,11 +115,15 @@ export class FeishuCliProxyService {
       }
     }
   }
+  // The line itself carries hashes only. Who it was and which object, in the
+  // clear, go beside it for the administration console's trail
+  // (audit-trail.js), which an operator's log collection never sees.
   record(kind, who, intent, extra = {}) {
     try {
       this.audit(Object.freeze({ kind, at: this.now(), action: intent.action,
         sessionHash: digest(who.id), tenantHash: digest(who.tenantId), userHash: digest(who.userId),
-        resourceHash: digest(feishuCliWriteResource(intent)), operationHash: digest(intent.operationId), ...extra }));
+        resourceHash: digest(feishuCliWriteResource(intent)), operationHash: digest(intent.operationId), ...extra }),
+      { who: { tenantId: who.tenantId, userId: who.userId, displayName: who.displayName ?? "" }, resource: feishuCliWriteResource(intent) });
     } catch { /* An audit sink failure must not change the authorization decision. */ }
   }
   issue(parentToken, value) {
@@ -186,9 +194,21 @@ export class FeishuCliProxyService {
       let value;
       try { value = JSON.parse(await readBody(req, MAX_GRANT_BYTES)); }
       catch (error) { if (error instanceof ProxyError) throw error; throw new ProxyError(400, "invalid_feishu_cli_write_intent"); }
+      await this.#policyAllows(bearer(req), value);
       send(res, 201, this.issue(bearer(req), value));
     } catch (error) { req.resume(); send(res, error instanceof ProxyError ? error.status : 502, { error: error instanceof ProxyError ? error.message : "feishu_cli_proxy_unavailable" }); }
     return true;
+  }
+  // Refused, written down as a refusal, before anything is granted. Anything
+  // else wrong with the request is left for issue() to say in its own words.
+  async #policyAllows(parentToken, value) {
+    if (!this.policy) return;
+    let intent, who;
+    try { intent = feishuCliWriteIntent(value); ({ who } = this.sourceAccess.current(parentToken)); } catch { return; }
+    const feature = FEISHU_FEATURES[feishuCliWriteCapability(intent.action)];
+    if (!feature || await this.policy.permits(who, feature)) return;
+    this.record("grant_rejected", who, intent, { reason: "policy", status: 403 });
+    throw new ProxyError(403, "feishu_cli_write_not_allowed_by_policy");
   }
   async handleProxy(req, res) {
     let write = null;

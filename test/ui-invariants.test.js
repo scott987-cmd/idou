@@ -52,6 +52,9 @@ const FAULTY = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><s
   <p>Allow the computer MCP server to run tool</p>
   <pre>Allow the computer MCP server to run tool "computer_windows"</pre>
   <pre>收件人：陈宁\n标识：ou_46d524fd9f471a9bc76b3d77d0d39e67</pre>
+  <p>原因：公开前删掉手机号。。改好后点「更新线上」</p>
+  <div class="message notice"><div class="message-text">这条提示是应用自己说的。。</div></div>
+  <p>AI 审核：推广赌博网站！。等管理员审核通过后才会上线。</p>
   <div id="native-slot"></div>
   <button style="position: fixed; left: 400px; top: 330px; width: 300px">在原生页面底下的按钮</button>
   <div id="wide"></div>
@@ -77,7 +80,11 @@ const SOUND = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><st
   <div class="cut" title="这是一段很长很长很长的说明文字">这是一段很长很长很长的说明文字</div>
   <button id="icon" aria-label="关闭"><svg width="10" height="10"></svg></button>
   <p>模型：MiniMax-M3 GLM-5.3</p>
+  <p>原因：公开前删掉手机号。改好后点「更新线上」，会重新检查。真的要删吗？！</p>
   <pre>Allow the computer MCP server to run tool "computer_windows"</pre>
+  <!-- A skill's own document and description, as its author wrote them (smoke-skill-mcp-desktop.js, 2026-10-03). -->
+  <div style="position: fixed; left: 8px; bottom: 8px; width: 360px"><div class="sd-doc"><p>Use the demo MCP echo tool with text SKILL_MCP_ONLY_MARKER.</p></div>
+  <p class="sc-desc">Synthetic tool integration skill for the demo.</p></div>
   <details class="confirm-technical" open><summary>核对信息</summary><pre>标识：ou_46d524fd9f471a9bc76b3d77d0d39e67</pre></details>
   <div id="native-slot"></div>
   <button style="position: fixed; left: 400px; top: 330px; width: 150px">原生页面旁边的按钮</button>
@@ -105,6 +112,12 @@ const SOUND = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><st
     // The list scrolled a little: its first button is under the sticky title.
     document.getElementById("scroller").scrollTop = 12;
   </script>
+  <!-- What a person, a model or Feishu wrote: their words and stops, not the application's. Last, so nothing else moves. -->
+  <div class="message user"><div class="message-text">好的。。Please check the numbers again</div></div>
+  <div class="message assistant"><div class="message-text markdown"><p>Here is the summary，，看一下</p></div></div>
+  <div class="coding-text"><div class="message-text">Done。。</div></div>
+  <div class="feishu-message-text">收到！。</div>
+  <span class="knowledge-excerpt">原文：客户名单。。</span>
 </body></html>`;
 
 async function sweep(t, html) {
@@ -133,10 +146,11 @@ test("the UI rules catch each fault met while filming, and pass a sound page", {
   const kinds = new Map();
   for (const row of faulty.findings) kinds.set(row.kind, [...(kinds.get(row.kind) ?? []), row]);
   const described = JSON.stringify(faulty.findings, null, 1);
-  for (const kind of ["超出父元素", "被遮挡", "文字被截断", "没有名字", "重复的 id", "英文", "页面横向溢出", "被原生页面盖住", "重绘丢状态", "内部标识外露"]) {
+  for (const kind of ["超出父元素", "被遮挡", "文字被截断", "没有名字", "重复的 id", "英文", "页面横向溢出", "被原生页面盖住", "重绘丢状态", "内部标识外露", "标点重复"]) {
     assert.ok(kinds.has(kind), `rule 「${kind}」 did not fire:\n${described}`);
   }
   assert.equal(kinds.get("英文").length, 1, `a command in <pre> is data, not the application speaking:\n${described}`);
+  assert.equal(kinds.get("标点重复").length, 3, `「。。」 and 「！。」 alike, and in the application's own notice:\n${described}`);
   const lost = new Set(kinds.get("重绘丢状态").map((row) => row.detail));
   for (const what of ["展开的详情被收起", "输入的内容被清空", "打开的菜单被关上"]) assert.ok(lost.has(what), `「${what}」 not caught:\n${described}`);
   assert.ok(faulty.stats.samples >= 1 && faulty.stats.installed >= 1, "the sweep must have looked");
@@ -170,6 +184,32 @@ test("a menu closed by a redraw in the click's own microtask is still caught", {
   const sweepResult = await sweep(t, REDRAW_ON_CLICK);
   const described = JSON.stringify(sweepResult.findings, null, 1);
   assert.ok(sweepResult.findings.some((row) => row.kind === "重绘丢状态" && row.detail === "打开的菜单被关上"), `not caught:\n${described}`);
+});
+
+// Found in a full run (2026-10-03): details were remembered open only by their
+// toggle event, a task of its own after the click. A page that rebuilt the card
+// before that task -- its own timer due first under load, or, as here, in the
+// microtask right after the details opened -- lost them without a report.
+// Deterministic: this page rebuilds the moment the details open, every time.
+const REDRAW_ON_OPEN = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>${STYLE}</style></head><body>
+  <div id="card" data-approval="a3"></div>
+  <script>
+    const card = document.getElementById("card");
+    const draw = () => {
+      const details = document.createElement("details"); details.innerHTML = "<summary>技术详情</summary><pre>{}</pre>";
+      new MutationObserver(() => { if (details.open) draw(); }).observe(details, { attributes: true, attributeFilter: ["open"] });
+      const reason = document.createElement("textarea"); reason.setAttribute("aria-label", "告诉它怎么做");
+      const toggle = document.createElement("button"); toggle.textContent = "更多"; toggle.setAttribute("aria-expanded", "false");
+      card.replaceChildren(details, reason, toggle);
+    };
+    draw();
+  </script>
+</body></html>`;
+
+test("details closed by a redraw before their toggle event are still caught", { timeout: 60_000 }, async (t) => {
+  const sweepResult = await sweep(t, REDRAW_ON_OPEN);
+  const described = JSON.stringify(sweepResult.findings, null, 1);
+  assert.ok(sweepResult.findings.some((row) => row.kind === "重绘丢状态" && row.detail === "展开的详情被收起"), `not caught:\n${described}`);
 });
 
 test("closing the application from any state is prompt, or it is reported", { timeout: 60_000 }, async (t) => {
@@ -206,6 +246,7 @@ function standIn({ delay = 0 } = {}) {
 }
 const ID_SHOWN = { kind: "内部标识外露", where: "li「会话 · oc_ScheduleFixture4…」", detail: "oc_ScheduleFixture456" };
 const COVERED = { kind: "被遮挡", where: "button「保存」", detail: "div.toast" };
+const DOUBLED = { kind: "标点重复", where: "small「原因：公开前删掉手机号。。…」", detail: "删掉手机号。。改好后" };
 
 test("a screenshot is looked at even while another look is under way", async () => {
   const { app, page, shown } = standIn({ delay: 300 });
@@ -221,8 +262,8 @@ test("a screenshot is looked at even while another look is under way", async () 
 test("what the page says counts at first sight; how it is laid out must hold on a second look", async () => {
   const { app, page, shown } = standIn();
   const inspector = inspect(app, { every: 0 });
-  shown.rows = [ID_SHOWN, COVERED];
+  shown.rows = [ID_SHOWN, DOUBLED, COVERED];
   shown.after = () => { shown.rows = []; };      // gone before the second look
   await page.screenshot({ path: "desktop-schedule-detail.png" });
-  assert.deepEqual(inspector.findings.map((row) => row.kind), ["内部标识外露"], JSON.stringify(inspector.findings));
+  assert.deepEqual(inspector.findings.map((row) => row.kind), ["内部标识外露", "标点重复"], JSON.stringify(inspector.findings));
 });

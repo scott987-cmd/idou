@@ -76,6 +76,21 @@ test("in a database from before the rename, the locks and the channel are the on
   assert.equal((await told)[0].channel, "mydoubao_state");
 });
 
+// A server set up before the rename has its worker's role as mydoubao_worker:
+// the same script grants that role, and makes no idou_worker beside it.
+test("the worker's grants go to the role a server from before the rename has", async (t) => {
+  const { server, config, admin } = await opened(t, { legacy: true });
+  const { readFile } = await import("node:fs/promises");
+  await admin.query("CREATE ROLE mydoubao_worker LOGIN");
+  await admin.query(await readFile(new URL("../deploy/server/worker-role.sql", import.meta.url), "utf8"));
+  assert.equal((await admin.query("SELECT 1 FROM pg_roles WHERE rolname = 'idou_worker'")).rows.length, 0, "no second role");
+  const worker = new pg.Client({ ...config, user: "mydoubao_worker" }); worker.on("error", () => {}); await worker.connect();
+  server.closeFirst(() => worker.end());
+  await worker.query("SELECT id, schedule, state, payload, cancel FROM mydoubao_run_queue LIMIT 0");
+  await worker.query("INSERT INTO mydoubao_run_worker_beats (worker, name, host, pid, release, started_at, beat_at, state) VALUES ('w', 'worker-1', 'h', 1, 'r', 1, 1, '{}')");
+  await assert.rejects(worker.query("SELECT state FROM mydoubao_run_worker_beats"), (error) => error.code === "42501");
+});
+
 // The worker's role (deploy/server/worker-role.sql) is granted the queue under
 // the name the database has: on a database from before the rename, that is
 // mydoubao_run_queue, and still nothing else.
@@ -86,6 +101,8 @@ test("the worker's role reaches the queue of a database from before the rename, 
   const worker = new pg.Client({ ...config, user: "idou_worker" }); worker.on("error", () => {}); await worker.connect();
   server.closeFirst(() => worker.end());
   await worker.query("SELECT id, schedule, state, payload, cancel FROM mydoubao_run_queue LIMIT 0");
+  // And its heartbeat row, in the table under that database's name.
+  await worker.query("INSERT INTO mydoubao_run_worker_beats (worker, name, host, pid, release, started_at, beat_at, state) VALUES ('w', 'worker-1', 'h', 1, 'r', 1, 1, '{}')");
   await assert.rejects(worker.query("SELECT value FROM mydoubao_state"), (error) => error.code === "42501");
   await assert.rejects(worker.query("SELECT result FROM mydoubao_run_queue"), (error) => error.code === "42501");
 });

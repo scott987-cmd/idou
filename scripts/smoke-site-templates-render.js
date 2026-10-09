@@ -1,6 +1,6 @@
 import { _electron as electron } from "playwright";
 import electronBinary from "electron";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
@@ -8,6 +8,7 @@ import { writeTemplate } from "../src/application/site-templates.js";
 import { writeContract } from "../src/application/table-contract.js";
 import { readBaseSlice } from "../src/application/table-snapshot.js";
 import { baseCellText } from "../src/providers/feishu/base-reader.js";
+import { SaasBaseRecords } from "../src/providers/feishu/base-records.js";
 
 // What the templates actually do with a real table's worth of field kinds, in a
 // real browser. A screenshot says a page rendered; this says the page works:
@@ -105,6 +106,8 @@ app.on("window-all-closed", () => {});`);
   assert.equal(await window.locator("#count").innerText(), "2 / 4 条");
   assert.deepEqual(await chart.locator(".bar-label").allInnerTexts(), ["进行中"], "图跟着筛选走");
   await window.locator("#q").fill("海生");
+  // A search waits for the typing to pause before it draws (thousands of rows, 2026-10-04).
+  await window.waitForFunction(() => document.getElementById("count")?.textContent === "1 / 4 条", null, { polling: 50, timeout: 5_000 });
   assert.deepEqual(await names(), ["海生医疗"], "搜索和筛选叠加");
   await window.locator("#q").fill("");
   await window.locator(".facet-chip", { hasText: "全部" }).click();
@@ -160,8 +163,68 @@ app.on("window-all-closed", () => {});`);
     ["进行中", "待续约", "已流失", "待签", "已回款", "未填写"]);
   assert.deepEqual(await window.locator("#chart .bar-value").allInnerTexts(), ["70", "50", "40", "30", "20", "70"]);
 
+  // ---- 真实表格的每一种字段 -----------------------------------------------
+  // 从真实多维表格录下的形状（test/fixtures/base-field-shapes.json）：31 个字段，
+  // 一样一个。10-06 之前这张表在看板里每列被挤成一两个字宽、一行 225 像素高，
+  // 合计里把占比加了起来，时间线挑中「创建时间」——三十条全落在同一天。
+  const shapes = JSON.parse(await readFile(new URL("../test/fixtures/base-field-shapes.json", import.meta.url), "utf8"));
+  const answer = (data) => ({ code: 0, stdout: JSON.stringify({ ok: true, identity: "user", data }), stderr: "" });
+  const recorded = new SaasBaseRecords({ id: "saas-cli", async invoke(argv) {
+    if (argv.includes("+field-list")) return answer(shapes.fieldList);
+    if (argv.includes("+record-list")) return answer({ ...shapes.recordList, has_more: false });
+    if (argv.includes("+table-list")) return answer(shapes.tableList);
+    if (argv.includes("+table-get")) return answer(argv[argv.indexOf("--table-id") + 1] === "tblShapeProjects" ? shapes.linkedTableGet : shapes.tableGet);
+    if (argv.includes("+view-get-visible-fields")) return answer(shapes.visibleFields);
+    if (argv.includes("+record-get")) {
+      const wanted = argv.flatMap((value, index) => argv[index - 1] === "--record-id" ? [value] : []);
+      return answer({ ...shapes.linkedRecordGet, record_id_list: wanted, data: wanted.map((id) => shapes.linkedRecordGet.data[shapes.linkedRecordGet.record_id_list.indexOf(id)]) });
+    }
+    throw new Error(`没有录过：${argv.join(" ")}`);
+  } });
+  const every = await readBaseSlice({ kind: "base", token: "bascnShapeTypes01", tableId: "tblShapeMain", fields: shapes.fieldList.fields.map((field) => field.id), rows: 100, refreshSeconds: 60 },
+    recorded, { renderCell: (value) => baseCellText(value), title: "全部字段类型" });
+  for (const id of ["dashboard", "timeline"]) {
+    const folder = path.join(directory, `every-${id}`);
+    await mkdir(folder);
+    await writeTemplate(folder, id);
+    await writeContract(folder, { schema: every.schema, snapshot: every.snapshot });
+  }
+  await window.goto(`file://${path.join(directory, "every-dashboard", "index.html")}`);
+  await window.locator("#rows tr").first().waitFor();
+  const heights = await window.locator("#rows tr").evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
+  assert.ok(Math.max(...heights) < 80, `31 列的表一行一格，不换行：最高 ${Math.max(...heights)} 像素`);
+  assert.equal(await window.locator("#head-row th").first().innerText(), "名称", "列按表里的顺序，主字段在最前");
+  const tiles = await window.locator("#tiles .tile span").allInnerTexts();
+  assert.ok(!tiles.some((label) => /占比|完成度/.test(label)), `百分比不进合计：${tiles.join("、")}`);
+  assert.ok(tiles.some((label) => /金额/.test(label)), "金额照样合计");
+  const column = async (name) => (await window.locator("#head-row th").allInnerTexts()).findIndex((label) => label.trim() === name) + 1;
+  assert.equal(await window.locator(`#rows tr:nth-child(4) td:nth-child(${await column("占比")})`).innerText(), "30%");
+  assert.equal(await window.locator(`#rows tr:nth-child(1) td:nth-child(${await column("官网")}) a`).getAttribute("href"), "https://example.com/beiji");
+  assert.deepEqual(await window.locator(`#rows tr:nth-child(1) td:nth-child(${await column("关联项目")}) .cell-chip`).allInnerTexts(), ["北极星迁移（改名）", "远山官网"]);
+  assert.equal(await window.locator(`#rows tr:nth-child(7) td:nth-child(${await column("数量")})`).innerText(), "—", "空的数字不是 0");
+  await window.goto(`file://${path.join(directory, "every-timeline", "index.html")}`);
+  await window.locator(".event").first().waitFor();
+  const deadline = every.schema.fields.find((field) => field.name === "截止日期").id;
+  const days = new Set(every.snapshot.rows.map((row) => row.values[deadline].value).filter(Boolean).map((at) => new Date(at).toLocaleDateString("zh-CN")));
+  const when = new Set(await window.locator(".event-when").allInnerTexts());
+  assert.ok([...days].every((day) => when.has(day)), `时间线按人填的截止日期排，不是创建时间：${[...when].slice(0, 3).join("、")}`);
+  // 创建时间排在前面的表（字段顺序由人定）：时间线也不该挑它。
+  const SYSTEM_FIRST = [{ id: "fldName", name: "事项", type: "text" }, { id: "fldMade", name: "创建时间", type: "created_at" }, { id: "fldDue", name: "截止日期", type: "datetime" }];
+  const systemFirst = await readBaseSlice({ kind: "base", token: "bascnSyntheticTok", tableId: "tblDue", fields: SYSTEM_FIRST.map((field) => field.id), rows: 10, refreshSeconds: 60 },
+    { fields: async () => SYSTEM_FIRST, list: async () => ({ more: false, records: [["交付一期", "2026-03-01T00:00:00.000+08:00"], ["验收", "2026-05-20T00:00:00.000+08:00"]].map(([name, due], index) => ({
+      id: `recDue${index}`, values: { fldName: name, fldMade: "2026-10-06T09:56:57.000+08:00", fldDue: due } })) }) },
+    { renderCell: (value) => baseCellText(value), title: "交付计划" });
+  const systemFolder = path.join(directory, "system-first");
+  await mkdir(systemFolder);
+  await writeTemplate(systemFolder, "timeline");
+  await writeContract(systemFolder, systemFirst);
+  await window.goto(`file://${path.join(systemFolder, "index.html")}`);
+  await window.locator(".event").first().waitFor();
+  assert.deepEqual((await window.locator(".event-when").allInnerTexts()).sort(), [new Date("2026-03-01T00:00:00+08:00"), new Date("2026-05-20T00:00:00+08:00")].map((at) => at.toLocaleDateString("zh-CN")).sort(),
+    "创建时间是系统记的，一批建的都在同一天");
+
   assert.deepEqual(failures, [], "模版页面报错了");
-  console.log(JSON.stringify({ passed: true, kinds: schema.fields.length, sorted: true, filtered: true, charted: true, facetSkipsNames: true, paidCalls: 0 }));
+  console.log(JSON.stringify({ passed: true, kinds: schema.fields.length, sorted: true, filtered: true, charted: true, facetSkipsNames: true, recordedKinds: every.schema.fields.length, paidCalls: 0 }));
 } finally {
   await instance?.close();
   await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });

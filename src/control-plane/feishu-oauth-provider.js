@@ -179,7 +179,9 @@ export class FeishuOAuthProvider {
     const timeout = AbortSignal.timeout(30_000), combined = signal ? AbortSignal.any([timeout, signal]) : timeout;
     try {
       const { user } = await this.redeem({ code, verifier, redirectUri, scopes, signal: combined });
-      return { tenantId: user.tenant_key, userId: user.open_id, appId: this.appId };
+      // The name too, for the administration console to say who is signed in
+      // and to sign its audit lines with. Nothing else of the profile.
+      return { tenantId: user.tenant_key, userId: user.open_id, appId: this.appId, name: typeof user.name === "string" ? user.name.slice(0, 64) : "" };
     } catch {
       this.diagnostic("网页账号核对未完成：飞书没有兑换这次的授权码。");
       throw new Error("Feishu identity probe failed");

@@ -46,6 +46,16 @@ export const REASONS = Object.freeze({
   notShared: "not_shared",
   sourceDenied: "source_denied",
   anonymousDisabled: "anonymous_disabled",
+  // An administrator disabled this visitor's account (access-list.js).
+  disabled: "account_disabled",
+  // The question needed this visitor's own Feishu credential and there was
+  // none, or it had run out: they are asked to sign in again, not refused.
+  signInAgain: "sign_in_again",
+  // Which groups or departments the visitor is in could not be read just now
+  // (the bot's read failed, the directory did not answer): not a refusal.
+  membersUnavailable: "members_unavailable",
+  // Feishu did not answer the question: not a refusal either.
+  sourceUnavailable: "source_unavailable",
 });
 
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
@@ -65,8 +75,10 @@ export function parseShare(input, { anonymousAllowed = false } = {}) {
     if (seen.has(key)) throw new Error("协作者重复");
     seen.add(key);
     // Only reading, for now. A site that could be written to through a link is
-    // a different decision, and it is not this one.
-    return Object.freeze({ type, id, perm: "view" });
+    // a different decision, and it is not this one. The name is what the owner
+    // saw when they added them, for showing; access is decided by the id.
+    const name = typeof member.name === "string" ? member.name.replace(/\s+/g, " ").trim().slice(0, 64) : "";
+    return Object.freeze({ type, id, perm: "view", ...(name ? { name } : {}) });
   });
   return Object.freeze({ scope, inherit, members: Object.freeze(parsed) });
 }
@@ -87,7 +99,16 @@ function named(share, visitor) {
 //   site      { ownerId, tenantId, share, sourced }
 //   visitor   { userId, tenantId, chats, departments } or null
 //   readsSource  () => Promise<boolean>, asked only when it can change the answer
-export async function decideSiteAccess(site, visitor, { readsSource = null, anonymousAllowed = false } = {}) {
+export async function decideSiteAccess(site, visitor, options = {}) {
+  const verdict = await decided(site, visitor, options);
+  // Turned away while who is in the site's groups or departments was not known:
+  // that is no answer, not a no (review of phase 0, 2026-10-03 -- a failed read
+  // of a group told everybody in it "not shared", and was kept 90 seconds).
+  if (!verdict.allowed && visitor?.membershipUnknown === true && ![REASONS.noSession, REASONS.otherTenant, REASONS.disabled].includes(verdict.reason)
+    && site.share.members.some((member) => member.type !== "user")) return { allowed: false, reason: REASONS.membersUnavailable };
+  return verdict;
+}
+async function decided(site, visitor, { readsSource = null, anonymousAllowed = false } = {}) {
   const share = site.share;
   // Anonymous first: it is the only path that does not need a visitor, and a
   // site that is open to the internet should not send people through a login
@@ -104,8 +125,14 @@ export async function decideSiteAccess(site, visitor, { readsSource = null, anon
   if (share.scope === "tenant") return { allowed: true, reason: REASONS.tenant };
   // Only now is Feishu asked, and only for a site that has a table to ask
   // about: the question costs a round trip, and the answers above did not need it.
+  // Feishu's answer is yes or no; "relogin" and "unavailable" are no answer
+  // at all, and a visitor is never told "no permission" for those.
   if (share.inherit && site.sourced && typeof readsSource === "function") {
-    return await readsSource() ? { allowed: true, reason: REASONS.source } : { allowed: false, reason: REASONS.sourceDenied };
+    const answer = await readsSource();
+    if (answer === true) return { allowed: true, reason: REASONS.source };
+    if (answer === "relogin") return { allowed: false, reason: REASONS.signInAgain };
+    if (answer === "unavailable") return { allowed: false, reason: REASONS.sourceUnavailable };
+    return { allowed: false, reason: REASONS.sourceDenied };
   }
   return { allowed: false, reason: REASONS.notShared };
 }
@@ -118,5 +145,9 @@ export const REFUSAL = Object.freeze({
   [REASONS.notShared]: "你还没有这个网站的访问权限，请向分享给你的人申请。",
   [REASONS.sourceDenied]: "你没有这个网站所用表格的权限。权限在飞书的表格里设置，请向表格的拥有者申请。",
   [REASONS.anonymousDisabled]: "这个部署不允许未登录访问。",
+  [REASONS.disabled]: "你的 i豆 账号已被管理员停用，不能打开这个网站。",
+  [REASONS.signInAgain]: "需要重新登录，确认你还能看这个网站所用的表格。",
+  [REASONS.sourceUnavailable]: "暂时没能向飞书确认你能不能看这个网站所用的表格，请过一会儿刷新。",
+  [REASONS.membersUnavailable]: "暂时没能向飞书确认你在不在分享给的群或部门里，请过一会儿刷新。",
 });
 export const refusalText = (reason) => REFUSAL[reason] ?? "无法打开这个网站。";

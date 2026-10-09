@@ -84,6 +84,67 @@ test("only the newest are kept, and a backup that cannot be completed leaves not
   }
 });
 
+// docs/service-status.md §4: each run says what it did beside the snapshots,
+// for the server's 备份 check; a failure keeps when the last one worked.
+test("each run writes what it did to status.json, and a failure keeps when the last one worked", { timeout: 60_000 }, async (t) => {
+  const { data, backups } = await dataDirectory(t);
+  await run(process.execPath, [tool, "--data", data, "--to", backups]);
+  const first = JSON.parse(await readFile(path.join(backups, "status.json"), "utf8"));
+  assert.equal(first.last.ok, true);
+  assert.equal(first.lastSuccess.snapshot, first.last.snapshot);
+  assert.deepEqual([first.last.files, first.last.databases, first.last.bytes > 0, first.last.sealed, first.last.shipped], [3, 1, true, false, false]);
+  assert.equal((await stat(path.join(backups, "status.json"))).mode & 0o777, 0o600);
+  assert.ok(!JSON.stringify(first).includes("任务"), "what was backed up is not in it");
+  const failed = await run(process.execPath, [tool, "--data", path.join(data, "missing"), "--to", backups]).then(() => null, (error) => error);
+  assert.match(failed?.stderr ?? "", /备份失败/);
+  const second = JSON.parse(await readFile(path.join(backups, "status.json"), "utf8"));
+  assert.equal(second.last.ok, false);
+  assert.match(second.last.error, /ENOENT|不是目录|no such file/);
+  assert.deepEqual(second.lastSuccess, first.lastSuccess);
+  assert.equal((await readdir(backups)).filter((name) => name.includes(".partial")).length, 0);
+});
+
+// Found in review (2026-10-03): pg_dump got the database address -- password
+// included -- on its command line, which every account on the machine can
+// read, and when it was killed Node's error repeated the command line into
+// status.json, the 备份 check, the console and the administrators' alerts.
+test("the database password never reaches a command line or a backup record", { timeout: 60_000 }, async (t) => {
+  const { postgresTarget, withoutCredentials } = await import("../bin/backup.js");
+  assert.deepEqual(postgresTarget("postgresql://idou:S3cret%40pw@db.example:5432/idou?sslmode=require"),
+    { dbname: "postgresql://idou@db.example:5432/idou?sslmode=require", env: { PGPASSWORD: "S3cret@pw" } });
+  assert.deepEqual(postgresTarget("postgresql:///mydoubao?host=/var/run/postgresql"), { dbname: "postgresql:///mydoubao?host=/var/run/postgresql", env: {} });
+  // Addresses libpq takes that a URL parser does not, passed on as written.
+  assert.deepEqual(postgresTarget("postgresql://idou@/mydoubao?host=/var/run/postgresql"), { dbname: "postgresql://idou@/mydoubao?host=/var/run/postgresql", env: {} });
+  assert.deepEqual(postgresTarget("postgresql://u:p@h1:5432,h2:5432/db"), { dbname: "postgresql://u@h1:5432,h2:5432/db", env: { PGPASSWORD: "p" } });
+  // An unencoded "@" in the password, as the server's own client reads it: all of it moves.
+  assert.deepEqual(postgresTarget("postgresql://user:p@ss@db.example/idou"), { dbname: "postgresql://user@db.example/idou", env: { PGPASSWORD: "p@ss" } });
+  assert.deepEqual(postgresTarget("postgresql://u@h/db?sslmode=require&password=se%26cret&application_name=x"), { dbname: "postgresql://u@h/db?sslmode=require&application_name=x", env: { PGPASSWORD: "se&cret" } });
+  assert.equal(withoutCredentials("Command failed: pg_dump --dbname postgres://idou:S3cret@db/idou"), "Command failed: pg_dump --dbname postgres://…");
+  // A pg_dump that is killed before it says anything, as the 1-hour limit would.
+  const { data, backups } = await dataDirectory(t);
+  const bin = path.join(path.dirname(data), "pg-bin");
+  await mkdir(bin);
+  await writeFile(path.join(bin, "pg_dump"), "#!/bin/sh\necho \"$*\" > \"$(dirname \"$0\")/args\"\necho \"$PGPASSWORD\" > \"$(dirname \"$0\")/env\"\nkill -9 $$\n", { mode: 0o755 });
+  const failed = await run(process.execPath, [tool, "--data", data, "--to", backups, "--postgres", "postgresql://idou:S3cret@db.example/idou", "--pg-bin", bin]).then(() => null, (error) => error);
+  assert.match(failed?.stderr ?? "", /pg_dump 没有完成：被终止/);
+  const written = await readFile(path.join(backups, "status.json"), "utf8");
+  assert.equal(written.includes("S3cret"), false);
+  assert.equal(failed.stderr.includes("S3cret"), false);
+  assert.equal((await readFile(path.join(bin, "args"), "utf8")).includes("S3cret"), false, "not on its command line");
+  assert.equal((await readFile(path.join(bin, "env"), "utf8")).trim(), "S3cret", "in its environment");
+  // --postgres-env: the address read from a variable, on nobody's command line.
+  const fromEnv = await new Promise((resolve) => execFile(process.execPath, [tool, "--data", data, "--to", backups, "--postgres-env", "IDOU_DATABASE_URL", "--pg-bin", bin],
+    { env: { ...process.env, IDOU_DATABASE_URL: "postgresql://idou:Env0nly@db.example/idou" } }, (error, stdout, stderr) => resolve({ error, stderr })));
+  assert.match(fromEnv.stderr, /pg_dump 没有完成/);
+  assert.equal((await readFile(path.join(bin, "env"), "utf8")).trim(), "Env0nly");
+  // A record from before -- or edited by hand -- is read without its credentials too.
+  const { readBackupStatus } = await import("../src/control-plane/health-monitor.js");
+  await writeFile(path.join(backups, "status.json"), JSON.stringify({ last: { ok: false, endedAt: new Date().toISOString(), error: "Command failed: pg_dump postgresql://idou:Old5ecret@db/idou" } }));
+  assert.equal(JSON.stringify(await readBackupStatus(backups)).includes("Old5ecret"), false);
+  await writeFile(path.join(backups, "status.json"), "{ not json");
+  await assert.rejects(readBackupStatus(backups), (error) => error.code === "ECORRUPT");
+});
+
 // The product was renamed, and so are the snapshots it takes. The newest are
 // kept by the time they were taken: named by the time alone, every idou- one
 // sorts before every mydoubao- one, and the newest would be the ones removed.
@@ -95,7 +156,8 @@ test("snapshots from before the rename count among the newest by their time, not
   }
   await mkdir(path.join(backups, "idou-20260105T000000000Z.partial"));
   await run(process.execPath, [tool, "--data", data, "--to", backups, "--keep", "3"]);
-  const left = (await readdir(backups)).sort();
+  // status.json beside them is the run's record (docs/service-status.md §4), not a snapshot.
+  const left = (await readdir(backups)).filter((name) => name !== "status.json").sort();
   assert.equal(left.length, 3, left.join(" "));
   assert.ok(left.includes("idou-20260103T000000000Z") && left.includes("mydoubao-20260104T000000000Z"), left.join(" "));
   assert.ok(left.some((name) => /^(?:idou|mydoubao)-2\d{7}T\d{9}Z$/.test(name) && name.slice(-19) > "20260104T000000000Z"), "and the one just taken");
