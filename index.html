@@ -6,7 +6,7 @@
 <title>i豆 企业桌面 Agent</title>
 <meta name="description" content="i豆 是飞书用户的企业桌面 Agent：用飞书账号登录，在一个窗口里发消息、改文档、做网站、查知识、写代码。默认每一步先问你；你一授权，它就全自动做完。">
 <meta property="og:title" content="i豆 企业桌面 Agent">
-<meta property="og:description" content="工作、编程、搜索，一台搞定。飞书账号即登录，权限跟随飞书，SaaS 与私有化都能用，可以接入客户自己的大模型。">
+<meta property="og:description" content="工作、编程、搜索，一台搞定。用飞书账号登录，权限跟随飞书，可以接入客户自己的大模型。非飞书官方软件：从零开发的独立开源项目。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0.05' y1='0' x2='0.72' y2='1'%3E%3Cstop offset='0' stop-color='%23F6B13A'/%3E%3Cstop offset='0.48' stop-color='%23E07A24'/%3E%3Cstop offset='1' stop-color='%23A83E17'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='116' fill='url(%23g)'/%3E%3Crect x='228' y='226' width='56' height='172' rx='28' fill='%23FFFAF0'/%3E%3Cellipse cx='256' cy='146' rx='54' ry='43' fill='%23FFFAF0' transform='rotate(-22 256 146)'/%3E%3C/svg%3E">
 <style>
 :root {
@@ -68,6 +68,12 @@ h1 { margin: 22px 0 0; font-size: clamp(40px, 7vw, 84px); line-height: 1.12; fon
 .ph { display: inline-block; }
 .lead { margin: 26px 0 0; max-width: 40em; font-size: clamp(17px, 2.1vw, 21px); color: var(--muted); }
 .lead strong { color: var(--cream); font-weight: 600; }
+.unofficial { margin: 14px 0 0; max-width: 46em; font-size: 14.5px; color: var(--faint); }
+.unofficial a, .disclaimer a { color: var(--amber-1); }
+.unofficial a { white-space: nowrap; }
+.disclaimer { margin-top: 28px; padding: 22px 26px; border-radius: 14px; background: var(--panel); box-shadow: inset 0 0 0 1.5px rgba(246, 177, 58, .35); }
+.disclaimer h4 { margin: 0 0 10px; font-size: 17px; color: var(--cream); }
+.disclaimer ul { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; color: var(--muted); font-size: 14.5px; line-height: 1.7; }
 .cta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 34px; }
 .btn { display: inline-flex; align-items: center; gap: 10px; height: 48px; padding: 0 24px; border-radius: 999px; font: 600 16px/1 var(--zh);
   text-decoration: none; border: 1px solid var(--line); background: var(--panel); color: var(--cream); cursor: pointer; }
@@ -334,6 +340,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
       <div class="eyebrow"><span class="bean"></span>飞书用户的企业桌面 Agent</div>
       <h1><span class="ph">工作、</span><span class="ph">编程、</span><span class="ph">搜索，</span><span class="ph amber">一台搞定。</span></h1>
       <p class="lead">用你的<strong>飞书账号</strong>登录，在同一个窗口里发消息、改文档、做网站、查知识、写代码。<strong>默认每一步先问你；你一授权，它就全自动做完。</strong></p>
+      <p class="unofficial">非飞书官方软件 · 从零开发的独立开源项目 · 与字节跳动、飞书 / Lark 没有隶属或授权关系（<a href="#disclaimer">免责声明</a>）</p>
       <div class="cta">
         <a class="btn primary" href="#film">看 2 分钟介绍</a>
         <a class="btn" href="#data">看实测数据</a>
@@ -351,50 +358,16 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
     <section id="data" aria-labelledby="data-title">
       <div class="kicker"><span class="rule"></span>实测数据</div>
       <h2 id="data-title">不靠形容词，靠同一套题。</h2>
-      <p class="intro">和同类产品用同一批文档、同一批问题正面比；用公开编程题检验真本事。评测条件写在页面最下方，可以复核。</p>
+      <p class="intro">用固定的一套题检验知识问答，用公开编程题检验编程能力。评测条件写在页面最下方，可以复核。</p>
       <div class="stats">
-        <div class="stat lead-stat"><div class="n">61 : 60</div><div class="k">企业知识问答，对比豆包工作<sup>1</sup></div><div class="d">同 16 篇文档、32 道题（满分 64）。i豆 不用向量数据库，照样打平。</div></div>
-        <div class="stat"><div class="n">0<small>道答错</small></div><div class="k">同一轮评测<sup>1</sup></div><div class="d">豆包工作答错 2 道。i豆 的每个可答题都点名了正确来源。</div></div>
-        <div class="stat"><div class="n">18<small>秒</small></div><div class="k">平均回答耗时<sup>1</sup></div><div class="d">豆包工作约 32 秒。更快，而且答案带出处。</div></div>
-        <div class="stat"><div class="n">8 / 10</div><div class="k">公开编程题抽测解出<sup>2</sup></div><div class="d">Terminal-Bench 2.1 公开题，用国产 GLM-5.3 模型，每题只跑一次。</div></div>
-        <div class="stat"><div class="n">17 → 27</div><div class="k">知识问答全对题数（共 28 题）<sup>3</sup></div><div class="d">两轮检索改进带来的提升，同一套题复测。能力是按数据一步步提上来的。</div></div>
-        <div class="stat"><div class="n">2,859<small>项</small></div><div class="k">自动化测试<sup>4</sup></div><div class="d">每个版本发布前全部通过，另有 32 项桌面自动验收。</div></div>
+        <div class="stat"><div class="n">8 / 10</div><div class="k">公开编程题抽测解出<sup>1</sup></div><div class="d">Terminal-Bench 2.1 公开题，用国产 GLM-5.3 模型，每题只跑一次。</div></div>
+        <div class="stat lead-stat"><div class="n">17 → 27</div><div class="k">知识问答全对题数（共 28 题）<sup>2</sup></div><div class="d">两轮检索改进带来的提升，同一套题复测。能力是按数据一步步提上来的。</div></div>
+        <div class="stat"><div class="n">2,873<small>项</small></div><div class="k">自动化测试<sup>3</sup></div><div class="d">每个版本发布前全部通过，另有 32 项桌面自动验收。</div></div>
       </div>
 
-      <div class="panel">
-        <h3>对比豆包工作：同一批文档、同一批题<sup>1</sup></h3>
-        <p class="sub">2026-09-21 · 16 篇企业文档 · 32 道题 · 两边都用真实飞书账号</p>
-        <div class="trio">
-          <div><h4>得分（满分 64）</h4><svg class="chart" viewBox="0 0 360 136" role="img" aria-label="得分（满分 64）：i豆 61，豆包工作 60">
-  <g class="c-grid"><line x1="80" y1="12" x2="80" y2="108"/><line x1="205" y1="12" x2="205" y2="108"/><line x1="330" y1="12" x2="330" y2="108"/></g>
-  <text class="c-lbl" x="0" y="42">i豆</text>
-  <rect class="bar-us" x="80" y="24" width="238.3" height="26" rx="5"/>
-  <text class="c-val dark" x="310.3" y="42" text-anchor="end">61</text>
-  <text class="c-lbl" x="0" y="92">豆包工作</text>
-  <rect class="bar-them" x="80" y="74" width="234.4" height="26" rx="5"/>
-  <text class="c-val light" x="306.4" y="92" text-anchor="end">60</text>
-  <text class="c-tick" x="80" y="128" text-anchor="middle">0</text><text class="c-tick" x="205" y="128" text-anchor="middle">32</text><text class="c-tick" x="330" y="128" text-anchor="middle">64</text>
-</svg></div>
-          <div><h4>逐题结果（32 题）</h4><svg class="chart" viewBox="0 0 360 136" role="img" aria-label="逐题结果（32 题）：i豆 全对 29、部分 3、答错 0；豆包工作 全对 30、部分 0、答错 2">
-  <text class="c-lbl" x="0" y="42">i豆</text><rect class="w-ok" x="80" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="87.8" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="95.6" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="103.4" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="111.2" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="119" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="126.8" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="134.6" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="142.4" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="150.2" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="158" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="165.8" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="173.6" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="181.4" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="189.2" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="197" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="204.8" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="212.6" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="220.4" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="228.2" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="236" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="243.8" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="251.6" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="259.4" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="267.2" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="275" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="282.8" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="290.6" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="298.4" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-part" x="306.2" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-part" x="314" y="24" width="6.2" height="26" rx="1.5"/><rect class="w-part" x="321.8" y="24" width="6.2" height="26" rx="1.5"/>
-  <text class="c-lbl" x="0" y="92">豆包工作</text><rect class="w-ok" x="80" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="87.8" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="95.6" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="103.4" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="111.2" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="119" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="126.8" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="134.6" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="142.4" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="150.2" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="158" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="165.8" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="173.6" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="181.4" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="189.2" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="197" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="204.8" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="212.6" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="220.4" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="228.2" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="236" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="243.8" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="251.6" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="259.4" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="267.2" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="275" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="282.8" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="290.6" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="298.4" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-ok" x="306.2" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-bad" x="314" y="74" width="6.2" height="26" rx="1.5"/><rect class="w-bad" x="321.8" y="74" width="6.2" height="26" rx="1.5"/>
-  <text class="c-tick" x="80" y="128">第 1 题</text><text class="c-tick" x="329.6" y="128" text-anchor="end">第 32 题</text>
-</svg><div class="legend"><span><i style="background:var(--ok)"></i>全对</span><span><i style="background:var(--part)"></i>部分对</span><span><i style="background:var(--bad)"></i>答错</span></div></div>
-          <div><h4>平均回答耗时</h4><svg class="chart" viewBox="0 0 360 136" role="img" aria-label="平均回答耗时：i豆 18 秒，豆包工作 32 秒">
-  <g class="c-grid"><line x1="80" y1="12" x2="80" y2="108"/><line x1="205" y1="12" x2="205" y2="108"/><line x1="330" y1="12" x2="330" y2="108"/></g>
-  <text class="c-lbl" x="0" y="42">i豆</text>
-  <rect class="bar-us" x="80" y="24" width="112.5" height="26" rx="5"/>
-  <text class="c-val dark" x="184.5" y="42" text-anchor="end">18 秒</text>
-  <text class="c-lbl" x="0" y="92">豆包工作</text>
-  <rect class="bar-them" x="80" y="74" width="200" height="26" rx="5"/>
-  <text class="c-val light" x="272" y="92" text-anchor="end">32 秒</text>
-  <text class="c-tick" x="80" y="128" text-anchor="middle">0</text><text class="c-tick" x="205" y="128" text-anchor="middle">20</text><text class="c-tick" x="330" y="128" text-anchor="middle">40</text>
-</svg></div>
-        </div>
-      </div>
       <div class="duo">
         <div class="panel">
-          <h3>检索迭代：知识问答全对题数<sup>3</sup></h3>
+          <h3>检索迭代：知识问答全对题数<sup>2</sup></h3>
           <p class="sub">2026-09-12 · 同一个应用 · 同一套 28 道可回答的题，每轮改进后复测</p>
           <svg class="chart" viewBox="0 0 520 220" role="img" aria-label="知识问答全对题数（共 28 题）：改造前 17，第一轮改进 25，第二轮改进 27">
   <g class="c-grid"><line x1="64" y1="180" x2="496" y2="180"/><line x1="64" y1="105" x2="496" y2="105"/><line x1="64" y1="30" x2="496" y2="30" class="top"/></g><text class="c-tick" x="54" y="184" text-anchor="end">0</text><text class="c-tick" x="54" y="109" text-anchor="end">14</text><text class="c-tick" x="54" y="34" text-anchor="end">28</text>
@@ -405,7 +378,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
 </svg>
         </div>
         <div class="panel">
-          <h3>公开编程题抽测<sup>2</sup></h3>
+          <h3>公开编程题抽测<sup>1</sup></h3>
           <p class="sub">Terminal-Bench 2.1 · 10 道题 · 每题一次 · GLM-5.3</p>
           <svg class="chart" viewBox="0 0 520 100" role="img" aria-label="公开编程题抽测：10 道解出 8 道">
   <circle class="c-solved" cx="35" cy="42" r="20"/><path class="c-check" d="M28 42 l5 5 l9 -10"/><circle class="c-solved" cx="85" cy="42" r="20"/><path class="c-check" d="M78 42 l5 5 l9 -10"/><circle class="c-solved" cx="135" cy="42" r="20"/><path class="c-check" d="M128 42 l5 5 l9 -10"/><circle class="c-solved" cx="185" cy="42" r="20"/><path class="c-check" d="M178 42 l5 5 l9 -10"/><circle class="c-solved" cx="235" cy="42" r="20"/><path class="c-check" d="M228 42 l5 5 l9 -10"/><circle class="c-solved" cx="285" cy="42" r="20"/><path class="c-check" d="M278 42 l5 5 l9 -10"/><circle class="c-solved" cx="335" cy="42" r="20"/><path class="c-check" d="M328 42 l5 5 l9 -10"/><circle class="c-solved" cx="385" cy="42" r="20"/><path class="c-check" d="M378 42 l5 5 l9 -10"/><circle class="c-miss" cx="435" cy="42" r="19"/><line class="c-missline" x1="429" y1="42" x2="441" y2="42"/><circle class="c-miss" cx="485" cy="42" r="19"/><line class="c-missline" x1="479" y1="42" x2="491" y2="42"/>
@@ -445,7 +418,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
     <section id="game" aria-labelledby="game-title">
       <div class="kicker"><span class="rule"></span>一段话做出游戏</div>
       <h2 id="game-title"><span class="ph">一段话，</span><span class="ph">做出一个能玩的 FPS 游戏。</span></h2>
-      <p class="intro">在 i豆 的编程任务里说一段话：three.js 第一人称射击，三种敌人、两把枪、AI 寻路，带单元测试和自检。GLM-5.3 二十分钟写出第一版；之后换能看图的 MiniMax-M3，每轮一句反馈，它自己截图看画面再改，改了六轮。代码、three.js 和贴图都在一个网站目录里，打开网页就能玩。</p>
+      <p class="intro">在 i豆 的编程任务里说一段话：three.js 第一人称射击，三种敌人、两把枪、AI 寻路，带单元测试和自检。GLM-5.3 二十分钟写出第一版；之后换能看图的 MiniMax-M3，每轮说出看到的问题，它截图看画面自己改，前后一共六轮。代码、three.js 和贴图都在一个网站目录里，打开网页就能玩。</p>
       <div class="split2">
         <figure class="shot2"><video src="media/game.mp4" poster="media/game.jpg" controls playsinline preload="none"></video><figcaption>录屏（有快进，画面上标了倍数）：一段话、先出方案、写代码、看画面改了六轮，最后是实时的游戏画面</figcaption></figure>
         <div class="facts2">
@@ -495,8 +468,8 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
         <li><span class="no">跑</span><h3>到点自己跑</h3><p>定时任务在 gVisor 沙箱里运行，凭据由沙箱外的代理加上，结果存进你的云盘。</p></li>
       </ol>
       <div class="stats" style="margin-top:28px">
-        <div class="stat"><div class="n">365<small>个</small></div><div class="k">源码文件</div><div class="d">src/ 下 64,164 行</div></div>
-        <div class="stat"><div class="n">2,859<small>项</small></div><div class="k">自动化测试</div><div class="d">每个版本发布前全部通过，再跑桌面验收</div></div>
+        <div class="stat"><div class="n">365<small>个</small></div><div class="k">源码文件</div><div class="d">src/ 下 64,547 行</div></div>
+        <div class="stat"><div class="n">2,873<small>项</small></div><div class="k">自动化测试</div><div class="d">每个版本发布前全部通过，再跑桌面验收</div></div>
         <div class="stat"><div class="n">0<small>行</small></div><div class="k">对 Codex 和飞书 CLI 的改动</div><div class="d">经 app-server 协议和 provider 契约接入，升级上游就拿到新能力</div></div>
       </div>
     </section>
@@ -563,7 +536,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
         <div class="layer2"><span class="no">7</span><div><h3>定时任务</h3><p>生产只认 gVisor：只读根、去掉全部权限、内部网络、资源上限；凭据在沙箱外的出口代理上加。</p></div></div>
         <div class="layer2"><span class="no">8</span><div><h3>供应链</h3><p>发布清单签名；随附的 Codex、飞书 CLI、Node 每次启动按摘要校验，从不去 PATH 上找；关掉 Electron 的三个调试与注入开关。</p></div></div>
       </div>
-      <p class="intro" style="margin-top:22px">2,859 项自动化测试里，77 个测试文件专门守安全与隔离的边界；发布前的审查每找到一个问题，就先写一个不修就失败的测试。</p>
+      <p class="intro" style="margin-top:22px">2,873 项自动化测试里，51 个测试文件专门守安全与隔离的边界；发布前的审查每找到一个问题，就先写一个不修就失败的测试。</p>
     </section>
     <section id="admin" aria-labelledby="admin-title">
       <div class="kicker"><span class="rule"></span>管理后台</div>
@@ -663,18 +636,29 @@ npm run check   # 全部测试，不花钱、不连真实飞书</pre>
     <div class="notes" role="note">
       <h4>数据说明</h4>
       <ol>
-        <li>知识问答对比：2026-09-21。两边使用同一批 16 篇企业文档（约 10.3 万字）、同一批 32 道题、同样的问法，都用真实飞书账号；每题 2 分，按答案全文评分（i豆 全对 29 / 部分 3 / 答错 0，豆包工作 全对 30 / 部分 0 / 答错 2）。平均耗时：i豆 32 题都有读数，豆包工作 21 题有读数。32 道题的样本足以看出两边错在哪里，但不足以分出 1–2 分的高下，因此结论是打平。</li>
         <li>编程抽测：2026-09-14。Terminal-Bench 2.1 公开题中的 10 道，每题运行一次，模型为 GLM-5.3。这是抽测，不是排行榜成绩；排行榜成绩是全部 89 道题、每题至少 5 次的平均。</li>
         <li>检索迭代：2026-09-12。同一个应用、同一套 28 道可回答的题，改进前全对 17 题，第一轮改进后 25 题，第二轮改进后 27 题。</li>
-        <li>测试数量、源码规模：以 2026-10-07 的版本为准。</li>
+        <li>测试数量、源码规模：以 2026-10-09 发布的版本（.282）为准。</li>
         <li>监控网站：飞书测试账号里的真实多维表格（2 万条告警，飞书单表上限），由 i豆 建表、写数据、写页面；打开速度在本机网站服务上用 Chromium 测得，4G 为模拟网速。</li>
         <li>管理后台：用产品自己的后台代码，加一个合成的十万人组织（姓名和标识都是编的）实测。</li>
-        <li>i豆 是独立项目，与字节跳动、飞书 / Lark、豆包、OpenAI 没有隶属、背书或赞助关系；飞书、Lark、豆包是各自所有者的商标，这里提到只是为了说明 i豆 配合什么使用、和什么比较过。</li>
       </ol>
     </div>
 
+    <div class="disclaimer" id="disclaimer" role="note">
+      <h4>免责声明</h4>
+      <ul>
+        <li><strong>i豆 不是飞书官方软件。</strong>它不是字节跳动或飞书 / Lark 的产品，也没有得到它们的授权、认可、背书或赞助，和它们没有隶属或合作关系。</li>
+        <li><strong>i豆 是从零开发的独立开源项目</strong>，不是飞书或任何飞书客户端的修改版、分支或插件。它只通过飞书开放平台的公开接口和开源的飞书命令行工具，访问你本人在飞书里有权限的数据。</li>
+        <li>本页、宣传视频和 i豆 软件里的任何内容都不代表飞书官方，也不是飞书的官方说明。飞书的功能、规则、收费和数据安全，以飞书官方的说明为准。</li>
+        <li>使用 i豆 时，你的飞书账号仍受飞书用户协议和你所在企业的规定约束；企业的飞书管理员决定是否允许使用第三方应用。</li>
+        <li>i豆 的问题请到 <a href="https://github.com/scott987-cmd/idou/issues">本项目的 GitHub</a> 反馈，不要联系飞书客服；飞书客服不了解、也不负责这个项目。</li>
+        <li>i豆 按「原样」提供，不提供任何明示或默示的担保（见 Apache-2.0 许可证）；因使用 i豆 造成的任何损失，项目作者不承担责任。</li>
+        <li>「飞书」「Lark」是其所有者的商标，「OpenAI」「Codex」是 OpenAI 的商标；这里提到只为说明 i豆 配合什么使用，不表示任何关联。</li>
+      </ul>
+    </div>
+
     <footer>
-      <span>i豆 · 飞书用户的企业桌面 Agent</span>
+      <span>i豆 · 飞书用户的企业桌面 Agent · 非飞书官方软件</span>
       <span>源代码：<a href="https://github.com/scott987-cmd/idou">github.com/scott987-cmd/idou</a>（Apache-2.0）</span>
     </footer>
   </div>
