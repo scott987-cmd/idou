@@ -86,7 +86,7 @@ test("every entry point adopts the old names before anything else is loaded", as
     if (!first || !first.includes("adopt-legacy-env.js")) missing.push(entry);
   }
   assert.deepEqual(missing, [], "entry points whose first import is not src/adopt-legacy-env.js");
-  for (const entry of ["run.js", "feishu.js", "agent-token.js"]) {
+  for (const entry of ["run.js", "agent-token.js"]) {
     const text = await readFile(path.join(root, "bin", "sandbox", entry), "utf8");
     assert.equal(text.split("\n").find((line) => line.startsWith("import ")), 'import "./legacy-env.js";', `bin/sandbox/${entry}`);
   }

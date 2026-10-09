@@ -236,8 +236,11 @@ try {
 const secrets = await inside("env | grep -icE 'token|secret|password|_key=' || true");
 check("no credential-shaped variables in the image", secrets.out.trim() === "0", `matched ${secrets.out.trim()}`);
 
+// What the job runs (SANDBOX_ENTRY in scheduled-run.js) and what Codex calls
+// for its token (AUTH_COMMAND in codex-config.js), by name.
 const files = await inside("ls /opt/mydoubao/bin/sandbox/");
-check("the sandbox entry point is present", files.out.includes("feishu.js"), files.out.split("\n").join(" "));
+const present = files.out.split(/\s+/);
+check("the sandbox entry point is present", ["run.js", "agent-token.js"].every((name) => present.includes(name)), files.out.split("\n").join(" "));
 
 // What was built, written down. Three names, three jobs:
 //   - the tag given (by default the lock's): what a developer's control plane
