@@ -19,6 +19,7 @@ import { SessionRegistry } from "../../src/control-plane/sessions.js";
 import { createModelGateway } from "../../src/control-plane/model-gateway.js";
 import { loginLaunchUrl } from "./login-launch.js";
 import { SAAS_FEISHU } from "../../src/providers/feishu/saas-definition.js";
+import { appReady } from "./app-ready.js";
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function until(read, accept, label, timeoutMs = 30_000) {
@@ -71,7 +72,7 @@ export async function startFeishuSection({ route = () => false, prefix = "idou-f
   const launch = async () => {
     const app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/web-identity-desktop-entry.js")],
       env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: directory, IDOU_SERVER_URL: origin }, timeout: 30_000 });
-    const page = await app.firstWindow(); page.setDefaultTimeout(20_000);
+    const page = await app.firstWindow(); page.setDefaultTimeout(20_000); await appReady(page);
     page.on("pageerror", (error) => errors.push(error.message));
     return { app, page };
   };

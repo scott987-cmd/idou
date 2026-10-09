@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-file-preview-")), workspace = path.join(directory, "workspace"), evidence = path.resolve("docs/evidence/task-ui");
 await mkdir(workspace); await mkdir(evidence, { recursive: true }); let app;
@@ -15,7 +16,7 @@ try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/file-preview-desktop-entry.js")], env: { ...clientEnvironment(),
     ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: path.join(directory, "data"), IDOU_FILE_PREVIEW_WORKSPACE: workspace } });
   const page = await app.firstWindow(), errors = []; page.setDefaultTimeout(25_000); page.on("pageerror", error => errors.push(error.message));
-  await page.locator("#new-task").waitFor(); await page.reload(); await page.locator("#new-task").waitFor();
+  await appReady(page); await page.reload(); await appReady(page);
   await page.locator('[data-section="coding"]').click(); await page.locator("#section-title", { hasText: "编程任务" }).waitFor();
   await taskRow(page, "文件与预览验收").click(); await page.locator("#workbench-files").click();
   // C06: text has line numbers, a raster stays an image, and Office gets a
@@ -31,7 +32,11 @@ try {
   await fileButton(page, "index.html").click(); await page.locator("#open-preview").click();
   await page.locator("#preview-title", { hasText: "首页成果" }).waitFor(); assert.equal(await page.locator("#preview-address").innerText(), "/index.html");
   await page.locator("#reference-preview-page").click(); await page.locator("#mention-row", { hasText: "页面 · 首页成果 · /index.html" }).waitFor();
-  await taskRow(page, "另一个编程任务").click(); assert.equal(await page.locator("#mention-row").isHidden(), true);
+  // Waited for, not read at once: the other task is drawn after the click, and
+  // read straight away under load the row was still the first task's (full
+  // acceptance run, 2026-10-09). A reference that followed the person into
+  // the other task stays visible, and this times out.
+  await taskRow(page, "另一个编程任务").click(); await page.locator("#mention-row").waitFor({ state: "hidden", timeout: 5_000 });
   await taskRow(page, "文件与预览验收").click(); await page.locator("#preview-title", { hasText: "首页成果" }).waitFor(); await page.locator("#mention-row", { hasText: "页面 · 首页成果 · /index.html" }).waitFor();
   await page.locator("#refresh-preview").click(); await page.locator("#preview-title", { hasText: "首页成果" }).waitFor();
   await page.locator("#prompt").fill("把当前页面的标题写得更清楚"); await page.locator("#send").click();

@@ -10,6 +10,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { answerConfirm } from "./fixtures/agent-harness.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-office-ui-"));
 const evidence = path.resolve("docs/evidence/task-ui"); await mkdir(evidence, { recursive: true });
@@ -19,7 +20,7 @@ async function launch() {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/document-delivery-desktop-entry.js")], env: {
     ...clientEnvironment(), IDOU_DESKTOP_BACKGROUND: "1", IDOU_DESKTOP_DATA_DIR: directory,
   } });
-  page = await app.firstWindow(); page.setDefaultTimeout(20_000); await page.locator("#new-task").waitFor();
+  page = await app.firstWindow(); page.setDefaultTimeout(20_000); await appReady(page);
 }
 try {
   await launch();

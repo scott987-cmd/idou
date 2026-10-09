@@ -10,6 +10,7 @@ import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { syntheticResponseStream } from "./fixtures/model-response.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // A coding task that delegates to a subagent, in the actual Electron app with the
 // actual Codex and the product's own gateway, against a scripted model -- no paid
@@ -77,7 +78,7 @@ try {
     env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: path.join(directory, "data"), IDOU_SESSION_FILE: sessionFile, IDOU_SERVER_URL: origin } });
   const page = await app.firstWindow(); page.setDefaultTimeout(60_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await page.locator('[data-section="coding"]').click();
   await app.evaluate(({ dialog }, cwd) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [cwd] }); }, workspace);
   await page.locator("#pick-workspace").click();

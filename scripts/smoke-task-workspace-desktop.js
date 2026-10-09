@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const root = await mkdtemp(path.join(os.tmpdir(), "idou-task-workspace-"));
 const projectA = path.join(root, "first", "same-name");
@@ -27,7 +28,7 @@ try {
   }, timeout: 30_000 });
   const page = await app.firstWindow();
   page.setDefaultTimeout(20_000);
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await page.locator('[data-section="coding"]').click();
 
   await choose(projectA);

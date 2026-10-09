@@ -15,6 +15,7 @@ import { appHash, appManifest } from "../src/apps/manifest.js";
 import { snapshotApp } from "../src/application/app-candidates.js";
 import { openAdminDatabase } from "../src/control-plane/admin-db.js";
 import { SiteVisitors } from "../src/control-plane/site-visitors.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // The versions a published site keeps, in the actual Electron application
 // (docs/sites-phase0.md §0.6). Found in the 2026-10-03 benchmark: the server
@@ -56,7 +57,7 @@ try {
     timeout: 30_000 });
   const page = await app.firstWindow(); page.setDefaultTimeout(30_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await page.locator('[data-section="sites"]').click();
   await page.locator("#site-new").click();
   await page.locator('.template-dialog .template-card[data-template="game"] .template-pick').click();

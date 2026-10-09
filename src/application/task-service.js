@@ -150,8 +150,11 @@ export const UPSTREAM_FAILURES = Object.freeze([
   // gateway refuses a body over its limit. An agent checking a game by its
   // screen took 27 screenshots (9 MB) and every later request was refused
   // (2026-10-08) -- shown as "unexpected status 413 Payload Too Large:
-  // request_too_large, url: …". Compacting drops the pictures.
-  [/request_too_large|413 Payload Too Large/, "这段对话里的截图太多，整段请求超过了模型网关的大小上限，被拒绝了。已经改好的文件都还在："
+  // request_too_large, url: …". Compacting drops the pictures. Since .282 the
+  // gateway itself leaves out the oldest screenshots first, so a refusal now
+  // means the rest -- pasted text, files read in -- is too large on its own,
+  // and the sentence does not blame pictures a conversation may not have.
+  [/request_too_large|413 Payload Too Large/, "这段对话的内容太多（较早的截图已经自动省略，剩下的贴进来的长文本、读进来的文件等仍然太大），整段请求超过了模型网关的大小上限，被拒绝了。已经改好的文件都还在："
     + "用下面的「压缩对话」收一收，再说「继续」；压缩也失败的话，新开一个任务，说明接着做什么。"],
   // Codex cannot find the file it keeps this conversation in. Seen when the
   // account's directory had been renamed under Codex's index (2026-09-23; the
@@ -422,6 +425,7 @@ export class TaskService extends EventEmitter {
     await this.withThread(task, async (client) => {
       // `thread/compact/start` is itself the turn, so this waits for that turn
       // rather than starting another one the way an ordinary message would.
+      let cancel;
       const finished = new Promise((resolve, reject) => {
         const timer = setTimeout(() => { done(new Error("压缩超过 5 分钟没有完成")); }, 5 * 60_000);
         const onNotification = (message) => {
@@ -434,9 +438,14 @@ export class TaskService extends EventEmitter {
           if (error) reject(error); else resolve(turn);
         }
         client.on("notification", onNotification); client.on("stopped", onStopped);
+        cancel = done;
       });
-      await client.request("thread/compact/start", { threadId: task.codexThreadId });
-      const turn = await finished.catch((error) => { throw new Error(`压缩未完成：${error.message}`); });
+      // Refused outright (a request too large, say), there is no turn to wait
+      // for: stop waiting at once, and say why in the product's words, as for a
+      // compaction that started and failed.
+      try { await client.request("thread/compact/start", { threadId: task.codexThreadId }); }
+      catch (error) { cancel(error); }
+      const turn = await finished.catch((error) => { throw new Error(`压缩未完成：${upstreamFailure(error.message)}`); });
       if (turn?.status && turn.status !== "completed") throw new Error(`压缩未完成：${turn.error?.message ? upstreamFailure(turn.error.message) : turn.status}`);
     });
     // Smaller now; the next response says by how much.

@@ -12,6 +12,7 @@ import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { syntheticResponseStream } from "./fixtures/model-response.js";
 import { waitForHumanChoice, waitForHumanConfirm } from "./fixtures/agent-harness.js";
 import { execFileSync } from "node:child_process";
+import { appReady } from "./fixtures/app-ready.js";
 
 // A coding task in the actual Electron app with the actual Codex, against a
 // scripted model -- no paid call. The Agent keeps a plan, adds a file through
@@ -90,7 +91,7 @@ try {
   app = await electron.launch({ executablePath: electronBinary, args: ["."], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: path.join(directory, "data"), IDOU_SESSION_FILE: sessionFile, IDOU_SERVER_URL: origin }, timeout: 30_000 });
   const page = await app.firstWindow(); page.setDefaultTimeout(60_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await page.locator('[data-section="coding"]').click();
   await app.evaluate(({ dialog }, cwd) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [cwd] }); }, workspace);
   await page.locator("#pick-workspace").click();

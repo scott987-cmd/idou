@@ -22,6 +22,7 @@ import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { answerConfirm, waitForHumanConfirm } from "./fixtures/agent-harness.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "idou-review-desktop-"))), workspace = path.join(root, "workspace"), evidence = path.resolve("docs/evidence");
 await mkdir(workspace); await mkdir(evidence, { recursive: true });
@@ -37,7 +38,7 @@ const launch = async (name, session) => {
   const sessionFile = path.join(root, `${name}.json`); await writeFile(sessionFile, JSON.stringify({ token: session.token, expiresAt: session.expiresAt, serverUrl }), { mode: 0o600 });
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/app-review-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_SESSION_FILE: sessionFile, IDOU_DESKTOP_DATA_DIR: path.join(root, name), APP_REVIEW_FIXTURE_WORKSPACE: workspace } });
   page = await app.firstWindow(); page.setDefaultTimeout(15000); page.on("pageerror", error => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
 };
 const close = async () => { await app.close(); app = null; };
 const card = () => page.locator("#confirmations .confirm-card");

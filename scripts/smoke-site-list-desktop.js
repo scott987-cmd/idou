@@ -13,6 +13,7 @@ import { SiteRegistry } from "../src/control-plane/site-registry.js";
 import { SiteService } from "../src/control-plane/site-service.js";
 import { appHash } from "../src/apps/manifest.js";
 import { waitForHumanChoice } from "./fixtures/agent-harness.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // 文档网站's list from the server, in the actual Electron application
 // (docs/sites-phase0.md §0.5). Found in the 2026-10-03 benchmark: the list was
@@ -57,7 +58,7 @@ try {
     timeout: 30_000 });
   const window = await app.firstWindow(); window.setDefaultTimeout(30_000);
   const errors = []; window.on("pageerror", (error) => errors.push(error.message));
-  await window.locator("#new-task").waitFor();
+  await appReady(window);
   await window.locator('[data-section="sites"]').click();
   const remoteRow = window.locator(`.site-row[data-site="remote:${elsewhere.id}"]`);
   await remoteRow.waitFor();

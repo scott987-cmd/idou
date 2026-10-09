@@ -1,4 +1,5 @@
 import { readableError } from "./errors.js";
+import { modelMenuNote } from "./model-menu.js";
 import { qrSvg } from "../../application/qr-code.js";
 import { searchOnPause } from "./search-on-pause.js";
 import { knowledgeDiscoveryUi } from "./knowledge-discovery.js";
@@ -650,14 +651,20 @@ document.addEventListener("keydown", event => { if (event.key === "Escape") clos
 // 模型, as Codex's /model and WorkBuddy's model chip: the same choices as 设置 →
 // 对话 / 编程模型 and /model, kept by the server, from the next turn on. Until
 // 2026-10-08 this was a label that looked like this control and did nothing.
+// Opening waits for the server's choices; a click or Escape in that wait
+// closes it, and the wait then shows nothing (modelMenuTicket).
+let modelMenuTicket = 0, modelMenuLoading = false;
 function closeModelMenu() {
+  modelMenuTicket += 1; modelMenuLoading = false;
   $("#model-menu").hidden = true;
   $("#model-toggle").setAttribute("aria-expanded", "false");
 }
 async function openModelMenu() {
   const menu = $("#model-menu");
-  if (!menu.hidden) { closeModelMenu(); return; }
-  const options = await api.modelOptions();
+  if (!menu.hidden || modelMenuLoading) { closeModelMenu(); return; }
+  const ticket = ++modelMenuTicket; modelMenuLoading = true;
+  const options = await api.modelOptions().finally(() => { if (ticket === modelMenuTicket) modelMenuLoading = false; });
+  if (ticket !== modelMenuTicket) return;
   const kept = options.kept === "server", passedOver = new Set((options.unavailable ?? []).map((row) => row.slug));
   const label = (slug) => options.available.find((model) => model.slug === slug)?.label ?? slug;
   const item = (title, hint, chosen, slug) => {
@@ -678,7 +685,7 @@ async function openModelMenu() {
   ];
   const single = options.available.length < 2;
   if (single) for (const row of rows) row.disabled = true;
-  const note = element("small", single ? "服务端当前只提供这一个模型。" : kept ? "保存在服务端，下一轮生效；之后的任务和定时任务都用它。" : "本连接使用，下一轮生效。", "model-menu-note");
+  const note = element("small", modelMenuNote(options), "model-menu-note");
   menu.replaceChildren(...rows, note);
   menu.hidden = false;
   placeMenu(menu, $("#model-toggle"));
@@ -5568,3 +5575,11 @@ setInterval(() => {
   }
   renderConversation();
 }, 1000);
+// Until here the window is index.html's own markup: the sidebar, 新工作任务 and
+// the composer are drawn before this module has run, so a click on them does
+// nothing and a draft typed into them is overwritten by restoreTaskUi above.
+// Whatever drives this page waits for this (scripts/fixtures/app-ready.js),
+// never for a control to appear: #new-task was on screen 30–150 ms before any
+// button worked, and a smoke that clicked 技能中心 in that gap waited 60 s for
+// a section that never opened (2026-10-03).
+document.body.dataset.appState = "ready";

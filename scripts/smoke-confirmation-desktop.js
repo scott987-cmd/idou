@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-confirmation-"));
 const evidence = path.resolve("docs/evidence/task-ui"); await mkdir(evidence, { recursive: true });
@@ -17,7 +18,7 @@ try {
   } });
   let page = await app.firstWindow(); page.setDefaultTimeout(20_000);
   const errors = []; page.on("pageerror", error => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   // Announcements are recorded rather than shown, from the start: a run in the
   // background is a window that is not in front, and every card it raised would
   // otherwise reach the person's own notification centre. Whether the window
@@ -118,7 +119,7 @@ try {
   await page.evaluate((id) => { window.__pendingDelete = window.idou.deleteTask(id); }, taskB.id);
   await page.locator("#confirmations .confirm-card .confirm-actions").waitFor();
   const reloadId = await page.locator("#confirmations .confirm-card").getAttribute("data-confirm-id");
-  await page.reload(); page.setDefaultTimeout(20_000); await page.locator("#new-task").waitFor();
+  await page.reload(); page.setDefaultTimeout(20_000); await appReady(page);
   assert.deepEqual(await page.evaluate(async (id) => window.idou.confirmResponse({ id, response: 1 }), reloadId), { accepted: false });
   assert.ok((await page.evaluate(async () => (await window.idou.snapshot()).tasks)).some((row) => row.id === taskB.id));
 

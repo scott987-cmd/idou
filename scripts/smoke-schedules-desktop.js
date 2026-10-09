@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { answerConfirm, runAgentTool, waitForHumanConfirm } from "./fixtures/agent-harness.js";
 import { localEnvFile } from "../src/install-names.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // A development control plane with scheduled tasks on, so the list can be seen
 // with something in it, and so a task can actually fire.
@@ -162,7 +163,7 @@ try {
   page = await app.firstWindow(); page.setDefaultTimeout(20_000);
   console.log("  · app window ready");
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
 
   // 1. The section is in the sidebar, beside the others, not behind a setting.
   const tab = page.locator('[data-section="schedules"]');
@@ -537,6 +538,18 @@ try {
   const picked = await page.evaluate(() => window.idou.modelOptions());
   assert.deepEqual([picked.choice, picked.current], ["GLM-5.3", "GLM-5.3"], "kept by the server");
   assert.equal((await page.evaluate(() => window.idou.connection())).model, "MiniMax-M3", "the server's default is still its default");
+  // A second click, or Escape, while the menu is still fetching its choices
+  // closes it. Both fire in one go, before the fetch can answer, so this does
+  // not depend on how fast it is; until 2026-10-09 the fetch then opened the
+  // menu anyway.
+  for (const what of ["a second click", "Escape"]) {
+    await page.evaluate((second) => {
+      const chip = document.querySelector("#model-toggle"); chip.click();
+      if (second === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); else chip.click();
+    }, what);
+    await page.waitForTimeout(1500);
+    assert.equal(await modelMenu.isHidden(), true, `${what} while the menu was loading closed it`);
+  }
   // Chosen in 设置, the chip follows at once, not at the next 30-second poll.
   await page.locator("#settings").click();
   await page.waitForFunction(() => document.querySelectorAll("#model-select option").length >= 3 && !document.querySelector("#model-select").disabled, null, { polling: 200 });

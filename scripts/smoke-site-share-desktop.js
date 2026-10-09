@@ -11,6 +11,7 @@ import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { SiteRegistry } from "../src/control-plane/site-registry.js";
 import { SiteService } from "../src/control-plane/site-service.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // Who a site is shared with, in the actual Electron application
 // (docs/sites-phase0.md §0.4). Found in the 2026-10-03 benchmark: 仅邀请的人
@@ -39,7 +40,7 @@ try {
     timeout: 30_000 });
   const page = await app.firstWindow(); page.setDefaultTimeout(30_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await page.locator('[data-section="sites"]').click();
   await page.locator("#site-new").click();
   await page.locator('.template-dialog .template-card[data-template="game"] .template-pick').click();

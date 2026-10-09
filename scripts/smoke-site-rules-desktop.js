@@ -10,6 +10,7 @@ import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { syntheticResponseStream } from "./fixtures/model-response.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // A coding task opened on a site with 用编程任务修改 is told, before it adds
 // anything, what publishing that site's folder will take -- in the actual
@@ -49,7 +50,7 @@ try {
     env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: path.join(directory, "data"), IDOU_SESSION_FILE: sessionFile, IDOU_SERVER_URL: origin } });
   const page = await app.firstWindow(); page.setDefaultTimeout(30_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
 
   // A site made of files only, as 文档网站 makes one: its own folder in the account's data.
   const site = await page.evaluate(() => window.idou.siteCreate({ name: "规则样本站" }));

@@ -217,7 +217,9 @@ export function installMonitor() {
       // A conversation (a live region, a log) is content, not rows: it gives way
       // to a card on purpose, and its messages are as tall as they are.
       if (node.closest(NATIVE_HOSTS) || node.matches("textarea, pre, code, [aria-live], [role=log]")) continue;
-      if (!/auto|scroll/.test(css(node).overflowY) || node.scrollHeight - node.clientHeight <= 4) continue;
+      // Overflow first: a layout read rules out almost every element, and only
+      // what is left has its style computed.
+      if (node.scrollHeight - node.clientHeight <= 4 || !/auto|scroll/.test(css(node).overflowY)) continue;
       const rows = [...node.children].filter((child) => child.matches(CONTROLS) || child.querySelector(CONTROLS));
       if (rows.length < 2 || !shown(node)) continue;
       const row = rect(rows[0]).height;

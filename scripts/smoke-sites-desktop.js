@@ -17,6 +17,7 @@ import { SITE_TEMPLATES } from "../src/application/site-templates.js";
 // The templates this build ships, from the one list: a smoke that spelled them
 // out failed on each new one for a reason that was not the product's.
 const TEMPLATE_IDS = SITE_TEMPLATES.map((template) => template.id);
+import { appReady } from "./fixtures/app-ready.js";
 
 // 文档网站 in the actual Electron application, against a synthetic Base (no
 // account, no network, no model): 从表格新建 → pick the slice → the confirmation
@@ -54,7 +55,7 @@ try {
     timeout: 30_000 });
   const page = await app.firstWindow(); page.setDefaultTimeout(30_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await page.locator('[data-section="sites"]').click();
   await page.locator("#site-new").waitFor();
   assert.match(await page.locator("#library").innerText(), /还没有网站/);
@@ -540,7 +541,7 @@ app.whenReady().then(async () => { const win = new BrowserWindow({ width: 700, h
 app.on("window-all-closed", () => {});`);
   const instance = await electron.launch({ executablePath: electronBinary, args: [entry], timeout: 30_000 });
   try {
-    const window = await instance.firstWindow();
+    const window = await instance.firstWindow(); // 生成的网页，不是 i豆 的窗口
     const failures = [];
     window.on("pageerror", (error) => failures.push(error.message));
     await window.locator("#start").click();
@@ -565,7 +566,7 @@ app.whenReady().then(async () => { const win = new BrowserWindow({ width: 1000, 
 app.on("window-all-closed", () => {});`);
   const instance = await electron.launch({ executablePath: electronBinary, args: [entry], timeout: 30_000 });
   try {
-    const window = await instance.firstWindow();
+    const window = await instance.firstWindow(); // 生成的网页，不是 i豆 的窗口
     const failures = [];
     window.on("pageerror", (error) => failures.push(error.message));
     await window.locator("#rows tr").first().waitFor({ timeout: 15_000 });

@@ -168,9 +168,34 @@ test("压缩被模型网关拒绝时，说人话、不露地址", async (t) => {
     return runtime;
   };
   const refused = await f.service.compact(f.task.id).then(() => null, (error) => error.message);
-  assert.match(refused, /^压缩未完成：这段对话里的截图太多/);
+  assert.match(refused, /^压缩未完成：这段对话的内容太多/);
   assert.match(refused, /新开一个任务/);
   assert.doesNotMatch(refused, /https|request id|Payload/);
+  assert.equal(f.service.get(f.task.id).compactedAt, undefined);
+});
+
+// 2026-10-09 review: when the compaction request itself was refused, there was
+// no turn to wait for, yet compact() waited the full five minutes for one, and
+// then reported the raw English.
+test("压缩请求本身被拒绝时，马上说人话，不空等五分钟", async (t) => {
+  const f = await setup(t, { compactCompletes: false });
+  await f.service.send(f.task.id, "第一句");
+  await finished(f.service, f.task.id);
+  const factory = f.service.runtimeFactory;
+  f.service.runtimeFactory = async (...args) => {
+    const runtime = await factory(...args);
+    const request = runtime.client.request;
+    runtime.client.request = async (method, params) => {
+      if (method === "thread/compact/start") throw new Error("unexpected status 413 Payload Too Large: request_too_large, url: https://gateway.example/v1/responses");
+      return request(method, params);
+    };
+    return runtime;
+  };
+  const started = performance.now();
+  const refused = await f.service.compact(f.task.id).then(() => null, (error) => error.message);
+  assert.ok(performance.now() - started < 10_000, "refused at once");
+  assert.match(refused, /^压缩未完成：这段对话的内容太多/);
+  assert.doesNotMatch(refused, /https|Payload/);
   assert.equal(f.service.get(f.task.id).compactedAt, undefined);
 });
 

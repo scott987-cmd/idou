@@ -39,6 +39,7 @@ import { loginLaunchUrl } from "./fixtures/login-launch.js";
 import { waitForHumanChoice, waitForHumanConfirm } from "./fixtures/agent-harness.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
 import { taskFolderRoot } from "../src/install-names.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // The real path: the credential store refuses a directory reached through a
 // symbolic link, and macOS's temporary directory is one.
@@ -127,7 +128,7 @@ const sealedRefresh = async () => {
 try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/web-identity-desktop-entry.js")],
     env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: directory, IDOU_SERVER_URL: origin }, timeout: 30_000 });
-  page = await app.firstWindow(); page.setDefaultTimeout(20_000);
+  page = await app.firstWindow(); page.setDefaultTimeout(20_000); await appReady(page);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
   const fixture = (patch) => app.evaluate((_electron, value) => Object.assign(globalThis.webIdentityFixture, value), patch);
   const read = (key) => app.evaluate((_electron, name) => globalThis.webIdentityFixture[name], key);

@@ -11,6 +11,7 @@ import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { syntheticResponseStream } from "./fixtures/model-response.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // What the person who published a site reads when an administrator or the
 // content checks stand between it and its readers (docs/site-content-safety.md):
@@ -72,7 +73,7 @@ try {
     env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: data, IDOU_SESSION_FILE: sessionFile, IDOU_SERVER_URL: origin } });
   const page = await app.firstWindow(); page.setDefaultTimeout(30_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await page.locator('[data-section="sites"]').click();
   const row = (site) => page.locator(`.site-row[data-site="${site.id}"]`);
   await row(SITES[0]).waitFor();

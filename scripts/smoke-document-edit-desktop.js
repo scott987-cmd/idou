@@ -11,6 +11,7 @@ import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { openFeishuResource, openFileMenuItem } from "./fixtures/open-document.js";
 import { answerConfirm, observeHumanChoice, presentHumanChoice, releaseHumanChoice } from "./fixtures/agent-harness.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-doc-edit-ui-")), data = path.join(directory, "client"), evidence = path.resolve("docs/evidence");
 await mkdir(evidence, { recursive: true });
@@ -32,7 +33,7 @@ const sessionFile = path.join(directory, "connection.json"); await writeFile(ses
 let app;
 try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/document-edit-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_SESSION_FILE: sessionFile, IDOU_DESKTOP_DATA_DIR: data } });
-  const page = await app.firstWindow(); page.setDefaultTimeout(20000); const errors = []; page.on("pageerror", error => errors.push(error.message));
+  const page = await app.firstWindow(); page.setDefaultTimeout(20000); const errors = []; page.on("pageerror", error => errors.push(error.message)); await appReady(page);
   await page.locator("#model-label").filter({ hasText: "GLM-5.3 · 企业模型网关" }).waitFor({ state: "attached" });
   // The synthesis consent names the learned model and states its output cap, not MiniMax's.
   await page.locator('[data-section="knowledge"]').click();

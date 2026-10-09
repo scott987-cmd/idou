@@ -23,6 +23,7 @@ import os from "node:os";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { waitForHumanChoice } from "./fixtures/agent-harness.js";
 import { desktopProfileDir } from "../src/install-names.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 if (!process.argv.includes("--paid")) {
   console.error("This runs a real coding turn (paid model calls). Re-run with --paid to proceed.");
@@ -51,7 +52,7 @@ try {
     env: { ...clientEnvironment(), IDOU_DESKTOP_DATA_DIR: DATA, IDOU_SERVER_URL: SERVER } });
   const page = await app.firstWindow();
   page.setDefaultTimeout(30_000);
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   let status = null;
   for (let i = 0; i < 90 && !status?.connected; i += 1) {
     status = await page.evaluate(() => window.idou.authStatus()).catch(() => null);

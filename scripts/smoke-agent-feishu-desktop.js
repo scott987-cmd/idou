@@ -25,6 +25,7 @@ import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
 import { observeHumanChoice, bringToPerson } from "./fixtures/agent-harness.js";
 import { agentCommand } from "./fixtures/model-response.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const TITLE = "季度调研纪要（合成验收）";
 const SHEET = "SyntheticBook7788990011";
@@ -142,7 +143,7 @@ login = new FeishuLoginService({ origin, provider, sessions, allowedTenants: ["t
 try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/agent-feishu-desktop-entry.js")],
     env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: dataRoot, IDOU_SERVER_URL: origin }, timeout: 30_000 });
-  const page = await app.firstWindow(); page.setDefaultTimeout(20_000);
+  const page = await app.firstWindow(); page.setDefaultTimeout(20_000); await appReady(page);
   const errors = []; page.on("pageerror", error => errors.push(error.message));
 
   await page.locator("#settings").click(); await page.locator("#login-begin").click(); await page.locator("#login-poll").waitFor();

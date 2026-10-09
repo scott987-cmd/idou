@@ -25,6 +25,7 @@ import os from "node:os";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { desktopProfileDir } from "../src/install-names.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // Asked for by name: it drives the operator's own signed-in application, and
 // the default acceptance run started it without anyone asking (2026-09-25).
@@ -98,7 +99,7 @@ try {
   const page = await app.firstWindow();
   page.setDefaultTimeout(30_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
 
   await page.locator('[data-section="feishu"]').click();
   const inMessenger = (script) => app.evaluate(async ({ webContents }, source) => {

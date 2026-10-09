@@ -24,6 +24,7 @@ import { DriveBudget, DriveBudgetService } from "../src/control-plane/drive-budg
 import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
+import { appReady } from "./fixtures/app-ready.js";
 const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), "idou-apps-ui-"))), workspace = path.join(directory, "workspace"), data = path.join(directory, "native");
 await mkdir(workspace);
 const source = '<!doctype html><meta charset="utf-8"><title>合成应用</title><style>body{font:22px system-ui;background:#f1f1e9;padding:30px}button{padding:18px}</style><h1>交互式应用成果</h1><button id="count" onclick="this.textContent=Number(this.textContent)+1">0</button>';
@@ -42,7 +43,7 @@ const sessionFile = path.join(directory, "connection.json"); await writeFile(ses
 const launch = () => electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/apps-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_SESSION_FILE: sessionFile, IDOU_DESKTOP_DATA_DIR: data, APPS_FIXTURE_WORKSPACE: workspace, APPS_FIXTURE_DRIVE: driveFile } });
 let app; const errors = []; const evidence = path.resolve("docs/evidence"); await mkdir(evidence, { recursive: true });
 try {
-  app = await launch(); let page = await app.firstWindow(); page.setDefaultTimeout(15000); page.on("pageerror", (error) => errors.push(error.message));
+  app = await launch(); let page = await app.firstWindow(); page.setDefaultTimeout(15000); page.on("pageerror", (error) => errors.push(error.message)); await appReady(page);
   const card = () => page.locator("#confirmations .confirm-card");
   // A task is made the way a person makes one: choose the section, choose the
   // directory, open the task's own files. Made over IPC it never reaches the
@@ -117,7 +118,7 @@ try {
   const record = path.join(data, "tasks", `${id}.json`), saved = JSON.parse(await readFile(record, "utf8"));
   saved.messages.push({ id: randomUUID(), role: "user", text: "把这个静态成果整理成可以提交的版本。", createdAt: Date.now() });
   await writeFile(record, JSON.stringify(saved), { mode: 0o600 });
-  app = await launch(); page = await app.firstWindow(); page.setDefaultTimeout(15000); page.on("pageerror", (error) => errors.push(error.message));
+  app = await launch(); page = await app.firstWindow(); page.setDefaultTimeout(15000); page.on("pageerror", (error) => errors.push(error.message)); await appReady(page);
   await page.locator('[data-section="coding"]').click();
   await page.locator("#recent-tasks button").first().click(); await page.locator('[data-tab="apps"]').click(); await page.locator(".app-candidate").waitFor();
   assert.equal(posts, 1);
@@ -177,7 +178,7 @@ try {
   await page.locator("#refresh-preview").click(); await page.locator('#preview-area[data-preview-state="ready"]').waitFor();
   assert.equal(JSON.parse(await readFile(driveFile)).downloads, 7);
   const reloadUrl = await guest("location.href");
-  await page.reload(); await page.locator("#recent-tasks button").first().waitFor(); assert.equal(await guestCount(), 0); await assert.rejects(fetch(reloadUrl));
+  await page.reload(); await appReady(page); await page.locator("#recent-tasks button").first().waitFor(); assert.equal(await guestCount(), 0); await assert.rejects(fetch(reloadUrl));
   await page.locator("#recent-tasks button").first().click(); await page.locator('[data-tab="apps"]').click(); await page.locator(".preview-app-archive").waitFor();
   await app.evaluate(() => { globalThis.appsFixture.deferDownload = true; });
   await page.evaluate(({ id, digest }) => { window.pendingArchivePreview = window.idou.previewAppArchive(id, digest).then(() => "mounted", () => "cancelled"); }, { id, digest: savedDigest });

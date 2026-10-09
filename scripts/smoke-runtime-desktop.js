@@ -28,6 +28,7 @@ import { runtimeControlFixture } from "./fixtures/runtime-control-plane.js";
 import { answerConfirm, waitForHumanConfirm } from "./fixtures/agent-harness.js";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { runProcess } from "../src/providers/process-runner.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const [dockerPath, endpoint, imageId] = process.argv.slice(2), f = await runtimeControlFixture(imageId);
 const exportsDir = path.join(f.root, "exports"), data = path.join(f.root, "desktop"), evidence = path.resolve("docs/evidence"), sessionFile = path.join(f.root, "operator.json");
@@ -56,7 +57,7 @@ try {
   f.ready(); await writeFile(sessionFile, JSON.stringify({ token: f.operator.token, expiresAt: f.operator.expiresAt, serverUrl: f.serverUrl }), { mode: 0o600 });
   app = await electron.launch({ executablePath: electronBinary, timeout: 15000, args: [path.resolve("scripts/fixtures/app-runtime-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_SESSION_FILE: sessionFile, IDOU_DESKTOP_DATA_DIR: data, APP_RUNTIME_UI_EXPORT_DIRECTORY: exportsDir } });
   page = await app.firstWindow({ timeout: 15000 }); page.setDefaultTimeout(15000); page.on("pageerror", error => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await page.locator('[data-section="coding"]').click(); await page.locator("#welcome-app-runtime").click();
   await page.locator(".app-runtime-choice").click(); await page.locator("#export-app-runtime").waitFor();
   assert.equal((await page.evaluate(() => window.idou.snapshot())).tasks.length, 0); assert.equal(issues(), 0);

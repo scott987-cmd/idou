@@ -10,6 +10,7 @@ import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { syntheticResponseStream } from "./fixtures/model-response.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // 从材料开始 in the actual Electron application (docs/sites-phase1.md §1.3):
 // 新建网站 → 一段描述 → a name, and a site whose folder holds the chosen style
@@ -52,6 +53,7 @@ try {
   app = await electron.launch({ executablePath: electronBinary, args: ["."], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}),
     IDOU_DESKTOP_DATA_DIR: path.join(directory, "data"), IDOU_SESSION_FILE: sessionFile, IDOU_SERVER_URL: origin }, timeout: 30_000 });
   const page = await app.firstWindow(); page.setDefaultTimeout(30_000);
+  await appReady(page);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
   await page.waitForFunction(() => Boolean(window.idou?.siteFromMaterial), null, { polling: 100 });
   await page.locator('[data-section="sites"]').click();

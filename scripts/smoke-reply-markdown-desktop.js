@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
+import { appReady } from "./fixtures/app-ready.js";
 // An Agent reply is read by a person, so its Markdown is rendered: the table is
 // a table, the heading a heading, the command a code block. What the reply
 // cannot do is just as much the point: run the script it quotes, fetch the
@@ -15,7 +16,7 @@ await mkdir(evidence, { recursive: true }); let app;
 try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/reply-markdown-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: directory } });
   const page = await app.firstWindow(), errors = []; page.setDefaultTimeout(20_000); page.on("pageerror", error => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await page.locator("#open-files").click(); await page.locator("#task-tabs").waitFor(); await page.locator("#collapse-panel").click();
   await page.locator("#knowledge-scope-field").waitFor();
   const entry = page.url();

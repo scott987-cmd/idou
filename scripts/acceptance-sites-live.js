@@ -179,7 +179,7 @@ app.whenReady().then(async () => { const win = new BrowserWindow({ width: 900, h
 app.on("window-all-closed", () => {});`);
   const instance = await electron.launch({ executablePath: electronBinary, args: [entry], timeout: 30_000 });
   try {
-    const window = await instance.firstWindow();
+    const window = await instance.firstWindow(); // 生成的网页，不是 i豆 的窗口
     await window.locator("#body tr").first().waitFor({ timeout: 15_000 });
     await window.screenshot({ path: screenshot, scale: "css" });
     return {
@@ -201,7 +201,7 @@ app.whenReady().then(async () => { const win = new BrowserWindow({ width: 1200, 
 app.on("window-all-closed", () => {});`);
   const instance = await electron.launch({ executablePath: electronBinary, args: [entry], timeout: 30_000 });
   try {
-    const window = await instance.firstWindow();
+    const window = await instance.firstWindow(); // 生成的网页，不是 i豆 的窗口
     await window.locator("#rows tr").first().waitFor({ timeout: 15_000 });
     await window.screenshot({ path: screenshot, scale: "css" });
     return {

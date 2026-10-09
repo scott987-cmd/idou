@@ -14,6 +14,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { openFeishuResource } from "./fixtures/open-document.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-full-document-"));
 const evidence = path.resolve("docs/evidence");
@@ -26,7 +27,7 @@ try {
   } });
   const page = await app.firstWindow(), errors = [];
   page.setDefaultTimeout(20_000); page.on("pageerror", error => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
 
   // Full access is selected for this draft only. The task record, not a global
   // preference or a previous task, is what authorises the write below.

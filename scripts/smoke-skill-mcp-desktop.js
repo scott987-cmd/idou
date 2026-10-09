@@ -20,6 +20,7 @@ import { syntheticMcpHttp } from "./fixtures/mcp-http.js";
 import { loginLaunchUrl } from "./fixtures/login-launch.js";
 import { answerConfirm, waitForHumanChoice, waitForHumanConfirm, untilCard } from "./fixtures/agent-harness.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-skill-mcp-desktop-")), evidence = path.resolve("docs/evidence");
 const enterpriseMode = process.argv.includes("--enterprise"), upstreamCredential = "synthetic-upstream-mcp-secret";
@@ -60,7 +61,7 @@ login = new FeishuLoginService({ origin, sessions, allowedTenants: ["tenant_fixt
   : Response.json({ code: 0, data: { tenant_key: "tenant_fixture", open_id: "ou_fixture", name: "陈默（合成测试账号）" } }) }) });
 try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/login-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: path.join(directory, "data"), IDOU_SERVER_URL: origin, IDOU_SKILL_PUBLIC_KEY_FILE: publicKeyFile }, timeout: 30000 });
-  const page = await app.firstWindow(); page.setDefaultTimeout(20000); const errors = []; page.on("pageerror", (error) => errors.push(error.message));
+  const page = await app.firstWindow(); page.setDefaultTimeout(20000); const errors = []; page.on("pageerror", (error) => errors.push(error.message)); await appReady(page);
   // Importing is a confirmed operation, so it is two halves: the call, and the
   // answer to the card it raises.
   const importConnection = async () => {

@@ -34,7 +34,7 @@ try {
   assert.deepEqual(isolation, { uid: 1000, readOnly: true, socketAbsent: true, noNewPrivileges: true, noCapabilities: true, seccomp: true, memory: "268435456", pids: "32", cpu: "50000 100000", noCredentials: true, networkBlocked: true });
   const inspection = JSON.parse((await command(["inspect", runtime.containerId])).stdout)[0]; assert.equal(inspection.Mounts.length, 0); assert.equal(inspection.HostConfig.LogConfig.Type, "none");
   browser = await electron.launch({ executablePath: electronBinary, timeout: 15000, args: [path.resolve("scripts/fixtures/runtime-browser-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), APP_RUNTIME_FIXTURE_URL: runtime.entryUrl, APP_RUNTIME_FIXTURE_DATA: path.join(root, "browser") } });
-  const page = await browser.firstWindow({ timeout: 15000 }); page.setDefaultTimeout(15000); const errors = []; page.on("pageerror", error => errors.push(error.message));
+  const page = await browser.firstWindow({ timeout: 15000 }); page.setDefaultTimeout(15000); const errors = []; page.on("pageerror", error => errors.push(error.message)); // 隔离运行的应用页面，不是 i豆 的窗口
   await page.locator("#counter").click(); assert.equal(await page.locator("#counter").textContent(), "已完成 1 项");
   assert.equal(await page.evaluate(() => typeof require + ":" + typeof process), "undefined:undefined");
   assert.equal(await page.evaluate(async () => { try { await fetch("https://example.invalid/runtime-probe"); return false; } catch { return true; } }), true);

@@ -24,6 +24,7 @@ import path from "node:path";
 import os from "node:os";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { desktopProfileDir } from "../src/install-names.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 if (!process.argv.includes("--send")) {
   console.error("This sends a real Feishu message to the signed-in person. Re-run with --send to proceed.");
@@ -52,7 +53,7 @@ try {
     env: { ...clientEnvironment(), IDOU_DESKTOP_DATA_DIR: DATA, IDOU_SERVER_URL: SERVER } });
   const page = await app.firstWindow();
   page.setDefaultTimeout(30_000);
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   // A resumed login spends a single-use refresh token in the background; closing
   // before it lands can lose the login. Wait for it, whatever else happens.
   let status = null;

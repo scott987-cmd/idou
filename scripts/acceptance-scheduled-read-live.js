@@ -61,6 +61,7 @@ import os from "node:os";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { dataHome, desktopProfileDir } from "../src/install-names.js";
 import { liveResources } from "./fixtures/live-resources.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 if (!process.argv.includes("--paid")) {
   console.error("This creates real scheduled tasks and makes paid model calls. Re-run with --paid to proceed.");
@@ -132,7 +133,7 @@ try {
     env: { ...clientEnvironment(), IDOU_DESKTOP_DATA_DIR: DATA, IDOU_SERVER_URL: SERVER } });
   const page = await app.firstWindow();
   page.setDefaultTimeout(30_000);
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   // A resumed login spends a single-use refresh token in the background; closing
   // before it lands can lose the login. Wait for it, whatever else happens.
   let status = null;

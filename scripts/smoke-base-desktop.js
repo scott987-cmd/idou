@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { openFeishuResource } from "./fixtures/open-document.js";
 import { observeHumanChoice, bringToPerson } from "./fixtures/agent-harness.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-base-desktop-")), evidence = path.resolve("docs/evidence");
 const BASE = "https://test.feishu.cn/base/SyntheticBaseToken0001?table=tblSyntheticTable1";
@@ -15,7 +16,7 @@ await mkdir(evidence, { recursive: true }); let app;
 try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/base-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: directory } });
   const page = await app.firstWindow(), errors = []; page.setDefaultTimeout(20000); page.on("pageerror", e => errors.push(e.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   // A Base opens through the same entry a person uses, as one typed page.
   await openFeishuResource(page, BASE, { kind: "base" });
   await page.locator("#base-grid").waitFor();

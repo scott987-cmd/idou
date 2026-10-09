@@ -21,6 +21,7 @@ import { loginLaunchUrl } from "./fixtures/login-launch.js";
 import { answerConfirm, waitForHumanConfirm } from "./fixtures/agent-harness.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
 import { taskFolderRoot } from "../src/install-names.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-login-desktop-"));
 const dataRoot = path.join(directory, "app-data"), evidence = path.resolve("docs/evidence");
@@ -58,7 +59,7 @@ try {
   // -- 41 Electron launches on one machine -- while passing every time on its
   // own. A wait that only holds on an idle machine is a wait that reports load
   // as a defect.
-  const page = await app.firstWindow(); page.setDefaultTimeout(30_000);
+  const page = await app.firstWindow(); page.setDefaultTimeout(30_000); await appReady(page);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
   await page.locator("#settings").click(); await page.locator("#login-begin").waitFor();
   assert.equal(await page.locator("#login-begin").isEnabled(), true);

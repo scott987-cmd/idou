@@ -5,6 +5,10 @@ import { mcpApprovalPolicy, mcpCallSentence, mcpGrant, mcpToolName } from "../sr
 test("the tool is read from Codex's own approval message, and nothing else", () => {
   assert.equal(mcpToolName('Allow the computer MCP server to run tool "computer_click"?'), "computer_click");
   for (const message of ["Allow?", "", null, 'to run tool ""', `to run tool "${"x".repeat(81)}"`]) assert.equal(mcpToolName(message), null, String(message));
+  // The name is the server's to choose and is put in the card's own sentence:
+  // only the MCP specification's alphabet counts (security review, 2026-10-09).
+  for (const spoof of ["天气」（只读，安全）「", "read only", "a<b>", "x\u202eevil"]) assert.equal(mcpToolName(`Allow the x MCP server to run tool "${spoof}"?`), null, spoof);
+  assert.equal(mcpToolName('Allow the x MCP server to run tool "tickets.search-v2_beta"?'), "tickets.search-v2_beta");
 });
 
 test("the card's sentence names the connector and the tool, and is Chinese without one", () => {

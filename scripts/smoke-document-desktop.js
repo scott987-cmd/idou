@@ -11,6 +11,7 @@ import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { openFeishuResource, openFileMenuItem } from "./fixtures/open-document.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // Synthetic CLI-envelope fixture only. Never sends corporate content to a model.
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-document-ui-"));
@@ -27,7 +28,7 @@ try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/document-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: directory } });
   let page = await app.firstWindow(); page.setDefaultTimeout(20_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await page.evaluate(() => { window.__documentInvalidations = []; window.idou.onDocumentInvalidated((value) => window.__documentInvalidations.push(value)); });
   await openFeishuResource(page, "https://test.feishu.cn/docx/SyntheticDocument123");
   await page.locator("#file-title").filter({ hasText: "飞书文档联调样本" }).waitFor();
@@ -106,7 +107,7 @@ try {
   assert.equal(wikiBytes.includes(Buffer.from("项目安排")), false);
   await writeFile(sessionFile, JSON.stringify({ token: issued.token, expiresAt: issued.expiresAt, serverUrl: `http://127.0.0.1:${control.address().port}` }), { mode: 0o600 });
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/document-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_SESSION_FILE: sessionFile, IDOU_DESKTOP_DATA_DIR: directory } });
-  page = await app.firstWindow(); page.setDefaultTimeout(20_000); page.on("pageerror", (error) => errors.push(error.message));
+  page = await app.firstWindow(); page.setDefaultTimeout(20_000); page.on("pageerror", (error) => errors.push(error.message)); await appReady(page);
   await page.locator("#model-label").filter({ hasText: "MiniMax-M3 · 企业模型网关" }).waitFor({ state: "attached" });
   await app.evaluate(() => { globalThis.documentFixture.revision = 3; });
   await page.locator('[data-section="knowledge"]').click();

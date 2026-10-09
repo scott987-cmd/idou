@@ -25,6 +25,7 @@ import { QwenVideoProvider } from "../src/control-plane/qwen-media.js";
 import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { runAgentTool } from "./fixtures/agent-harness.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-media-panel-")), data = path.join(directory, "app");
 // Nothing is uploaded. The one preview, at the end, reads a one-second sample
@@ -57,7 +58,7 @@ let app; const errors = [];
 try {
   // A work task to hold the video.
   app = await launch(); let page = await app.firstWindow(); page.setDefaultTimeout(20_000);
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   const taskId = (await page.evaluate(() => window.idou.createTask({ mode: "cowork" }))).id;
   await app.close();
   // A task nobody has spoken to is not in the sidebar after a restart; the
@@ -78,7 +79,7 @@ try {
     { id: rowId, taskId, instanceId: lease.instanceId, jobId: job.id, kind: "video", state: "running", ownerKey, createdAt: Date.now() }] }), { mode: 0o600 });
 
   app = await launch(); page = await app.firstWindow(); page.setDefaultTimeout(20_000); page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await page.locator("#recent-tasks .recent-row", { hasText: "新工作任务" }).locator("button").first().click();
   await page.locator('#task-tabs button[data-tab="media"]').click();
   const panel = page.locator("#media-results");

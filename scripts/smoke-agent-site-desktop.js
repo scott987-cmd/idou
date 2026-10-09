@@ -12,6 +12,7 @@ import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { SiteRegistry } from "../src/control-plane/site-registry.js";
 import { SiteService } from "../src/control-plane/site-service.js";
 import { runAgentTool, waitForHumanChoice } from "./fixtures/agent-harness.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // A site published from a conversation (docs/sites-phase1.md §1.1), in the
 // actual Electron application: bin/agent.js run as a work task's Agent runs
@@ -40,6 +41,7 @@ try {
     env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: path.join(directory, "data"), IDOU_SESSION_FILE: sessionFile },
     timeout: 30_000 });
   const page = await app.firstWindow(); page.setDefaultTimeout(30_000);
+  await appReady(page);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
   await page.waitForFunction(() => Boolean(window.idou?.createTask), null, { polling: 100 });
 

@@ -7,6 +7,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { openFeishuResource, openFileMenuItem } from "./fixtures/open-document.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-sheet-desktop-")), evidence = path.resolve("docs/evidence");
 // Reopening the same spreadsheet is part of what this proves, so the reference
@@ -17,7 +18,7 @@ await mkdir(evidence, { recursive: true }); let app;
 try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/sheet-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: directory } });
   const page = await app.firstWindow(), errors = []; page.setDefaultTimeout(20000); page.on("pageerror", e => errors.push(e.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await openSheet(page);
   await page.locator("#sheet-grid").waitFor(); assert.match(await page.locator("#file-title").innerText(), /销售明细/);
   assert.equal(await page.locator('[data-address="B2"]').innerText(), "00123"); assert.equal(await page.locator('[data-address="D2"]').innerText(), "=C2*2");

@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { answerConfirm, waitForHumanConfirm } from "./fixtures/agent-harness.js";
+import { appReady } from "./fixtures/app-ready.js";
 // 飞书消息 is Feishu's own embedded page now: the chat list and its
 // 自动整理此会话文档 button are gone, but choosing a conversation and putting it
 // into the background scope are still this application's own operations, driven
@@ -63,7 +64,7 @@ const cardButtons = () => page.evaluate(() => {
 try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/discovery-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_SESSION_FILE: sessionFile, IDOU_DESKTOP_DATA_DIR: directory } });
   page = await app.firstWindow(); page.setDefaultTimeout(20_000); page.on("pageerror", error => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   // The server has not answered in time, so nothing is named: not the default either.
   await page.locator("#model-label").filter({ hasText: "模型未确认 · 企业模型网关" }).waitFor({ state: "attached" });
   let running = watch(await selectChat());
@@ -144,7 +145,7 @@ try {
   await openKnowledge(page);
   await page.locator("#discovery-status").filter({ hasText: "已暂停" }).waitFor();
   assert.equal((await page.evaluate(() => window.idou.discoveryStatus())).enabled, false);
-  await page.reload(); await page.locator('[data-section="feishu"]').waitFor();
+  await page.reload(); await appReady(page); await page.locator('[data-section="feishu"]').waitFor();
   assert.equal((await page.evaluate(() => window.idou.discoveryStatus())).enabled, false);
   // Another connection file names another server, one on GLM-5.3, and the scope
   // asks it at once. The consent still on screen names MiniMax-M3, so switching

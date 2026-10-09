@@ -12,6 +12,7 @@ import { DriveBudget } from "../src/control-plane/drive-budget.js";
 import { WikiCoordinator, WikiCoordinatorService } from "../src/control-plane/wiki-coordinator.js";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
+import { appReady } from "./fixtures/app-ready.js";
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-wiki-node-ui-")), evidence = path.resolve("docs/evidence");
 await mkdir(evidence, { recursive: true });
 const sessions = new SessionRegistry(), parent = sessions.issue({ tenantId: "development", userId: "local-developer", deviceId: "synthetic-desktop-node" });
@@ -33,7 +34,7 @@ await writeFile(sessionFile, JSON.stringify({ token: parent.token, expiresAt: pa
 let app, page; const errors = [];
 try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/chat-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_SESSION_FILE: sessionFile, IDOU_DESKTOP_DATA_DIR: path.join(directory, "desktop") } });
-  page = await app.firstWindow(); page.setDefaultTimeout(15000); page.on("pageerror", error => errors.push(error.message));
+  page = await app.firstWindow(); page.setDefaultTimeout(15000); page.on("pageerror", error => errors.push(error.message)); await appReady(page);
   await page.locator('[data-section="knowledge"]').click();
   await page.locator(".knowledge-advanced > summary").click();
   await page.locator("#knowledge-node-check").waitFor();

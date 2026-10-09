@@ -22,6 +22,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { runAgentTool, answerConfirm, observeHumanChoice, presentHumanChoice, releaseHumanChoice, waitForConfirmationChoice } from "./fixtures/agent-harness.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-delivery-ui-"));
 const work = path.join(directory, "agent"), evidence = path.resolve("docs/evidence");
@@ -34,7 +35,7 @@ let app, page, taskId; const errors = [];
 async function launch() {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/document-delivery-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: directory } });
   page = await app.firstWindow(); page.setDefaultTimeout(20_000); page.on("pageerror", error => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
 }
 // Every operation is the real child process with the environment this task's
 // Agent is given. Content arrives as a file, the way the shim requires.

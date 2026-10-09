@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { fixtureCipher } from "./fixtures/wiki-cipher.js";
 import { answerConfirm, observeHumanChoice, presentHumanChoice, releaseHumanChoice, waitForConfirmationChoice } from "./fixtures/agent-harness.js";
+import { appReady } from "./fixtures/app-ready.js";
 // 飞书消息 is Feishu's own embedded page now, so the reader list and the reply
 // composer this app used to draw are gone. What they drove is not: reading a
 // conversation and replying to one message are still the application's own
@@ -22,7 +23,7 @@ let app, page; const errors = [];
 async function launch() {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/chat-reply-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: directory } });
   page = await app.firstWindow(); page.setDefaultTimeout(20_000); page.on("pageerror", error => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
 }
 // Reads the conversation and returns the reply handle of every message on the
 // page, keyed by message id. A message the application refuses to make

@@ -12,6 +12,7 @@ import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { syntheticResponseStream } from "./fixtures/model-response.js";
 import { answerConfirm, waitForHumanChoice, waitForHumanConfirm } from "./fixtures/agent-harness.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-mcp-desktop-"));
 const evidence = path.resolve("docs/evidence"); await mkdir(evidence, { recursive: true });
@@ -62,7 +63,7 @@ await writeFile(sessionFile, JSON.stringify({ token: session.token, expiresAt: s
 await writeFile(connectionFile, JSON.stringify({ id: "demo", title: "MCP 合成验收", transport: "stdio", command: process.execPath, args: [path.resolve("scripts/fixtures/mcp-stdio.js"), callLog], enabledTools: ["echo"] }));
 try {
   app = await electron.launch({ executablePath: electronBinary, args: ["."], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: path.join(directory, "data"), IDOU_SESSION_FILE: sessionFile, IDOU_SERVER_URL: origin }, timeout: 30000 });
-  const page = await app.firstWindow(); page.setDefaultTimeout(20000); const errors = []; page.on("pageerror", (error) => errors.push(error.message));
+  const page = await app.firstWindow(); page.setDefaultTimeout(20000); const errors = []; page.on("pageerror", (error) => errors.push(error.message)); await appReady(page);
   // Only the file picker is stubbed. Every decision this script makes is now
   // taken in the application's own confirmation card, so there is no
   // showMessageBox left to answer -- the script has to read the card and press

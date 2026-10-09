@@ -66,6 +66,10 @@ export async function assertReachable(rawUrl, previewOrigin) {
 let previewBase = null, previewOrigin = null;
 let browser = null, context = null, page = null;
 const consoleLog = [];
+// The latest 300 lines. It stopped taking any at 300 until 2026-10-09, so a page
+// that logged every frame left the log -- and the notice that the browser was
+// reopened -- frozen at its first 300 lines for the rest of the task.
+const note = (line) => { consoleLog.push(line.slice(0, 500)); if (consoleLog.length > 300) consoleLog.splice(0, consoleLog.length - 300); };
 
 // The browser can go away under a task. A WebGL game the agent was testing
 // took it down on 2026-10-08, and every later call answered "Target page,
@@ -92,10 +96,10 @@ async function ensurePage() {
     });
   }
   const opened = page = await context.newPage();
-  if (lost && consoleLog.length < 300) consoleLog.push(`[i豆] ${lost}，已重新打开浏览器；之前的页面状态没有保留。`);
+  if (lost) note(`[i豆] ${lost}，已重新打开浏览器；之前的页面状态没有保留。`);
   lost = "";
-  opened.on("console", (message) => { if (consoleLog.length < 300) consoleLog.push(`[${message.type()}] ${message.text()}`.slice(0, 500)); });
-  opened.on("pageerror", (error) => { if (consoleLog.length < 300) consoleLog.push(`[pageerror] ${String(error?.message ?? error)}`.slice(0, 500)); });
+  opened.on("console", (message) => note(`[${message.type()}] ${message.text()}`));
+  opened.on("pageerror", (error) => note(`[pageerror] ${String(error?.message ?? error)}`));
   opened.on("crash", () => { if (page === opened) { page = null; lost = "页面崩溃"; void opened.close().catch(() => {}); } });
   opened.on("close", () => { if (page === opened) { page = null; lost ||= "页面被关闭"; } });
   opened.setDefaultTimeout(NAV_TIMEOUT);
@@ -186,7 +190,7 @@ const TOOLS = [
   { name: "browser_click", description: "按可见文本或 CSS 选择器点击当前页面的元素。", inputSchema: { type: "object", properties: { text: { type: "string" }, selector: { type: "string" } }, additionalProperties: false } },
   { name: "browser_type", description: "在某个 CSS 选择器指向的输入框里填入文本，可选择回车提交。", inputSchema: { type: "object", properties: { selector: { type: "string" }, text: { type: "string" }, submit: { type: "boolean" } }, required: ["selector"], additionalProperties: false } },
   { name: "browser_console", description: "返回当前页面收集到的 console 输出和页面错误，用于排查前端问题。", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-  { name: "browser_screenshot", description: "对当前页面截图并返回 PNG 图片，用于视觉检查页面渲染。仅在当前模型支持视觉（如 MiniMax-M3）时有用；文本模型请改用 browser_read。", inputSchema: { type: "object", properties: { full_page: { type: "boolean", description: "截整页而非仅视口（默认仅视口）" } }, additionalProperties: false } },
+  { name: "browser_screenshot", description: "对当前页面截图并返回 JPEG 图片，用于视觉检查页面渲染。仅在当前模型支持视觉（如 MiniMax-M3）时有用；文本模型请改用 browser_read。", inputSchema: { type: "object", properties: { full_page: { type: "boolean", description: "截整页而非仅视口（默认仅视口）" } }, additionalProperties: false } },
 ];
 
 async function callTool(name, args) {

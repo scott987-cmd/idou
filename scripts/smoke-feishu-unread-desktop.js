@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // 飞书消息 carries Feishu's own unread count in the sidebar, the way Feishu does.
 // Where the number comes from is the embedded messenger's page title, which needs
@@ -25,7 +26,7 @@ try {
   app = await electron.launch({ executablePath: electronBinary, args: [process.cwd()], env, timeout: 30_000 });
   const page = await app.firstWindow(); page.setDefaultTimeout(20_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   const tab = page.locator('[data-section="feishu"]'), badge = tab.locator(".nav-unread");
   assert.equal(await badge.count(), 0, "nothing unread, nothing on the tab");
   assert.equal(await app.evaluate(({ app: electronApp }) => electronApp.getBadgeCount()), 0, "nor on the Dock");

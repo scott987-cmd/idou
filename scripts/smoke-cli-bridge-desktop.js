@@ -15,6 +15,7 @@ import { FeishuCliProxyService } from "../src/control-plane/feishu-cli-proxy.js"
 import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { loginLaunchUrl } from "./fixtures/login-launch.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-cli-bridge-desktop-")), dataRoot = path.join(directory, "app-data"), evidence = path.resolve("docs/evidence");
 await mkdir(evidence, { recursive: true });
@@ -34,7 +35,7 @@ server.listen(0, "127.0.0.1"); await once(server, "listening"); const origin = `
 login = new FeishuLoginService({ origin, provider, sessions, allowedTenants: ["tenant_fixture"] });
 try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/login-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: dataRoot, IDOU_SERVER_URL: origin }, timeout: 30_000 });
-  const page = await app.firstWindow(); page.setDefaultTimeout(20_000); const errors = []; page.on("pageerror", error => errors.push(error.message));
+  const page = await app.firstWindow(); page.setDefaultTimeout(20_000); const errors = []; page.on("pageerror", error => errors.push(error.message)); await appReady(page);
   await page.locator("#settings").click(); await page.locator("#login-begin").click(); await page.locator("#login-poll").waitFor();
   const launchUrl = await loginLaunchUrl(page, app, () => globalThis.loginFixture.launches);
   const launch = await fetch(launchUrl, { redirect: "manual" });

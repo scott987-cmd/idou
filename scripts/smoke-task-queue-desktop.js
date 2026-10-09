@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-task-queue-"));
 const evidence = path.resolve("docs/evidence/task-ui"); await mkdir(evidence, { recursive: true });
@@ -16,7 +17,7 @@ try {
     IDOU_DESKTOP_DATA_DIR: directory,
   } });
   const page = await app.firstWindow(), errors = []; page.setDefaultTimeout(20_000); page.on("pageerror", error => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await page.locator("#prompt").fill("先处理正在运行的工作"); await page.locator("#send").click();
   // Running with nothing typed, the one button is 停止; 下一轮 comes with something to queue.
   await page.locator("#send").filter({ hasText: "停止" }).waitFor();

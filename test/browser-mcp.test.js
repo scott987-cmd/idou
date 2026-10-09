@@ -162,3 +162,52 @@ test("after its page crashes or its browser dies, the next call opens a fresh on
   assert.match(afterLoss.content[0].text, /机房守卫/);
   assert.match((await call("browser_console")).content[0].text, /浏览器意外退出，已重新打开浏览器/);
 });
+
+// A page that logs every frame filled the log in seconds, and until 2026-10-09
+// nothing after its first 300 lines was ever kept: browser_console answered
+// with those lines for the rest of the task, whatever was opened next.
+test("the console keeps the latest lines however much a page has logged", { timeout: 90_000 }, async (t) => {
+  const { createServer } = await import("node:http");
+  const pages = {
+    "/S/chatty.html": "<!doctype html><title>chatty</title><script>for (let i = 0; i < 400; i += 1) console.log('frame ' + i)</script>",
+    "/S/next.html": "<!doctype html><title>next</title><script>console.log('the next page')</script>",
+  };
+  const site = createServer((req, res) => {
+    if (!pages[req.url]) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end(pages[req.url]);
+  });
+  await new Promise((resolve) => site.listen(0, "127.0.0.1", resolve));
+  t.after(() => site.close());
+  const server = spawn(process.execPath, [fileURLToPath(new URL("../bin/mcp/browser.js", import.meta.url)), "--preview-base", `http://127.0.0.1:${site.address().port}/S/`], { stdio: ["pipe", "pipe", "inherit"] });
+  t.after(() => server.kill());
+  const replies = new Map();
+  let buffer = "", next = 1;
+  server.stdout.on("data", (chunk) => {
+    buffer += chunk.toString("utf8");
+    let index;
+    while ((index = buffer.indexOf("\n")) >= 0) { const line = buffer.slice(0, index); buffer = buffer.slice(index + 1); if (line.trim()) { const reply = JSON.parse(line); replies.set(reply.id, reply); } }
+  });
+  const call = async (name, args = {}) => {
+    const id = next++;
+    server.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } })}\n`);
+    const deadline = Date.now() + 40_000;
+    while (!replies.has(id) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.ok(replies.has(id), `${name} answered`);
+    return replies.get(id).result;
+  };
+  const opened = await call("browser_preview", { path: "chatty.html" });
+  if (opened.isError && /Executable doesn't exist|browserType\.launch/.test(opened.content[0].text)) { t.skip("no browser installed for Playwright"); return; }
+  const settled = async (pattern) => {
+    for (let tries = 0; tries < 40; tries += 1) { const text = (await call("browser_console")).content[0].text; if (pattern.test(text)) return text; await new Promise((resolve) => setTimeout(resolve, 100)); }
+    return (await call("browser_console")).content[0].text;
+  };
+  const chatty = await settled(/frame 399\b/);
+  assert.match(chatty, /\[log\] frame 399\b/, "the latest line is there");
+  assert.doesNotMatch(chatty, /\[log\] frame 0\n/, "the oldest gave way");
+  await call("browser_preview", { path: "next.html" });
+  assert.match(await settled(/the next page/), /\[log\] the next page/, "a full log still takes what comes next");
+});
+
+test("the screenshot tool says the format it returns", () => {
+  assert.match(BROWSER_TOOLS.find((tool) => tool.name === "browser_screenshot").description, /JPEG/);
+});

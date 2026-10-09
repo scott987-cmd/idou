@@ -1336,7 +1336,8 @@ test("a few upstream failures are said in words somebody can act on", () => {
   // Every request carries the whole conversation, screenshots and all
   // (2026-10-08: 27 screenshots, refused from then on).
   const tooLarge = upstreamFailure("unexpected status 413 Payload Too Large: request_too_large, url: https://gateway.example/v1/responses, request id: 4bd472d2-0000-4000-8000-000000000000");
-  assert.match(tooLarge, /截图太多.*压缩对话/);
+  assert.match(tooLarge, /内容太多.*压缩对话/);
+  assert.doesNotMatch(tooLarge, /截图太多/, "the gateway has already left screenshots out: they are not what is too large");
   assert.doesNotMatch(tooLarge, /https|request id|413/);
   // Anything not listed passes through exactly as it came: a friendlier
   // sentence for a failure nobody has read yet is how a real cause gets hidden.

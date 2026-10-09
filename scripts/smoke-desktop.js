@@ -10,6 +10,7 @@ import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { SaasFeishuCliProvider } from "../src/providers/feishu/saas-cli-provider.js";
 import { isProductSkill } from "../src/application/skill-policy.js";
 import { builtinAlias } from "../src/desktop/renderer/skill-center.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const live = process.argv.includes("--live");
 let shownSkills = 0;
@@ -25,7 +26,7 @@ let app;
 const launch = async () => {
   const instance = await electron.launch({ executablePath: electronBinary, args: [process.cwd()], env, timeout: 30_000 });
   const page = await instance.firstWindow(); page.setDefaultTimeout(20_000);
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   return { instance, page };
 };
 // The page answers a click once its handler has run, and many handlers wait on

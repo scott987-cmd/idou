@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-connectors-desktop-"));
 const data = path.join(directory, "data");
@@ -27,7 +28,7 @@ try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve(".")], env, cwd: directory, timeout: 30_000 });
   const page = await app.firstWindow(); page.setDefaultTimeout(20_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   // Codex's own server list answers four seconds late; the menu is opened
   // before it does. Adding a server is recorded, never performed.
   const added = await app.evaluate(({ ipcMain }) => {

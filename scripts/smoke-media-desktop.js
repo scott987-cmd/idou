@@ -16,6 +16,7 @@ import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { runAgentTool, answerConfirm, waitForHumanConfirm } from "./fixtures/agent-harness.js";
 import { DriveBudget, DriveBudgetService, drivePolicies } from "../src/control-plane/drive-budget.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-media-ui-")), data = path.join(directory, "app");
 const png = path.join(directory, "synthetic.png"), mp4 = path.join(directory, "synthetic.mp4"), sessionFile = path.join(directory, "session.json");
@@ -81,10 +82,10 @@ const followNotice = async () => {
 };
 try {
   app = await launch(); let page = await app.firstWindow(); page.setDefaultTimeout(20000); page.on("pageerror", (e) => errors.push(e.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   let taskId = (await page.evaluate(() => window.idou.createTask({ mode: "cowork" }))).id;
   // Creating a task over IPC does not notify the renderer; a reload picks it up.
-  await page.reload(); await page.locator("#new-task").waitFor();
+  await page.reload(); await appReady(page);
   await recordNotices();
 
   // Declining generates nothing at all: no upstream call, no record.
@@ -186,7 +187,7 @@ try {
 
   // Records survive a restart, and a saved file is still verifiable afterwards.
   await app.close(); app = await launch(); page = await app.firstWindow(); page.setDefaultTimeout(20000); page.on("pageerror", (e) => errors.push(e.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   await recordNotices();
   const restored = await page.evaluate(async (id) => window.idou.listMedia(id), taskId);
   assert.equal(restored.length, 2);

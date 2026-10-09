@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // 选中修改 in the actual Electron application (docs/sites-phase1.md §1.2): a
 // local site's preview, its toolbar, a heading picked with the mouse through
@@ -33,6 +34,7 @@ try {
     env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: path.join(directory, "data") },
     timeout: 30_000 });
   const main = await app.firstWindow(); main.setDefaultTimeout(30_000);
+  await appReady(main);
   const errors = []; main.on("pageerror", (error) => errors.push(error.message));
   await main.waitForFunction(() => Boolean(window.idou?.sitePreview), null, { polling: 100 });
   const site = await app.evaluate((_electron, at) => globalThis.siteStoreFixture.create({ name: "周报站", at }), folder);

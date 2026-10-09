@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-diff-review-")), workspace = path.join(directory, "workspace"), evidence = path.resolve("docs/evidence/task-ui");
 await mkdir(workspace); await mkdir(evidence, { recursive: true }); let app;
@@ -13,7 +14,7 @@ try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/diff-review-desktop-entry.js")], env: { ...clientEnvironment(),
     ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: path.join(directory, "data"), IDOU_DIFF_REVIEW_WORKSPACE: workspace } });
   const page = await app.firstWindow(), errors = []; page.setDefaultTimeout(20_000); page.on("pageerror", error => errors.push(error.message));
-  await page.locator("#new-task").waitFor(); await page.locator('[data-section="coding"]').click();
+  await appReady(page); await page.locator('[data-section="coding"]').click();
   await page.locator("#recent-tasks .recent-row", { hasText: "差异审阅验收" }).locator("button").first().click();
   // C01/C02: opening the first turn reads its stored net diff, not today's file.
   await page.locator(".turn-diff-open").first().click();

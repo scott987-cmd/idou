@@ -15,6 +15,7 @@ import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { loginLaunchUrl } from "./fixtures/login-launch.js";
 import { openFeishuResource } from "./fixtures/open-document.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-account-desktop-")), evidence = path.resolve("docs/evidence");
 await mkdir(evidence, { recursive: true });
@@ -30,7 +31,7 @@ login = new FeishuLoginService({ origin, sessions, allowedTenants: ["tenant_fixt
     : Response.json({ code: 0, data: { tenant_key: "tenant_fixture", open_id: `ou_app_${state.user}`, user_id: state.user, name: `企业用户 ${state.user}` } }) }) });
 try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/account-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: directory, IDOU_SERVER_URL: origin }, timeout: 30000 });
-  const page = await app.firstWindow(), errors = []; page.setDefaultTimeout(20000); page.on("pageerror", error => errors.push(error.message));
+  const page = await app.firstWindow(), errors = []; page.setDefaultTimeout(20000); page.on("pageerror", error => errors.push(error.message)); await appReady(page);
   const authorize = async () => {
     await page.locator("#settings").click(); await page.locator("#login-begin").click(); await page.locator("#login-poll").waitFor();
     const launch = await fetch(await loginLaunchUrl(page, app, () => globalThis.loginFixture.launches), { redirect: "manual" }), target = new URL(launch.headers.get("location"));

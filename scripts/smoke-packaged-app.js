@@ -14,6 +14,7 @@ import { syntheticResponseStream } from "./fixtures/model-response.js";
 import { rememberedServerFile } from "../src/desktop/remembered-server.js";
 import { readReleaseManifest, verifyReleaseLicenses } from "../src/providers/release-manifest.js";
 import { BUNDLE_ID, LEGACY_BUNDLE_ID } from "../src/install-names.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const run = promisify(execFile);
 
@@ -143,7 +144,7 @@ try {
       IDOU_DESKTOP_DATA_DIR: path.join(directory, "data"), IDOU_SESSION_FILE: sessionFile, IDOU_SERVER_URL: origin } });
   const page = await app.firstWindow(); page.setDefaultTimeout(60_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
   // Read once the person can act: by then the PATH must be the login shell's.
   const info = await app.evaluate(({ app: electronApp }) => ({ packaged: electronApp.isPackaged, resources: process.resourcesPath, path: process.env.PATH }));
   assert.equal(info.packaged, true, "this must be the packaged app, not a development Electron");

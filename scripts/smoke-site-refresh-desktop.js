@@ -13,6 +13,7 @@ import { SiteRegistry } from "../src/control-plane/site-registry.js";
 import { SiteService } from "../src/control-plane/site-service.js";
 import { appHash } from "../src/apps/manifest.js";
 import { BASE_TABLE, BASE_TOKEN } from "./fixtures/base-data.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // A published table site following its table on the application's own clock,
 // in the actual Electron application (docs/sites-phase1.md §1.7): read in full
@@ -52,6 +53,7 @@ try {
   const said = globalThis.said = [];
   app.process().stderr?.on("data", (chunk) => { said.push(String(chunk)); if (said.length > 200) said.shift(); });
   const window = await app.firstWindow(); window.setDefaultTimeout(30_000);
+  await appReady(window);
   const errors = []; window.on("pageerror", (error) => errors.push(error.message));
   await window.waitForFunction(() => Boolean(window.idou?.sites), null, { polling: 100 });
   // The list once, as the person opening 文档网站 would: the server says what it takes.

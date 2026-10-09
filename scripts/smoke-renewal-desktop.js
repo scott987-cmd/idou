@@ -16,6 +16,7 @@ import { FeishuLoginService } from "../src/control-plane/feishu-login.js";
 import { SessionRegistry } from "../src/control-plane/sessions.js";
 import { loginLaunchUrl } from "./fixtures/login-launch.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "idou-renewal-desktop-"));
 async function until(predicate) {
@@ -39,7 +40,7 @@ login = new FeishuLoginService({ origin, sessions, allowedTenants: ["tenant_fixt
 try {
   app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/login-desktop-entry.js")],
     env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: path.join(directory, "app-data"), IDOU_SERVER_URL: origin }, timeout: 30000 });
-  const page = await app.firstWindow(); page.setDefaultTimeout(15000);
+  const page = await app.firstWindow(); page.setDefaultTimeout(15000); await appReady(page);
   const errors = []; page.on("pageerror", error => errors.push(error.message));
   await page.locator("#settings").click(); await page.locator("#login-begin").click(); await page.locator("#login-poll").waitFor();
   const launchUrl = await loginLaunchUrl(page, app, () => globalThis.loginFixture.launches);

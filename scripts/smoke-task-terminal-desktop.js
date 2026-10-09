@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const root = await mkdtemp(path.join(os.tmpdir(), "idou-task-terminal-"));
 const projectA = path.join(root, "project-a"), projectB = path.join(root, "project-b"), evidence = path.resolve("docs/evidence/task-ui");
@@ -32,7 +33,7 @@ try {
     ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}),
   }, timeout: 30_000 });
   const page = await app.firstWindow(), errors = []; page.setDefaultTimeout(20_000); page.on("pageerror", error => errors.push(error.message));
-  await page.locator("#new-task").waitFor(); await page.locator('[data-section="coding"]').click();
+  await appReady(page); await page.locator('[data-section="coding"]').click();
   const a = await makeTask(page, projectA, "A 终端任务");
   assert.equal(await page.locator("#task-terminal").isHidden(), true, "a task terminal is closed by default");
   await page.locator("#workbench-terminal").click(); await page.locator("#terminal-status").filter({ hasText: "运行中" }).waitFor();

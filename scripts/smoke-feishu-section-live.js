@@ -16,6 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const ROOT = process.cwd();
 const OUT = path.resolve("docs/evidence");
@@ -34,7 +35,7 @@ try {
   app = await electron.launch({ executablePath: electronBinary, args: [ROOT], env, cwd: directory, timeout: 30_000 });
   const page = await app.firstWindow(); page.setDefaultTimeout(20_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
 
   // A cowork draft saved a few times, so its stored revision is past 0.
   await page.locator("#prompt").fill("先存一份工作任务草稿");

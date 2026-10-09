@@ -22,6 +22,7 @@ import { WikiPublisherKeyService } from "../src/control-plane/wiki-key-service.j
 import { loginLaunchUrl } from "./fixtures/login-launch.js";
 import { openFeishuResource } from "./fixtures/open-document.js";
 import { SAAS_FEISHU } from "../src/providers/feishu/saas-definition.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), "idou-publication-desktop-"))), evidence = path.resolve("docs/evidence");
 await mkdir(evidence, { recursive: true });
@@ -98,7 +99,7 @@ try {
   let page; const errors = [];
   const launchApp = async (profile = "desktop") => {
     app = await electron.launch({ executablePath: electronBinary, args: [path.resolve("scripts/fixtures/publication-desktop-entry.js")], env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: path.join(directory, profile), IDOU_SERVER_URL: origin }, timeout: 30000 });
-    page = await app.firstWindow(); page.setDefaultTimeout(20000); page.on("pageerror", error => errors.push(error.message));
+    page = await app.firstWindow(); page.setDefaultTimeout(20000); page.on("pageerror", error => errors.push(error.message)); await appReady(page);
     await app.evaluate((_electron, user) => { globalThis.accountFixture.tenantUserId = user; globalThis.accountFixture.cliOpenId = `ou_cli_${user}`; }, state.user);
   };
   const authorize = async () => {

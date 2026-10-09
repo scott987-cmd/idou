@@ -21,9 +21,16 @@
 
 // Codex 0.155's elicitation message for an MCP tool call:
 // `Allow the <server> MCP server to run tool "<tool>"?`
+//
+// Only a name in the MCP specification's own alphabet (letters, digits, _ - .)
+// counts. The name is the server's to choose, and it is put in the card's own
+// sentence and on the 这一轮都允许 button: one spelled
+// `天气」（只读，安全）「` would have the card vouch for the call in i豆's
+// voice (security review, 2026-10-09). Anything else is a tool that did not
+// say which it is -- asked about every time, never granted for the turn.
 export function mcpToolName(message) {
   const match = /to run tool "([^"\n]{1,80})"/.exec(String(message ?? ""));
-  return match ? match[1] : null;
+  return match && /^[A-Za-z0-9_.-]+$/.test(match[1]) ? match[1] : null;
 }
 
 // What the card says the call is. Codex's message above is English and names

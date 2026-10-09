@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { ensureTask, openFeishuResource, openFileMenuItem } from "./fixtures/open-document.js";
 import { PRIVATE_DOMAIN, PRIVATE_ID, privateToken, privateUser } from "./fixtures/private-feishu.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // The same desktop, told by name to talk to a Feishu deployment this build does
 // not ship (scripts/fixtures/private-feishu.js): its own domains, identifier
@@ -36,7 +37,7 @@ try {
   await app.evaluate((_electron, { token, user }) => {
     globalThis.privateDeploymentFixture.documents.set(token, { title: "私有化回款制度（合成）", text: "回款以银行到账日为准，逾期三十天需升级。", revision: 7, readers: [user] });
   }, { token: TOKEN, user: privateUser("alice") });
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
 
   const resolved = await app.evaluate(() => globalThis.privateDeploymentFixture.resolved);
   check("the desktop asked the registry for the deployment it was configured with", resolved.includes(PRIVATE_ID), resolved.join(","));

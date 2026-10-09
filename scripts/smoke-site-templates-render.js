@@ -62,7 +62,7 @@ app.whenReady().then(async () => { const win = new BrowserWindow({ width: 1200, 
   await win.loadFile(${JSON.stringify(made[0].file)}); });
 app.on("window-all-closed", () => {});`);
   instance = await electron.launch({ executablePath: electronBinary, args: [path.join(directory, "entry.cjs")], timeout: 30_000 });
-  const window = await instance.firstWindow();
+  const window = await instance.firstWindow(); // 生成的网页，不是 i豆 的窗口
   window.setDefaultTimeout(15_000);
   const failures = [];
   window.on("pageerror", (error) => failures.push(error.message));

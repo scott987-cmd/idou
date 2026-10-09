@@ -13,6 +13,7 @@ import { createModelGateway } from "../src/control-plane/model-gateway.js";
 import { clientEnvironment } from "../src/providers/codex/gateway-config.js";
 import { syntheticResponseStream } from "./fixtures/model-response.js";
 import { waitForHumanChoice, waitForHumanConfirm } from "./fixtures/agent-harness.js";
+import { appReady } from "./fixtures/app-ready.js";
 
 // The desktop's half of browser_preview, in the actual Electron app with the
 // actual Codex, against a scripted model -- no paid call. main.js starts one
@@ -81,7 +82,7 @@ try {
     env: { ...clientEnvironment(), ...(process.env.IDOU_DESKTOP_BACKGROUND ? { IDOU_DESKTOP_BACKGROUND: "1" } : {}), IDOU_DESKTOP_DATA_DIR: path.join(directory, "data"), IDOU_SESSION_FILE: sessionFile, IDOU_SERVER_URL: origin } });
   const page = await app.firstWindow(); page.setDefaultTimeout(60_000);
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.locator("#new-task").waitFor();
+  await appReady(page);
 
   // 浏览器操作 on, the way a person switches it: 技能中心 -> 连接器. DOM clicks,
   // not coordinates: this app layers WebContentsViews over the window.
