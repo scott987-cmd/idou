@@ -6,7 +6,7 @@
 <title>i豆 企业桌面 Agent</title>
 <meta name="description" content="i豆是面向飞书用户的开源企业桌面 Agent：完成管理员部署与飞书应用授权后，员工用飞书账号登录，在一个窗口里发消息、改文档、做网站、查知识、写代码。默认逐次确认；完全访问仅在当前任务授权范围内自动执行。">
 <meta property="og:title" content="i豆 企业桌面 Agent">
-<meta property="og:description" content="工作、编程、知识库，一台搞定。通过飞书 OAuth 登录，任务按会话权限执行，也可以接入客户自己的大模型。非飞书官方软件：从零开发的独立开源项目。">
+<meta property="og:description" content="工作、编程、企业问答，一台搞定。通过飞书 OAuth 登录，任务按会话权限执行，也可以接入客户自己的大模型。非飞书官方软件：从零开发的独立开源项目。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0.05' y1='0' x2='0.72' y2='1'%3E%3Cstop offset='0' stop-color='%23F6B13A'/%3E%3Cstop offset='0.48' stop-color='%23E07A24'/%3E%3Cstop offset='1' stop-color='%23A83E17'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='116' fill='url(%23g)'/%3E%3Crect x='228' y='226' width='56' height='172' rx='28' fill='%23FFFAF0'/%3E%3Cellipse cx='256' cy='146' rx='54' ry='43' fill='%23FFFAF0' transform='rotate(-22 256 146)'/%3E%3C/svg%3E">
 <style>
 :root {
@@ -64,7 +64,7 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--amber-1); outli
 .eyebrow { display: inline-flex; align-items: center; gap: 12px; font-size: 15px; letter-spacing: .16em; color: var(--amber-1); font-weight: 600; }
 .eyebrow .bean { font-size: 30px; }
 h1 { margin: 22px 0 0; font-size: clamp(40px, 7vw, 84px); line-height: 1.12; font-weight: 600; letter-spacing: .01em; }
-/* 中文标题只在词组之间换行，不把「搜索」拆成两行 */
+/* 中文标题只在词组之间换行，不把「企业问答」拆成两行 */
 .ph { display: inline-block; }
 .lead { margin: 26px 0 0; max-width: 40em; font-size: clamp(17px, 2.1vw, 21px); color: var(--muted); }
 .lead strong { color: var(--cream); font-weight: 600; }
@@ -338,7 +338,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
   <div class="wrap">
     <div class="hero">
       <div class="eyebrow"><span class="bean"></span>飞书用户的企业桌面 Agent</div>
-      <h1><span class="ph">工作、</span><span class="ph">编程、</span><span class="ph">搜索，</span><span class="ph amber">一台搞定。</span></h1>
+      <h1><span class="ph">工作、</span><span class="ph">编程、</span><span class="ph">企业问答，</span><span class="ph amber">一台搞定。</span></h1>
       <p class="lead">完成管理员部署与飞书应用授权后，用你的<strong>飞书账号</strong>登录，在同一个窗口里发消息、改文档、做网站、查知识、写代码。<strong>默认逐次确认；给当前任务开启完全访问后，在授权范围内自动完成。</strong></p>
       <p class="unofficial">非飞书官方软件 · 从零开发的独立开源项目 · 与字节跳动、飞书 / Lark 没有隶属或授权关系（<a href="#disclaimer">免责声明</a>）</p>
       <div class="cta">
