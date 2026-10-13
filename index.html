@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>i豆 企业桌面 Agent</title>
-<meta name="description" content="i豆 是飞书用户的企业桌面 Agent：用飞书账号登录，在一个窗口里发消息、改文档、做网站、查知识、写代码。默认每一步先问你；你一授权，它就全自动做完。">
+<meta name="description" content="i豆是面向飞书用户的开源企业桌面 Agent：完成管理员部署与飞书应用授权后，员工用飞书账号登录，在一个窗口里发消息、改文档、做网站、查知识、写代码。默认逐次确认；完全访问仅在当前任务授权范围内自动执行。">
 <meta property="og:title" content="i豆 企业桌面 Agent">
-<meta property="og:description" content="工作、编程、搜索，一台搞定。用飞书账号登录，权限跟随飞书，可以接入客户自己的大模型。非飞书官方软件：从零开发的独立开源项目。">
+<meta property="og:description" content="工作、编程、知识库，一台搞定。通过飞书 OAuth 登录，任务按会话权限执行，也可以接入客户自己的大模型。非飞书官方软件：从零开发的独立开源项目。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0.05' y1='0' x2='0.72' y2='1'%3E%3Cstop offset='0' stop-color='%23F6B13A'/%3E%3Cstop offset='0.48' stop-color='%23E07A24'/%3E%3Cstop offset='1' stop-color='%23A83E17'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='116' fill='url(%23g)'/%3E%3Crect x='228' y='226' width='56' height='172' rx='28' fill='%23FFFAF0'/%3E%3Cellipse cx='256' cy='146' rx='54' ry='43' fill='%23FFFAF0' transform='rotate(-22 256 146)'/%3E%3C/svg%3E">
 <style>
 :root {
@@ -339,52 +339,44 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
     <div class="hero">
       <div class="eyebrow"><span class="bean"></span>飞书用户的企业桌面 Agent</div>
       <h1><span class="ph">工作、</span><span class="ph">编程、</span><span class="ph">搜索，</span><span class="ph amber">一台搞定。</span></h1>
-      <p class="lead">用你的<strong>飞书账号</strong>登录，在同一个窗口里发消息、改文档、做网站、查知识、写代码。<strong>默认每一步先问你；你一授权，它就全自动做完。</strong></p>
+      <p class="lead">完成管理员部署与飞书应用授权后，用你的<strong>飞书账号</strong>登录，在同一个窗口里发消息、改文档、做网站、查知识、写代码。<strong>默认逐次确认；给当前任务开启完全访问后，在授权范围内自动完成。</strong></p>
       <p class="unofficial">非飞书官方软件 · 从零开发的独立开源项目 · 与字节跳动、飞书 / Lark 没有隶属或授权关系（<a href="#disclaimer">免责声明</a>）</p>
       <div class="cta">
-        <a class="btn primary" href="#film">看 2 分钟介绍</a>
+        <a class="btn primary" href="#film">看 90 秒介绍</a>
         <a class="btn" href="#data">看实测数据</a>
+        <a class="btn" href="https://github.com/scott987-cmd/idou">查看源代码</a>
       </div>
       <div class="film" id="film">
         <video id="promo" controls playsinline preload="metadata" poster="media/poster.jpg">
           <source src="media/idou-promo.mp4" type="video/mp4">
+          <track kind="captions" srclang="zh-CN" label="简体中文" src="media/idou-promo.vtt" default>
           你的浏览器不能直接播放视频，可以<a href="media/idou-promo.mp4">下载后观看</a>。
         </video>
-        <button class="play" type="button" aria-label="播放 2 分钟介绍视频"><span><i></i>播放 2 分钟介绍</span></button>
+        <button class="play" type="button" aria-label="播放 90 秒介绍视频"><span><i></i>播放 90 秒介绍</span></button>
       </div>
-      <div class="caption"><span>片中的演示都是 i豆 真实运行的录屏，开场的概念视频也是 i豆 自己生成的。</span><span>1080p · 2 分钟</span></div>
+      <div class="caption"><span>片中的界面与任务结果来自 i豆 的真实运行记录；管理后台使用明确标注的合成组织数据。</span><span>1080p · 约 90 秒 · 中文旁白与字幕 · <a href="media/idou-technical.mp4">4 分钟技术演示</a></span></div>
     </div>
 
     <section id="data" aria-labelledby="data-title">
       <div class="kicker"><span class="rule"></span>实测数据</div>
-      <h2 id="data-title">不靠形容词，靠同一套题。</h2>
-      <p class="intro">用固定的一套题检验知识问答，用公开编程题检验编程能力。评测条件写在页面最下方，可以复核。</p>
+      <h2 id="data-title">先看真实任务，再看可复现门禁。</h2>
+      <p class="intro">首页只展示当前产品规模和用户能感知的结果。历史研发基线、失败样本和评测方法完整保留在技术文档，不再把小样本和旧版本数字当作核心卖点。</p>
       <div class="stats">
-        <div class="stat"><div class="n">8 / 10</div><div class="k">公开编程题抽测解出<sup>1</sup></div><div class="d">Terminal-Bench 2.1 公开题，用国产 GLM-5.3 模型，每题只跑一次。</div></div>
-        <div class="stat lead-stat"><div class="n">17 → 27</div><div class="k">知识问答全对题数（共 28 题）<sup>2</sup></div><div class="d">两轮检索改进带来的提升，同一套题复测。能力是按数据一步步提上来的。</div></div>
-        <div class="stat"><div class="n">2,873<small>项</small></div><div class="k">自动化测试<sup>3</sup></div><div class="d">每个版本发布前全部通过，另有 32 项桌面自动验收。</div></div>
+        <div class="stat lead-stat"><div class="n">20,000<small>行</small></div><div class="k">飞书表格网站实测</div><div class="d">本机首屏约 0.38 秒；模拟 4G 下约 1.4 秒。</div></div>
+        <div class="stat"><div class="n">100,000<small>人</small></div><div class="k">合成组织管理数据压测</div><div class="d">首次按姓名搜索 158 毫秒，缓存热后约 10 毫秒。</div></div>
+        <div class="stat"><div class="n">3,067<small>项</small></div><div class="k">严格发布门禁全部通过</div><div class="d">.295：3,067 / 3,067；源码、依赖与发布清单绑定到同一个签名版本。</div></div>
       </div>
 
       <div class="duo">
         <div class="panel">
-          <h3>检索迭代：知识问答全对题数<sup>2</sup></h3>
-          <p class="sub">2026-09-12 · 同一个应用 · 同一套 28 道可回答的题，每轮改进后复测</p>
-          <svg class="chart" viewBox="0 0 520 220" role="img" aria-label="知识问答全对题数（共 28 题）：改造前 17，第一轮改进 25，第二轮改进 27">
-  <g class="c-grid"><line x1="64" y1="180" x2="496" y2="180"/><line x1="64" y1="105" x2="496" y2="105"/><line x1="64" y1="30" x2="496" y2="30" class="top"/></g><text class="c-tick" x="54" y="184" text-anchor="end">0</text><text class="c-tick" x="54" y="109" text-anchor="end">14</text><text class="c-tick" x="54" y="34" text-anchor="end">28</text>
-  <text class="c-tick" x="70" y="22">满分 28</text>
-  <path d="M112 88.9 L280 46.1 L448 35.4 L448 180 L112 180 Z" fill="url(#amberfill)"/>
-  <path d="M112 88.9 L280 46.1 L448 35.4" fill="none" stroke="#F6B13A" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
-  <circle class="c-dot" cx="112" cy="88.9" r="6"/><text class="c-val light" x="112" y="72.9" text-anchor="middle">17</text><circle class="c-dot" cx="280" cy="46.1" r="6"/><text class="c-val light" x="280" y="30.1" text-anchor="middle">25</text><circle class="c-dot" cx="448" cy="35.4" r="6"/><text class="c-val light" x="448" y="19.4" text-anchor="middle">27</text><text class="c-lbl" x="112" y="208" text-anchor="middle">改造前</text><text class="c-lbl" x="280" y="208" text-anchor="middle">第一轮改进</text><text class="c-lbl" x="448" y="208" text-anchor="middle">第二轮改进</text>
-</svg>
+          <h3>真实任务结果</h3>
+          <p class="sub">两万行多维表格网站、一段话生成并迭代的 FPS 游戏、十万人规模管理后台，都来自同一套产品执行路径。</p>
+          <p class="note">下方保留了任务画面、耗时、数据规模和验收方式；合成数据与真实租户数据会明确区分。</p>
         </div>
         <div class="panel">
-          <h3>公开编程题抽测<sup>1</sup></h3>
-          <p class="sub">Terminal-Bench 2.1 · 10 道题 · 每题一次 · GLM-5.3</p>
-          <svg class="chart" viewBox="0 0 520 100" role="img" aria-label="公开编程题抽测：10 道解出 8 道">
-  <circle class="c-solved" cx="35" cy="42" r="20"/><path class="c-check" d="M28 42 l5 5 l9 -10"/><circle class="c-solved" cx="85" cy="42" r="20"/><path class="c-check" d="M78 42 l5 5 l9 -10"/><circle class="c-solved" cx="135" cy="42" r="20"/><path class="c-check" d="M128 42 l5 5 l9 -10"/><circle class="c-solved" cx="185" cy="42" r="20"/><path class="c-check" d="M178 42 l5 5 l9 -10"/><circle class="c-solved" cx="235" cy="42" r="20"/><path class="c-check" d="M228 42 l5 5 l9 -10"/><circle class="c-solved" cx="285" cy="42" r="20"/><path class="c-check" d="M278 42 l5 5 l9 -10"/><circle class="c-solved" cx="335" cy="42" r="20"/><path class="c-check" d="M328 42 l5 5 l9 -10"/><circle class="c-solved" cx="385" cy="42" r="20"/><path class="c-check" d="M378 42 l5 5 l9 -10"/><circle class="c-miss" cx="435" cy="42" r="19"/><line class="c-missline" x1="429" y1="42" x2="441" y2="42"/><circle class="c-miss" cx="485" cy="42" r="19"/><line class="c-missline" x1="479" y1="42" x2="491" y2="42"/>
-  <text class="c-lbl" x="15" y="92">解出 8 道</text><text class="c-lbl" x="505" y="92" text-anchor="end">未解出 2 道</text>
-</svg>
-          <p class="note">每个圆点是一道公开编程题：实心为解出，空心为未解出。</p>
+          <h3>评测没有消失，只是回到该在的位置</h3>
+          <p class="sub">历史 Terminal-Bench 抽测、知识检索迭代和一万篇压力实验仍可在开源仓库复跑。</p>
+          <p class="note"><a href="https://github.com/scott987-cmd/idou/blob/main/docs/coding-agent.md">编程评测方法</a> · <a href="https://github.com/scott987-cmd/idou/blob/main/docs/local-wiki.md">知识检索方法与限制</a></p>
         </div>
       </div>
     </section>
@@ -442,7 +434,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
       <h2 id="caps-title"><span class="ph">一个窗口，十件事：</span><span class="ph">飞书里的、电脑上的，</span><span class="ph">都能办。</span></h2>
       <p class="intro">消息、文档、云盘、知识库就在 i豆 旁边打开；电脑上的文件和应用，它也能动手。下面每张图都是 i豆 真实运行时的画面。</p>
       <div class="caps">
-        <article class="cap"><img src="media/shots/msg.jpg" width="1280" height="720" alt="发送飞书消息前弹出的确认卡" loading="lazy"><div class="cap-body"><div class="steps"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>飞书消息</h3><p>一句话，替你发出去。默认先弹确认卡，你点了才发；授权过就直接发。</p></div></article>
+        <article class="cap"><img src="media/shots/msg.jpg" width="1280" height="720" alt="发送飞书消息前弹出的确认卡" loading="lazy"><div class="cap-body"><div class="steps"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>飞书消息</h3><p>一句话，替你发出去。标准权限先显示确认卡；当前任务开启完全访问后，在授权范围内连续执行。</p></div></article>
         <article class="cap"><img src="media/shots/doc.jpg" width="1280" height="720" alt="飞书文档里刚被改写的段落" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>飞书文档</h3><p>边看边改，改动直接写进飞书文档。</p></div></article>
         <article class="cap"><img src="media/shots/local.jpg" width="1280" height="720" alt="i豆 读本机文件写成的三季度经营复盘网页报告" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>本地文件</h3><p>读你电脑上的表格、文档和 PDF，算好的报告写回原来的文件夹。</p></div></article>
         <article class="cap"><img src="media/shots/media.jpg" width="1280" height="720" alt="i豆 生成的视频直接在应用里预览" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>图片视频</h3><p>说一句就生成；默认先告诉你模型和规格，视频每次都问你。</p></div></article>
@@ -463,20 +455,20 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
       <ol class="flow" style="margin-top:28px">
         <li><span class="no">读</span><h3>用你自己的身份</h3><p>Agent 用随附的飞书 CLI 读，经控制面代理，你的飞书令牌只在最后一跳加上，不进 CLI、Codex 和界面。</p></li>
         <li><span class="no">想</span><h3>密钥只在服务端</h3><p>每个任务一个 Codex app-server，模型请求走控制面网关；桌面上一把密钥都没有。</p></li>
-        <li><span class="no">写</span><h3>先问你</h3><p>写入先弹确认卡；你点了才要一次性许可，许可只对应 CLI 预演出的那一个请求。</p></li>
+        <li><span class="no">写</span><h3>按任务授权</h3><p>默认写入先弹确认卡；完全访问只在当前任务授权范围内自动执行。服务端许可仍只对应一个具体请求。</p></li>
         <li><span class="no">站</span><h3>表格变，网站跟着变</h3><p>桌面读表、交给网站服务；访客能不能看，每次实时问飞书。</p></li>
         <li><span class="no">跑</span><h3>到点自己跑</h3><p>定时任务在 gVisor 沙箱里运行，凭据由沙箱外的代理加上，结果存进你的云盘。</p></li>
       </ol>
       <div class="stats" style="margin-top:28px">
-        <div class="stat"><div class="n">365<small>个</small></div><div class="k">源码文件</div><div class="d">src/ 下 64,547 行</div></div>
-        <div class="stat"><div class="n">2,873<small>项</small></div><div class="k">自动化测试</div><div class="d">每个版本发布前全部通过，再跑桌面验收</div></div>
+        <div class="stat"><div class="n">0.157.0</div><div class="k">随附 Codex</div><div class="d">经 app-server 协议接入，按摘要校验</div></div>
+        <div class="stat"><div class="n">1.0.96</div><div class="k">随附开源飞书 CLI</div><div class="d">从锁定提交构建，经 provider 契约接入</div></div>
         <div class="stat"><div class="n">0<small>行</small></div><div class="k">对 Codex 和飞书 CLI 的改动</div><div class="d">经 app-server 协议和 provider 契约接入，升级上游就拿到新能力</div></div>
       </div>
     </section>
     <section id="wiki" aria-labelledby="wiki-title">
       <div class="kicker"><span class="rule"></span>LLM Wiki</div>
       <h2 id="wiki-title"><span class="ph">每人一份加密知识，</span><span class="ph">回答前重新核验。</span></h2>
-      <p class="intro">索引里有一篇文档，不代表你能读它。每一次回答，候选文档都以你现在的飞书身份重读一遍：没权限的，回答里就没有；收回的权限，下一次查询就生效。</p>
+      <p class="intro">索引里有一篇文档，不代表你能读它。每次知识回答前，i豆 都以你当前的飞书身份重新核验候选来源；未通过核验的内容不会进入这次回答。</p>
       <ol class="pipe">
         <li><span class="no">01</span><h3>你读过的飞书</h3><p>文档、知识库、电子表格、多维表格；也可以粘贴链接主动加入。</p></li>
         <li><span class="no">02</span><h3>来源证据页</h3><p>按章节无损切片，带版本、内容哈希、租户、读者和权限证据，加密存在本机。</p></li>
@@ -485,21 +477,22 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
         <li><span class="no">05</span><h3>带出处的回答</h3><p>按词的稀有度挑段落，摘录只取刚重读的原文；抄错的链接会被更正。</p></li>
       </ol>
       <div class="stats">
-        <div class="stat"><div class="n">43→75<small>%</small></div><div class="k">证据完整送达</div><div class="d">评测集 28 道可答题；仓库里的语料和题目随时可复跑</div></div>
-        <div class="stat"><div class="n">68→75<small>%</small></div><div class="k">混进 1000 篇无关文档</div><div class="d">按稀有度加权以后，干扰文档挤不掉真正的证据</div></div>
-        <div class="stat"><div class="n">14→96<small>%</small></div><div class="k">几份近似副本里找对那一份</div><div class="d">低于 70% 的改动过不了 npm run check</div></div>
+        <div class="stat"><div class="n">每次</div><div class="k">回答前重新核验候选来源</div><div class="d">核验失败、权限收回或中途换账号，这次内容就不进入回答</div></div>
+        <div class="stat"><div class="n">8<small>篇</small></div><div class="k">最多进入权限复核</div><div class="d">先在本机选候选，再向飞书确认当前用户仍可读取</div></div>
+        <div class="stat"><div class="n">96<small>%</small></div><div class="k">近似副本中命中当前文档</div><div class="d">这是候选文档命中率，不等同于最终答案正确率</div></div>
       </div>
+      <p class="note" style="margin-top:18px">当前个人本地知识副本上限为 1000 篇 / 64 MiB。更大规模的企业集中索引需要服务端索引与元数据治理，属于后续路线，不把它包装成已经交付。</p>
     </section>
     <section id="why" aria-labelledby="why-title">
       <div class="kicker"><span class="rule"></span>为什么是 i豆</div>
       <h2 id="why-title">把力气花在对企业重要的地方。</h2>
       <div class="why">
         <div class="point feature"><span class="bean"></span><div><h3>站在 Codex 的肩膀上，能力持续进化</h3><p>Agent 的内核是 OpenAI 持续迭代的 Codex。绝大多数团队自己写不出比它更好的 Agent，i豆 不重复造轮子，而是把精力放在飞书一体化和企业可控上。Codex 每一次升级，i豆 的编程和执行能力都随之提升。</p></div></div>
-        <div class="point feature"><span class="bean"></span><div><h3>模型在服务端统一管理</h3><p>现在支持 MiniMax-M3 和 GLM-5.3（经服务端网关，密钥只在服务端），管理员按部门配置可用模型、每日额度和超额后的降级模型；某个模型出问题会自动切到下一个。国产模型同样能用——上面的编程抽测，用的就是 GLM-5.3。</p></div></div>
-        <div class="point"><span class="bean"></span><div><h3>能力跟随飞书 CLI，一起更新</h3><p>i豆 的飞书能力跟随飞书官方 CLI：消息、文档、电子表格、多维表格、云盘、知识库、日程、任务，都已接入。飞书 CLI 每新增一项能力，i豆 就能多替你做一件事。</p></div></div>
-        <div class="point"><span class="bean"></span><div><h3>飞书账号即登录，不用另起炉灶</h3><p>直接沿用飞书的登录态：不用单独建设账号体系，员工也不用多记一套密码。</p></div></div>
-        <div class="point"><span class="bean"></span><div><h3>权限跟随飞书原生</h3><p>你在飞书里看不到的，i豆 也读不到。查知识时每次都按你当前的飞书身份重新核验，收回的权限，下一次查询就生效。</p></div></div>
-        <div class="point"><span class="bean"></span><div><h3>服务端很轻，运维很省心</h3><p>不需要向量数据库，也不需要额外的检索集群；知识副本加密存在员工本机，每次回答前重新核验权限。</p></div></div>
+        <div class="point feature"><span class="bean"></span><div><h3>模型在服务端统一管理</h3><p>现在支持 MiniMax-M3 和 GLM-5.3（经服务端网关，密钥只在服务端），管理员按部门配置可用模型、每日额度和超额后的降级模型；某个模型出问题会自动切到下一个。模型能力与应用版本分开管理，便于企业按需替换。</p></div></div>
+        <div class="point"><span class="bean"></span><div><h3>能力跟随开源飞书 CLI，一起更新</h3><p>i豆 随附并锁定 larksuite/cli：消息、文档、电子表格、多维表格、云盘、知识库、日程、任务等能力通过 provider 契约接入。</p></div></div>
+        <div class="point"><span class="bean"></span><div><h3>复用飞书 OAuth 身份</h3><p>管理员完成企业应用配置后，员工使用飞书授权登录 i豆，不需要再维护另一套员工密码。</p></div></div>
+        <div class="point"><span class="bean"></span><div><h3>读取权限按当前身份复核</h3><p>知识回答只引用这次查询中重新核验成功的候选来源；这不把历史缓存当成持续有效的访问证明。</p></div></div>
+        <div class="point"><span class="bean"></span><div><h3>个人知识副本不要求额外检索集群</h3><p>当前个人本地副本在明确的 1000 篇 / 64 MiB 边界内运行；大规模企业集中索引仍在路线图中。</p></div></div>
         <div class="point"><span class="bean"></span><div><h3>飞书 SaaS 今天就能用，私有化按契约接入</h3><p>飞书 SaaS 已经随附；飞书接入是一份 provider 契约，私有化部署照同一份契约接入，契约测试已经就位（私有化 provider 开发中）。</p></div></div>
         <div class="point"><span class="bean"></span><div><h3>一句话做应用，发布在自己的服务器上</h3><p>网站、小游戏、数据看板，说需求就能做出来，本人确认后发布；网站由企业自己部署的服务端托管，不依赖第三方平台。</p></div></div>
       </div>
@@ -510,7 +503,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
       <h2 id="consent-title"><span class="ph">默认先问你，</span><span class="ph">授权了就自己做完。</span></h2>
       <div class="consent">
         <ul>
-          <li><span class="bean"></span><span><b>默认每一步先问你</b>：发消息、写文档、发布网站，执行前都弹出确认卡，写明发给谁、改哪里、谁能看到。</span></li>
+          <li><span class="bean"></span><span><b>权限跟随当前会话</b>：只读、标准、完全访问三个档位；标准权限下，发消息、写文档、发布网站等外部操作会明确确认；只有你主动授予完全访问后，才会在本会话范围内连续执行。</span></li>
           <li><span class="bean"></span><span><b>你一授权，它就全自动做完</b>：给任务开「完全访问」，发消息、改文档、存云盘、生成图片、建日程和任务、操作电脑，都不再逐次确认。</span></li>
           <li><span class="bean"></span><span><b>定时任务到点自己交付</b>：建任务时选好结果写进哪份文档、发到哪个群，之后每次跑完自动写过去；任务自己改不了去处。</span></li>
           <li><span class="bean"></span><span><b>生成视频</b>，不管怎样授权，每一次都单独问你。</span></li>
@@ -536,11 +529,11 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
         <div class="layer2"><span class="no">7</span><div><h3>定时任务</h3><p>生产只认 gVisor：只读根、去掉全部权限、内部网络、资源上限；凭据在沙箱外的出口代理上加。</p></div></div>
         <div class="layer2"><span class="no">8</span><div><h3>供应链</h3><p>发布清单签名；随附的 Codex、飞书 CLI、Node 每次启动按摘要校验，从不去 PATH 上找；关掉 Electron 的三个调试与注入开关。</p></div></div>
       </div>
-      <p class="intro" style="margin-top:22px">2,873 项自动化测试里，51 个测试文件专门守安全与隔离的边界；发布前的审查每找到一个问题，就先写一个不修就失败的测试。</p>
+      <p class="intro" style="margin-top:22px">`.295` 的严格发布门禁通过 3,067 / 3,067；当前 55 个测试文件专门覆盖安全与隔离相关边界。审查发现的问题先固化成会失败的回归测试，再进入发布门禁。</p>
     </section>
     <section id="admin" aria-labelledby="admin-title">
       <div class="kicker"><span class="rule"></span>管理后台</div>
-      <h2 id="admin-title">为十万人设计，也按十万人实测。</h2>
+      <h2 id="admin-title">用十万人规模的合成组织数据压测。</h2>
       <p class="intro">用产品自己的后台代码，灌入一个合成的十万人组织：58 万行用量、30 万条审计。成员、组织架构、策略、用量、审计、企业技能、服务状态，每一页都实测过查询耗时。</p>
       <div class="stats">
         <div class="stat"><div class="n">100,000<small>人</small></div><div class="k">合成组织实测</div><div class="d">583,464 行用量，300,040 条审计</div></div>
@@ -583,9 +576,9 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
       <div class="kicker"><span class="rule"></span>部署</div>
       <h2 id="deploy-title">装在桌面，接入你的飞书。</h2>
       <div class="deploy">
-        <div class="tier"><span class="tag">飞书 SaaS</span><h3>登录即用</h3><p>用飞书账号登录，消息、文档、云盘、知识库马上能用。</p></div>
+        <div class="tier"><span class="tag">飞书 SaaS</span><h3>完成部署与授权后使用</h3><p>管理员部署服务端、配置飞书应用权限后，员工使用飞书 OAuth 登录。</p></div>
         <div class="tier"><span class="tag">飞书私有化</span><h3>按同一份契约接入</h3><p>私有化 provider 开发中；服务端本来就部署在企业自己的服务器上，知识副本加密存放在员工本机。</p></div>
-        <div class="tier"><span class="tag">运维</span><h3>轻，好维护</h3><p>没有向量数据库，没有额外的检索集群；权限和账号都交给飞书。</p></div>
+        <div class="tier"><span class="tag">运维</span><h3>边界清楚</h3><p>个人知识副本本地加密；当前无需另建检索集群。超过个人副本规模的集中索引仍在规划。</p></div>
         <div class="tier"><span class="tag">大模型</span><h3>服务端统一管理</h3><p>MiniMax-M3、GLM-5.3，按部门配置；接入更多模型在路线图上。</p></div>
       </div>
     </section>
@@ -599,7 +592,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
           <ol>
             <li><span class="no">01</span><div><b>Codex 持续更新</b><span>Agent 的推理、编程和执行能力，随 Codex 升级一起变强。</span></div></li>
             <li><span class="no">02</span><div><b>飞书 CLI 持续更新</b><span>i豆 的飞书能力跟随飞书 CLI：它开放的能力越多，i豆 能直接替你完成的事越多。</span></div></li>
-            <li><span class="no">03</span><div><b>按数据迭代</b><span>用固定的评测集复测每一次改动：知识问答全对题数从 17 提到 27（共 28 题）。</span></div></li>
+            <li><span class="no">03</span><div><b>按数据迭代</b><span>固定评测集、压力实验和失败样本都保留在仓库；历史基线不冒充当前产品指标。</span></div></li>
           </ol>
         </div>
         <svg class="diagram fw" viewBox="0 0 420 420" role="img" aria-label="持续进化：Codex 更新、飞书 CLI 更新、评测集复测、测试全部通过，循环产出更强的新版本">
@@ -610,15 +603,16 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
 </svg>
       </div>
       <div class="lic2">
-        <div class="panel"><h3>181 个 npm 依赖，全部是宽松许可</h3>
-          <div class="licbar"><i style="width:85.6%;background:#F6B13A"></i><i style="width:6.1%;background:#E07A24"></i><i style="width:3.3%;background:#3370FF"></i><i style="width:2.8%;background:#2BB3A3"></i><i style="width:2.2%;background:rgba(255,248,236,.45)"></i></div>
-          <div class="lickeys"><span style="--c:#F6B13A">MIT 155</span><span style="--c:#E07A24">ISC 11</span><span style="--c:#3370FF">BSD 6</span><span style="--c:#2BB3A3">Apache-2.0 5</span><span style="--c:rgba(255,248,236,.45)">其他宽松许可 4</span></div>
+        <div class="panel"><h3>180 个 npm 依赖，全部是宽松许可</h3>
+          <div class="licbar"><i style="width:85.56%;background:#F6B13A"></i><i style="width:6.11%;background:#E07A24"></i><i style="width:3.33%;background:#3370FF"></i><i style="width:2.78%;background:#2BB3A3"></i><i style="width:2.22%;background:rgba(255,248,236,.45)"></i></div>
+          <div class="lickeys"><span style="--c:#F6B13A">MIT 154</span><span style="--c:#E07A24">ISC 11</span><span style="--c:#3370FF">BSD 6</span><span style="--c:#2BB3A3">Apache-2.0 5</span><span style="--c:rgba(255,248,236,.45)">其他宽松许可 4</span></div>
           <p class="sub" style="margin-top:14px">清单由 scripts/third-party-notices.js 生成，每次检查都核对；jszip 是双许可，按 MIT 使用。</p>
           <h3 style="margin-top:22px">从源码跑起来</h3>
           <pre class="cmd">npm ci
 npm run doctor
 npm start
 npm run check   # 全部测试，不花钱、不连真实飞书</pre>
+          <p class="sub" style="margin-top:14px"><a href="https://github.com/scott987-cmd/idou/blob/main/docs/saas-source-delivery.md">查看飞书 SaaS 源码部署说明</a></p>
         </div>
         <div class="panel"><h3>随包的上游程序</h3>
           <table class="ups">
@@ -636,11 +630,11 @@ npm run check   # 全部测试，不花钱、不连真实飞书</pre>
     <div class="notes" role="note">
       <h4>数据说明</h4>
       <ol>
-        <li>编程抽测：2026-09-14。Terminal-Bench 2.1 公开题中的 10 道，每题运行一次，模型为 GLM-5.3。这是抽测，不是排行榜成绩；排行榜成绩是全部 89 道题、每题至少 5 次的平均。</li>
-        <li>检索迭代：2026-09-12。同一个应用、同一套 28 道可回答的题，改进前全对 17 题，第一轮改进后 25 题，第二轮改进后 27 题。</li>
-        <li>测试数量、源码规模：以 2026-10-09 发布的版本（.282）为准。</li>
+        <li>发布门禁：2026-10-13，在签名版本 0.1.0-20261010.295 上运行严格检查，3,067 / 3,067 通过。</li>
         <li>监控网站：飞书测试账号里的真实多维表格（2 万条告警，飞书单表上限），由 i豆 建表、写数据、写页面；打开速度在本机网站服务上用 Chromium 测得，4G 为模拟网速。</li>
-        <li>管理后台：用产品自己的后台代码，加一个合成的十万人组织（姓名和标识都是编的）实测。</li>
+        <li>管理后台：用产品自己的后台代码，加一个合成的十万人组织（姓名和标识都是编的）实测；不是十万并发用户测试。</li>
+        <li>知识库的 96% 指在近似副本干扰下，候选集合包含当前文档的比例，不是最终回答正确率。</li>
+        <li>历史编程抽测、知识检索改进和一万篇压力实验保留在仓库技术文档中，首页不再把旧基线或小样本结果作为当前卖点。</li>
       </ol>
     </div>
 

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-10-13",
+  "release": {
+    "id": "0.1.0-20261010.295",
+    "strictGateTotal": 3067,
+    "strictGatePassed": 3067
+  },
+  "source": {
+    "files": 391,
+    "lines": 69450,
+    "securityTestFiles": 55
+  },
+  "upstreams": {
+    "codex": "0.157.0",
+    "larkCli": "1.0.96",
+    "node": "22.23.2",
+    "electron": "44.2.0"
+  },
+  "dependencies": {
+    "total": 180,
+    "licenses": [
+      ["MIT", 154],
+      ["ISC", 11],
+      ["BSD", 6],
+      ["Apache-2.0", 5],
+      ["其他宽松许可", 4]
+    ]
+  },
+  "website": {
+    "rows": 20000,
+    "localFirstPaintSeconds": 0.38,
+    "simulated4gFirstPaintSeconds": 1.4
+  },
+  "admin": {
+    "syntheticPeople": 100000,
+    "firstNameSearchMilliseconds": 158,
+    "warmNameSearchMilliseconds": 10,
+    "auditRetentionDays": 180
+  },
+  "knowledge": {
+    "localDocumentLimit": 1000,
+    "localStoreLimitMiB": 64,
+    "candidateDocumentLimit": 8,
+    "nearDuplicateCurrentDocumentHitPercent": 96
+  }
+}
