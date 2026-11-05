@@ -6,8 +6,8 @@
 <title>i豆 · 懂你的飞书工作助理</title>
 <meta name="description" content="i豆，把长期记忆、飞书资料、工作执行与企业问答串在一起。用对话交办，交付可预览的报告与文件；指定来源可授权持续关注。独立开源项目。">
 <meta property="og:title" content="i豆 · 你的工作，有人记得。">
-<meta property="og:description" content="长期记忆、飞书上下文、任务执行与持续关注，接进同一个工作助理。观看 80 秒实机演示。独立开源项目，非飞书官方软件。">
-<meta property="og:image" content="https://scott987-cmd.github.io/idou/media/assistant-poster.jpg">
+<meta property="og:description" content="长期记忆、飞书上下文、任务执行与持续关注，接进同一个工作助理。观看 103 秒实机演示与机器逻辑说明。独立开源项目，非飞书官方软件。">
+<meta property="og:image" content="https://scott987-cmd.github.io/idou/media/assistant-ecs-poster.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0.05' y1='0' x2='0.72' y2='1'%3E%3Cstop offset='0' stop-color='%23F6B13A'/%3E%3Cstop offset='0.48' stop-color='%23E07A24'/%3E%3Cstop offset='1' stop-color='%23A83E17'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='116' fill='url(%23g)'/%3E%3Crect x='228' y='226' width='56' height='172' rx='28' fill='%23FFFAF0'/%3E%3Cellipse cx='256' cy='146' rx='54' ry='43' fill='%23FFFAF0' transform='rotate(-22 256 146)'/%3E%3C/svg%3E">
 <style>
@@ -81,7 +81,7 @@ h1 { margin: 22px 0 0; font-size: clamp(40px, 7vw, 84px); line-height: 1.12; fon
   text-decoration: none; border: 1px solid var(--line); background: var(--panel); color: var(--cream); cursor: pointer; }
 .btn.primary { border: 0; color: #2A1405; background: linear-gradient(100deg, #F8BF52, #E4862A); }
 .btn:hover { filter: brightness(1.06); }
-.film { margin-top: 56px; position: relative; border-radius: 18px; overflow: hidden; background: #000;
+.film { margin-top: 56px; scroll-margin-top: 88px; position: relative; border-radius: 18px; overflow: hidden; background: #000;
   box-shadow: 0 40px 120px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 248, 236, .10), 0 0 90px rgba(224, 122, 36, .16); }
 .film video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; }
 .film .play { position: absolute; inset: 0; display: grid; place-items: end start; border: 0; padding: clamp(16px, 3vw, 32px); cursor: pointer;
@@ -331,6 +331,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
     </a>
     <nav aria-label="页面导航">
       <a href="#assistant">个人助理</a>
+      <a href="#cloud-machine">专属电脑</a>
       <a href="#how">工作方式</a>
       <a href="#capabilities">能力</a>
       <a href="#why">为什么</a>
@@ -352,15 +353,15 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
         <a class="btn" href="https://github.com/scott987-cmd/idou">查看源代码</a>
       </div>
       <div class="film" id="film">
-        <video id="promo" controls playsinline preload="metadata" poster="media/assistant-poster.jpg">
-          <source src="media/idou-assistant-20261105.mp4" type="video/mp4">
-          <track kind="captions" srclang="zh-CN" label="简体中文" src="media/idou-assistant-20261105.vtt">
-          <track kind="captions" srclang="en" label="English" src="media/idou-assistant-20261105.en.vtt">
-          你的浏览器不能直接播放视频，可以<a href="media/idou-assistant-20261105.mp4">下载后观看</a>。
+        <video id="promo" controls playsinline preload="metadata" poster="media/assistant-ecs-poster.jpg">
+          <source src="media/idou-assistant-ecs-20261105.mp4" type="video/mp4">
+          <track kind="captions" srclang="zh-CN" label="简体中文" src="media/idou-assistant-ecs-20261105.vtt">
+          <track kind="captions" srclang="en" label="English" src="media/idou-assistant-ecs-20261105.en.vtt">
+          你的浏览器不能直接播放视频，可以<a href="media/idou-assistant-ecs-20261105.mp4">下载后观看</a>。
         </video>
         <button class="play" type="button" aria-label="播放个人助理实机演示"><span><i></i>播放个人助理实录</span></button>
       </div>
-      <div class="caption"><span>个人助理验收版实录 · i豆 执行真实任务 · 等待片段剪辑 · 部分标识已遮挡</span><span>80 秒 · 1080p · 配乐与中文说明字幕 · <a href="media/idou-assistant-20261105-vertical.mp4">手机竖版</a> · <a href="media/idou-assistant-20261105.en.srt" download>English 字幕</a> · <a href="media/idou-technical.mp4">既有技术演示</a></span></div>
+      <div class="caption"><span>个人助理验收预览 · i豆 真实任务录屏 · 架构示意与复测截图已标注</span><span>103 秒 · 1080p · 配乐与中文说明字幕 · <a href="media/idou-assistant-ecs-20261105-vertical.mp4">手机竖版</a> · <a href="media/idou-assistant-ecs-20261105.en.srt" download>English 字幕</a> · <a href="media/idou-technical.mp4">既有技术演示</a></span></div>
     </div>
 
     <section id="assistant" aria-labelledby="assistant-title">
@@ -376,9 +377,21 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
       <figure class="assistant-screen"><img src="media/assistant-result.jpg" width="1600" height="1060" alt="i豆 助理从飞书原文生成的知识行动简报，在浏览器查看" loading="lazy"><figcaption>本次实录：真实飞书原文 → CIO 决策简报 → 可打开的 HTML 与 Markdown。未修改原文，也未对外发送。</figcaption></figure>
       <div class="duo">
         <div class="panel"><h3>为飞书工作做深一层</h3><p class="sub">将飞书身份、来源复核、企业问答、任务成果和持续关注串成工作闭环。已有技能与 MCP 扩展点，把企业系统接进同一套执行流程。</p></div>
-        <div class="panel"><h3>当前版本的执行范围</h3><p class="sub">本机任务需要客户端运行；离线能力是已授权固定来源的只读关注。每用户独立云电脑与云端持久登录环境仍待部署，浏览器执行不等于完整云电脑。</p></div>
+        <div class="panel"><h3>当前版本的执行范围</h3><p class="sub">专属机器已接通云浏览器与桌面，当前完成单账号实测。本机工作任务仍需要客户端运行；离线只读关注在服务端执行，云端通用任务尚未开启。</p></div>
       </div>
-      <p class="note" style="margin-top:20px">本次个人助理是验收预览，公开 main 尚未同步此版本。2026-11-05 实机验证 · 桌面 .402 / 服务端 .401。严格门禁：3,684 通过、0 失败，另有 2 项 Linux 专属检查在 Mac 跳过。技术门禁不是任务成功率。</p>
+      <p class="note" style="margin-top:20px">个人助理仍为验收预览，公开 main 尚未同步此版本。上方 103 秒影片串联工作成果与专属机器实录，架构示意和重启复测截图在画面内分别标明。2026-11-05 的单账号 ECS 部署及状态恢复已实测，完整多人云管控未实测。</p>
+    </section>
+
+    <section id="cloud-machine" aria-labelledby="cloud-machine-title">
+      <div class="kicker"><span class="rule"></span>专属云电脑</div>
+      <h2 id="cloud-machine-title">同一个你，<br>接着用同一台机器。</h2>
+      <p class="intro">云浏览器与桌面共用你的专属机器和加密网站档案。换一轮对话继续用；关闭窗口保留机器与档案。长期记忆保存你明确留下的偏好，网站档案保存浏览器状态，两者各有职责。</p>
+      <figure class="assistant-screen"><picture><source media="(max-width: 640px)" srcset="media/cloud-machine-logic-vertical.png" width="1080" height="1920"><img src="media/cloud-machine-logic.png" width="1920" height="1080" alt="目标架构：每位用户独立机器，同一用户的多个对话复用它；本次仅单账号实测，多人分配为逻辑模拟" loading="lazy"></picture><figcaption>目标架构：按人独立、跨会话复用。本次实际演示使用一台专属 ECS 和一个测试账号；多人分配仅做逻辑模拟。</figcaption></figure>
+      <div class="duo">
+        <div class="panel"><h3>已经实际验证</h3><p class="sub">通过 i豆 对话打开云浏览器与桌面、查看页面并关闭会话。无凭据的测试 Cookie 在会话重开、浏览器服务重启、整机重启并重新解锁后均能读回。</p></div>
+        <div class="panel"><h3>使用边界说清楚</h3><p class="sub">Cookie 恢复不代表网站永久登录；网站可要求重新认证。当前桌面验收覆盖浏览器窗口，尚未验证任意桌面应用。部分站点在演示环境可能超时，不能据此承诺所有网站可用。</p></div>
+      </div>
+      <p class="note" style="margin-top:20px"><a href="media/cloud-machine-logic.mp4">8 秒机器逻辑说明（横版）</a> · <a href="media/cloud-machine-logic-vertical.mp4">手机竖版</a>。这是架构说明动画；本次只实测单账号，不代表已经完成多人实际部署。</p>
     </section>
 
     <section id="how" aria-labelledby="how-title">
@@ -529,7 +542,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
         <div class="layer2"><span class="no">7</span><div><h3>定时任务</h3><p>生产只认 gVisor：只读根、去掉全部权限、内部网络、资源上限；凭据在沙箱外的出口代理上加。</p></div></div>
         <div class="layer2"><span class="no">8</span><div><h3>供应链</h3><p>发布清单签名；随附的 Codex、飞书 CLI、Node 每次启动按摘要校验，从不去 PATH 上找；关掉 Electron 的三个调试与注入开关。</p></div></div>
       </div>
-      <p class="intro" style="margin-top:22px">桌面 .402 的严格发布门禁有 3,684 项通过、0 失败、2 项平台跳过；权限与隔离边界持续由回归测试覆盖。审查发现的问题先固化成会失败的回归测试，再进入发布门禁。</p>
+      <p class="intro" style="margin-top:22px">桌面 .409 的严格发布门禁有 3,695 项通过、0 失败、2 项平台跳过；权限与隔离边界持续由回归测试覆盖。审查发现的问题先固化成会失败的回归测试，再进入发布门禁。</p>
     </section>
     <section id="admin" aria-labelledby="admin-title">
       <div class="kicker"><span class="rule"></span>管理后台</div>
@@ -588,7 +601,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
       <div class="open">
         <div>
           <h3 id="open-title">源代码已经开源。</h3>
-          <p>i豆 基础版本的源代码以 Apache-2.0 许可公开在 <a href="https://github.com/scott987-cmd/idou">github.com/scott987-cmd/idou</a>。公开 main 当前为 .283；本次个人助理 .402 为验收预览，尚未同步该版本源码。欢迎提问题、提改进。每一个版本仍然要先通过全部自动化测试和桌面验收，才会发到用户手上。</p>
+          <p>i豆 基础版本的源代码以 Apache-2.0 许可公开在 <a href="https://github.com/scott987-cmd/idou">github.com/scott987-cmd/idou</a>。公开 main 当前为 .283；新的个人助理为验收预览，尚未同步该版本源码。欢迎提问题、提改进。每一个版本仍然要先通过全部自动化测试和桌面验收，才会发到用户手上。</p>
           <ol>
             <li><span class="no">01</span><div><b>Codex 持续更新</b><span>Agent 的推理、编程和执行能力，随 Codex 升级一起变强。</span></div></li>
             <li><span class="no">02</span><div><b>飞书 CLI 持续更新</b><span>i豆 的飞书能力跟随飞书 CLI：它开放的能力越多，i豆 能直接替你完成的事越多。</span></div></li>
@@ -603,10 +616,8 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
 </svg>
       </div>
       <div class="lic2">
-        <div class="panel"><h3>180 个 npm 依赖，全部是宽松许可</h3>
-          <div class="licbar"><i style="width:85.56%;background:#F6B13A"></i><i style="width:6.11%;background:#E07A24"></i><i style="width:3.33%;background:#3370FF"></i><i style="width:2.78%;background:#2BB3A3"></i><i style="width:2.22%;background:rgba(255,248,236,.45)"></i></div>
-          <div class="lickeys"><span style="--c:#F6B13A">MIT 154</span><span style="--c:#E07A24">ISC 11</span><span style="--c:#3370FF">BSD 6</span><span style="--c:#2BB3A3">Apache-2.0 5</span><span style="--c:rgba(255,248,236,.45)">其他宽松许可 4</span></div>
-          <p class="sub" style="margin-top:14px">清单由 scripts/third-party-notices.js 生成，每次检查都核对；jszip 是双许可，按 MIT 使用。</p>
+        <div class="panel"><h3>随包依赖附带许可清单</h3>
+          <p class="sub" style="margin-top:14px">清单由 scripts/third-party-notices.js 按锁定依赖生成，打包与发布检查均核对；jszip 按 MIT 许可使用。不同平台的运行时依赖集合不同，以对应版本随包清单为准。</p>
           <h3 style="margin-top:22px">从源码跑起来</h3>
           <pre class="cmd">npm ci
 npm run doctor
@@ -630,7 +641,7 @@ npm run check   # 全部测试，不花钱、不连真实飞书</pre>
     <div class="notes" role="note">
       <h4>数据说明</h4>
       <ol>
-        <li>发布门禁：2026-11-05，签名桌面版本 0.1.0-20261105.402；3,684 通过、0 失败、2 项跳过。跳过项为 Mac 无法执行的 Linux 专属检查。</li>
+        <li>影片中的工作成果、记忆与关注沿用 .402 录屏；新增 ECS 浏览器、桌面和明确关闭使用 .409 录屏，重启状态恢复使用片内标注的 .406 复测截图；ECS 控制面与客体均为 .406。自动化门禁不代表任务成功率，也不证明任意网站或应用可用。</li>
         <li>监控网站（2026-10-13 既有演示，本次未复跑）：飞书测试账号里的真实多维表格（2 万条告警，飞书单表上限），由 i豆 建表、写数据、写页面；打开速度在本机网站服务上用 Chromium 测得，4G 为模拟网速。</li>
         <li>管理后台（2026-10-13 历史基准，本次未复跑）：用产品自己的后台代码，加一个合成的十万人组织（姓名和标识都是编的）实测；不是十万并发用户测试。</li>
         <li>知识库候选命中指标属于检索实验，不等于最终回答正确率；个人助理视频展示的是本次完成的具体任务。</li>

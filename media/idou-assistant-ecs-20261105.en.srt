@@ -1,0 +1,72 @@
+1
+00:00:00,000 --> 00:00:05,500
+Your work. Remembered.
+
+2
+00:00:05,500 --> 00:00:09,500
+Preferences you ask to remember, ready next time.
+
+3
+00:00:09,500 --> 00:00:14,500
+Remembers how you work and what to keep an eye on.
+
+4
+00:00:14,500 --> 00:00:20,500
+Delegate a real task directly from the assistant chat.
+
+5
+00:00:20,500 --> 00:00:24,000
+From one document to a decision you can act on.
+
+6
+00:00:24,000 --> 00:00:30,000
+iDou reads a real Feishu document and creates HTML and Markdown briefs.
+
+7
+00:00:30,000 --> 00:00:36,000
+Sourced insights become a two-week action plan.
+
+8
+00:00:36,000 --> 00:00:40,000
+Local work tasks deliver results and document open questions.
+
+9
+00:00:40,000 --> 00:00:48,000
+One environment per person, reused across chats. Multi-user architecture illustration.
+
+10
+00:00:48,000 --> 00:00:55,000
+Open a browser on your dedicated cloud computer, through chat.
+
+11
+00:00:55,000 --> 00:01:02,000
+Read the real remote page and bring back its view and results.
+
+12
+00:01:02,000 --> 00:01:09,000
+Switch to the desktop view on the same cloud computer.
+
+13
+00:01:09,000 --> 00:01:12,000
+Close the session window. Keep your environment.
+
+14
+00:01:12,000 --> 00:01:20,000
+Post-reboot acceptance capture: the noncredential website test marker is still readable.
+
+15
+00:01:20,000 --> 00:01:28,000
+Save common task instructions. Edit before reusing.
+
+16
+00:01:28,000 --> 00:01:33,000
+Authorize ongoing, read-only checks of selected sources.
+
+17
+00:01:33,000 --> 00:01:37,000
+Shown: an existing responsibility checking document changes hourly.
+
+18
+00:01:37,000 --> 00:01:43,000
+iDou assistant preview. The core project is open source.
+
