@@ -3,10 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>i豆 企业桌面 Agent</title>
-<meta name="description" content="i豆是面向飞书用户的开源企业桌面 Agent：完成管理员部署与飞书应用授权后，员工用飞书账号登录，在一个窗口里发消息、改文档、做网站、查知识、写代码。默认逐次确认；完全访问仅在当前任务授权范围内自动执行。">
-<meta property="og:title" content="i豆 企业桌面 Agent">
-<meta property="og:description" content="工作、编程、企业问答，一台搞定。通过飞书 OAuth 登录，任务按会话权限执行，也可以接入客户自己的大模型。非飞书官方软件：从零开发的独立开源项目。">
+<title>i豆 · 懂你的飞书工作助理</title>
+<meta name="description" content="i豆，把长期记忆、飞书资料、工作执行与企业问答串在一起。用对话交办，交付可预览的报告与文件；指定来源可授权持续关注。独立开源项目。">
+<meta property="og:title" content="i豆 · 你的工作，有人记得。">
+<meta property="og:description" content="长期记忆、飞书上下文、任务执行与持续关注，接进同一个工作助理。观看 80 秒实机演示。独立开源项目，非飞书官方软件。">
+<meta property="og:image" content="https://scott987-cmd.github.io/idou/media/assistant-poster.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0.05' y1='0' x2='0.72' y2='1'%3E%3Cstop offset='0' stop-color='%23F6B13A'/%3E%3Cstop offset='0.48' stop-color='%23E07A24'/%3E%3Cstop offset='1' stop-color='%23A83E17'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='116' fill='url(%23g)'/%3E%3Crect x='228' y='226' width='56' height='172' rx='28' fill='%23FFFAF0'/%3E%3Cellipse cx='256' cy='146' rx='54' ry='43' fill='%23FFFAF0' transform='rotate(-22 256 146)'/%3E%3C/svg%3E">
 <style>
 :root {
@@ -306,6 +308,9 @@ table.ups td:first-child { color: var(--cream); font-weight: 600; white-space: n
 table.ups td.v { font-family: var(--num); white-space: nowrap; }
 pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background: rgba(0,0,0,.28); box-shadow: inset 0 0 0 1px var(--line); font: 500 14px/1.7 ui-monospace, Menlo, monospace; color: #FFD9A0; overflow-x: auto; }
 @media (max-width: 900px) { .split2, .lic2, .layers2, .points2 { grid-template-columns: minmax(0, 1fr); } .pipe { grid-template-columns: minmax(0, 1fr); } .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+#top{scroll-margin-top:84px} section{scroll-margin-top:90px}
+.assistant-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-top:34px}.assistant-feature{padding:32px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(135deg,rgba(246,177,58,.055),rgba(255,248,236,.02))}.assistant-feature h3{font-size:25px;line-height:1.4;margin:18px 0 12px;letter-spacing:-.025em}.assistant-feature p{color:var(--muted);line-height:1.9;margin:0}.assistant-screen{margin:30px 0 0;padding:12px;border:1px solid var(--line);border-radius:24px;background:var(--ink-1);overflow:hidden}.assistant-screen img{display:block;width:100%;height:auto;border-radius:14px}.assistant-screen figcaption{padding:16px 12px 8px;color:var(--muted);font-size:13px;line-height:1.8}@media(max-width:700px){.assistant-grid{grid-template-columns:1fr}.assistant-feature{padding:25px}.hero h1{font-size:clamp(42px,11vw,68px)}}
 </style>
 </head>
 <body>
@@ -322,10 +327,10 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
   <div class="wrap">
     <a class="brand" href="#top" aria-label="i豆 首页">
       <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="116" fill="url(#logo-tile)"/><rect x="228" y="226" width="56" height="172" rx="28" fill="#FFFAF0"/><ellipse cx="256" cy="146" rx="54" ry="43" fill="#FFFAF0" transform="rotate(-22 256 146)"/></svg>
-      <span>i豆 <small>企业桌面 Agent</small></span>
+      <span>i豆 <small>你的飞书工作助理</small></span>
     </a>
     <nav aria-label="页面导航">
-      <a href="#data">数据</a>
+      <a href="#assistant">个人助理</a>
       <a href="#how">工作方式</a>
       <a href="#capabilities">能力</a>
       <a href="#why">为什么</a>
@@ -337,48 +342,43 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
 <main id="top">
   <div class="wrap">
     <div class="hero">
-      <div class="eyebrow"><span class="bean"></span>飞书用户的企业桌面 Agent</div>
-      <h1><span class="ph">工作、</span><span class="ph">编程、</span><span class="ph">企业问答，</span><span class="ph amber">一台搞定。</span></h1>
-      <p class="lead">完成管理员部署与飞书应用授权后，用你的<strong>飞书账号</strong>登录，在同一个窗口里发消息、改文档、做网站、查知识、写代码。<strong>默认逐次确认；给当前任务开启完全访问后，在授权范围内自动完成。</strong></p>
+      <div class="eyebrow"><span class="bean"></span>个人助理预览 · 懂你 · 会执行</div>
+      <h1><span class="ph">你的工作，</span><span class="ph amber">有人记得。</span></h1>
+      <p class="lead">记得你的工作偏好，读懂有权访问的飞书资料，把一句交办变成<strong>看得见的成果</strong>。个人助理、工作任务、编程与企业问答，在同一个窗口接上。<strong>对指定来源授权持续关注，离线时也能检查变化。</strong></p>
       <p class="unofficial">非飞书官方软件 · 从零开发的独立开源项目 · 与字节跳动、飞书 / Lark 没有隶属或授权关系（<a href="#disclaimer">免责声明</a>）</p>
       <div class="cta">
-        <a class="btn primary" href="#film">看 90 秒介绍</a>
-        <a class="btn" href="#data">看实测数据</a>
+        <a class="btn primary" href="#film">看个人助理实录</a>
+        <a class="btn" href="#assistant">看它如何工作</a>
         <a class="btn" href="https://github.com/scott987-cmd/idou">查看源代码</a>
       </div>
       <div class="film" id="film">
-        <video id="promo" controls playsinline preload="metadata" poster="media/poster.jpg">
-          <source src="media/idou-promo.mp4" type="video/mp4">
-          <track kind="captions" srclang="zh-CN" label="简体中文" src="media/idou-promo.vtt" default>
-          你的浏览器不能直接播放视频，可以<a href="media/idou-promo.mp4">下载后观看</a>。
+        <video id="promo" controls playsinline preload="metadata" poster="media/assistant-poster.jpg">
+          <source src="media/idou-assistant-20261105.mp4" type="video/mp4">
+          <track kind="captions" srclang="zh-CN" label="简体中文" src="media/idou-assistant-20261105.vtt">
+          <track kind="captions" srclang="en" label="English" src="media/idou-assistant-20261105.en.vtt">
+          你的浏览器不能直接播放视频，可以<a href="media/idou-assistant-20261105.mp4">下载后观看</a>。
         </video>
-        <button class="play" type="button" aria-label="播放 90 秒介绍视频"><span><i></i>播放 90 秒介绍</span></button>
+        <button class="play" type="button" aria-label="播放个人助理实机演示"><span><i></i>播放个人助理实录</span></button>
       </div>
-      <div class="caption"><span>片中的界面与任务结果来自 i豆 的真实运行记录；管理后台使用明确标注的合成组织数据。</span><span>1080p · 约 90 秒 · 中文旁白与字幕 · <a href="media/idou-technical.mp4">4 分钟技术演示</a></span></div>
+      <div class="caption"><span>个人助理验收版实录 · i豆 执行真实任务 · 等待片段剪辑 · 部分标识已遮挡</span><span>80 秒 · 1080p · 配乐与中文说明字幕 · <a href="media/idou-assistant-20261105-vertical.mp4">手机竖版</a> · <a href="media/idou-assistant-20261105.en.srt" download>English 字幕</a> · <a href="media/idou-technical.mp4">既有技术演示</a></span></div>
     </div>
 
-    <section id="data" aria-labelledby="data-title">
-      <div class="kicker"><span class="rule"></span>实测数据</div>
-      <h2 id="data-title">先看真实任务，再看可复现门禁。</h2>
-      <p class="intro">首页只展示当前产品规模和用户能感知的结果。历史研发基线、失败样本和评测方法完整保留在技术文档，不再把小样本和旧版本数字当作核心卖点。</p>
-      <div class="stats">
-        <div class="stat lead-stat"><div class="n">20,000<small>行</small></div><div class="k">飞书表格网站实测</div><div class="d">本机首屏约 0.38 秒；模拟 4G 下约 1.4 秒。</div></div>
-        <div class="stat"><div class="n">100,000<small>人</small></div><div class="k">合成组织管理数据压测</div><div class="d">首次按姓名搜索 158 毫秒，缓存热后约 10 毫秒。</div></div>
-        <div class="stat"><div class="n">3,067<small>项</small></div><div class="k">严格发布门禁全部通过</div><div class="d">.295：3,067 / 3,067；源码、依赖与发布清单绑定到同一个签名版本。</div></div>
+    <section id="assistant" aria-labelledby="assistant-title">
+      <div class="kicker"><span class="rule"></span>i豆个人助理</div>
+      <h2 id="assistant-title">从“帮我想想”，<br>到“这件事交给你”。</h2>
+      <p class="intro">今天的资料、上次的偏好、接下来的行动，不必散落在不同工具里。你通过对话交办，i豆 连接飞书、工作任务和浏览器，把结果带回当前对话。</p>
+      <div class="assistant-grid">
+        <article class="assistant-feature"><span class="tag">01 · 记得你</span><h3>不用每次从头解释。</h3><p>你明确要求保存的工作偏好，下一次对话继续使用。记忆有独立入口，可以查看和删除。</p></article>
+        <article class="assistant-feature"><span class="tag">02 · 理解工作</span><h3>从原文，到下一步。</h3><p>以你当前的飞书身份读取资料，提炼判断、保留出处，再交付报告、网页和本机文件。企业问答也先复核来源权限。</p></article>
+        <article class="assistant-feature"><span class="tag">03 · 真的执行</span><h3>在对话里安排，回来验收。</h3><p>工作任务接住交办，执行过程可以展开；文字与图片成果直接预览，HTML 成果在浏览器打开。浏览器可以接受自然语言任务，真实打开页面、查看内容并结束会话。</p></article>
+        <article class="assistant-feature"><span class="tag">04 · 持续跟进</span><h3>值得关注的事，留给它。</h3><p>选定固定来源并授权后，服务端在你离线时只读检查变化。做过的任务还可以保存为常用任务，先编辑再复用。</p></article>
       </div>
-
+      <figure class="assistant-screen"><img src="media/assistant-result.jpg" width="1600" height="1060" alt="i豆 助理从飞书原文生成的知识行动简报，在浏览器查看" loading="lazy"><figcaption>本次实录：真实飞书原文 → CIO 决策简报 → 可打开的 HTML 与 Markdown。未修改原文，也未对外发送。</figcaption></figure>
       <div class="duo">
-        <div class="panel">
-          <h3>真实任务结果</h3>
-          <p class="sub">两万行多维表格网站、一段话生成并迭代的 FPS 游戏、十万人规模管理后台，都来自同一套产品执行路径。</p>
-          <p class="note">下方保留了任务画面、耗时、数据规模和验收方式；合成数据与真实租户数据会明确区分。</p>
-        </div>
-        <div class="panel">
-          <h3>评测没有消失，只是回到该在的位置</h3>
-          <p class="sub">历史 Terminal-Bench 抽测、知识检索迭代和一万篇压力实验仍可在开源仓库复跑。</p>
-          <p class="note"><a href="https://github.com/scott987-cmd/idou/blob/main/docs/coding-agent.md">编程评测方法</a> · <a href="https://github.com/scott987-cmd/idou/blob/main/docs/local-wiki.md">知识检索方法与限制</a></p>
-        </div>
+        <div class="panel"><h3>为飞书工作做深一层</h3><p class="sub">将飞书身份、来源复核、企业问答、任务成果和持续关注串成工作闭环。已有技能与 MCP 扩展点，把企业系统接进同一套执行流程。</p></div>
+        <div class="panel"><h3>当前版本的执行范围</h3><p class="sub">本机任务需要客户端运行；离线能力是已授权固定来源的只读关注。每用户独立云电脑与云端持久登录环境仍待部署，浏览器执行不等于完整云电脑。</p></div>
       </div>
+      <p class="note" style="margin-top:20px">本次个人助理是验收预览，公开 main 尚未同步此版本。2026-11-05 实机验证 · 桌面 .402 / 服务端 .401。严格门禁：3,684 通过、0 失败，另有 2 项 Linux 专属检查在 Mac 跳过。技术门禁不是任务成功率。</p>
     </section>
 
     <section id="how" aria-labelledby="how-title">
@@ -440,7 +440,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
         <article class="cap"><img src="media/shots/media.jpg" width="1280" height="720" alt="i豆 生成的视频直接在应用里预览" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>图片视频</h3><p>说一句就生成；默认先告诉你模型和规格，视频每次都问你。</p></div></article>
         <article class="cap"><img src="media/shots/site.jpg" width="1280" height="720" alt="i豆 写好并发布的产品网站" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div><h3>文档网站</h3><p>说需求，它写好网站并发布；谁能打开由你选。</p></div></article>
         <article class="cap"><img src="media/shots/game.jpg" width="1280" height="720" alt="i豆 改好的小游戏「收豆子」" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div><h3>小游戏</h3><p>一个模板，改成你的游戏，改完就能玩。</p></div></article>
-        <article class="cap"><img src="media/shots/kb.jpg" width="1280" height="720" alt="知识问答的答案注明出处和条款" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div><h3>企业知识</h3><p>问公司制度，答案带出处；只查你有权读的资料。</p></div></article>
+        <article class="cap"><img src="media/shots/kb.jpg" width="1280" height="720" alt="企业问答的答案注明出处和条款" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div><h3>企业问答</h3><p>问公司制度，答案带出处；只查你有权读的资料。</p></div></article>
         <article class="cap"><img src="media/shots/sched.jpg" width="1280" height="720" alt="定时任务的运行记录：报告已存进飞书云盘" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div><h3>定时任务</h3><p>说好做什么、几点做，到点自己跑；报告存进你的云空间，还能照你选好的，自动写进文档、发到群里。</p></div></article>
         <article class="cap"><img src="media/shots/check.jpg" width="1280" height="720" alt="浏览器自检三项全部通过" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div><h3>浏览器自检</h3><p>做完，它自己打开网页检查一遍。</p></div></article>
         <article class="cap"><img src="media/shots/computer.jpg" width="1280" height="720" alt="i豆 在「文本编辑」里写好的发布会准备清单" loading="lazy"><div class="cap-body"><div class="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i></div><h3>操作电脑</h3><p>看得见屏幕，也动得了手。默认要进哪个应用操作，先问过你。</p></div></article>
@@ -454,7 +454,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
       <figure class="shot2" style="margin-top:36px"><img src="media/arch.jpg" width="1920" height="1080" alt="i豆 架构：桌面（i豆、Codex、飞书 CLI、本机知识库、网站目录、连接器）、控制面（飞书代理、模型网关、写入授权、网站服务、定时任务、管理后台）、飞书与模型" loading="lazy"></figure>
       <ol class="flow" style="margin-top:28px">
         <li><span class="no">读</span><h3>用你自己的身份</h3><p>Agent 用随附的飞书 CLI 读，经控制面代理，你的飞书令牌只在最后一跳加上，不进 CLI、Codex 和界面。</p></li>
-        <li><span class="no">想</span><h3>密钥只在服务端</h3><p>每个任务一个 Codex app-server，模型请求走控制面网关；桌面上一把密钥都没有。</p></li>
+        <li><span class="no">想</span><h3>密钥只在服务端</h3><p>每个任务一个 Codex app-server，模型请求走控制面网关；模型与飞书应用密钥不下发桌面；设备凭据与用户登录凭据按各自用途保护。</p></li>
         <li><span class="no">写</span><h3>按任务授权</h3><p>默认写入先弹确认卡；完全访问只在当前任务授权范围内自动执行。服务端许可仍只对应一个具体请求。</p></li>
         <li><span class="no">站</span><h3>表格变，网站跟着变</h3><p>桌面读表、交给网站服务；访客能不能看，每次实时问飞书。</p></li>
         <li><span class="no">跑</span><h3>到点自己跑</h3><p>定时任务在 gVisor 沙箱里运行，凭据由沙箱外的代理加上，结果存进你的云盘。</p></li>
@@ -479,7 +479,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
       <div class="stats">
         <div class="stat"><div class="n">每次</div><div class="k">回答前重新核验候选来源</div><div class="d">核验失败、权限收回或中途换账号，这次内容就不进入回答</div></div>
         <div class="stat"><div class="n">8<small>篇</small></div><div class="k">最多进入权限复核</div><div class="d">先在本机选候选，再向飞书确认当前用户仍可读取</div></div>
-        <div class="stat"><div class="n">96<small>%</small></div><div class="k">近似副本中命中当前文档</div><div class="d">这是候选文档命中率，不等同于最终答案正确率</div></div>
+        <div class="stat"><div class="n">原文</div><div class="k">回答前核验来源</div><div class="d">当前权限、来源版本和引用一起复核。</div></div>
       </div>
       <p class="note" style="margin-top:18px">当前个人本地知识副本上限为 1000 篇 / 64 MiB。更大规模的企业集中索引需要服务端索引与元数据治理，属于后续路线，不把它包装成已经交付。</p>
     </section>
@@ -487,7 +487,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
       <div class="kicker"><span class="rule"></span>为什么是 i豆</div>
       <h2 id="why-title">把力气花在对企业重要的地方。</h2>
       <div class="why">
-        <div class="point feature"><span class="bean"></span><div><h3>站在 Codex 的肩膀上，能力持续进化</h3><p>Agent 的内核是 OpenAI 持续迭代的 Codex。绝大多数团队自己写不出比它更好的 Agent，i豆 不重复造轮子，而是把精力放在飞书一体化和企业可控上。Codex 每一次升级，i豆 的编程和执行能力都随之提升。</p></div></div>
+        <div class="point feature"><span class="bean"></span><div><h3>站在 Codex 的肩膀上，能力持续进化</h3><p>Agent 的内核是 OpenAI 持续迭代的 Codex。绝大多数团队自己写不出比它更好的 Agent，i豆 不重复造轮子，而是把精力放在飞书一体化和企业可控上。Codex 每一次升级，都经过适配测试与发布验收后进入 i豆。</p></div></div>
         <div class="point feature"><span class="bean"></span><div><h3>模型在服务端统一管理</h3><p>现在支持 MiniMax-M3 和 GLM-5.3（经服务端网关，密钥只在服务端），管理员按部门配置可用模型、每日额度和超额后的降级模型；某个模型出问题会自动切到下一个。模型能力与应用版本分开管理，便于企业按需替换。</p></div></div>
         <div class="point"><span class="bean"></span><div><h3>能力跟随开源飞书 CLI，一起更新</h3><p>i豆 随附并锁定 larksuite/cli：消息、文档、电子表格、多维表格、云盘、知识库、日程、任务等能力通过 provider 契约接入。</p></div></div>
         <div class="point"><span class="bean"></span><div><h3>复用飞书 OAuth 身份</h3><p>管理员完成企业应用配置后，员工使用飞书授权登录 i豆，不需要再维护另一套员工密码。</p></div></div>
@@ -529,7 +529,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
         <div class="layer2"><span class="no">7</span><div><h3>定时任务</h3><p>生产只认 gVisor：只读根、去掉全部权限、内部网络、资源上限；凭据在沙箱外的出口代理上加。</p></div></div>
         <div class="layer2"><span class="no">8</span><div><h3>供应链</h3><p>发布清单签名；随附的 Codex、飞书 CLI、Node 每次启动按摘要校验，从不去 PATH 上找；关掉 Electron 的三个调试与注入开关。</p></div></div>
       </div>
-      <p class="intro" style="margin-top:22px">`.295` 的严格发布门禁通过 3,067 / 3,067；当前 55 个测试文件专门覆盖安全与隔离相关边界。审查发现的问题先固化成会失败的回归测试，再进入发布门禁。</p>
+      <p class="intro" style="margin-top:22px">桌面 .402 的严格发布门禁有 3,684 项通过、0 失败、2 项平台跳过；权限与隔离边界持续由回归测试覆盖。审查发现的问题先固化成会失败的回归测试，再进入发布门禁。</p>
     </section>
     <section id="admin" aria-labelledby="admin-title">
       <div class="kicker"><span class="rule"></span>管理后台</div>
@@ -588,7 +588,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
       <div class="open">
         <div>
           <h3 id="open-title">源代码已经开源。</h3>
-          <p>i豆 的源代码以 Apache-2.0 许可公开在 <a href="https://github.com/scott987-cmd/idou">github.com/scott987-cmd/idou</a>，欢迎提问题、提改进。每一个版本仍然要先通过全部自动化测试和桌面验收，才会发到用户手上。</p>
+          <p>i豆 基础版本的源代码以 Apache-2.0 许可公开在 <a href="https://github.com/scott987-cmd/idou">github.com/scott987-cmd/idou</a>。公开 main 当前为 .283；本次个人助理 .402 为验收预览，尚未同步该版本源码。欢迎提问题、提改进。每一个版本仍然要先通过全部自动化测试和桌面验收，才会发到用户手上。</p>
           <ol>
             <li><span class="no">01</span><div><b>Codex 持续更新</b><span>Agent 的推理、编程和执行能力，随 Codex 升级一起变强。</span></div></li>
             <li><span class="no">02</span><div><b>飞书 CLI 持续更新</b><span>i豆 的飞书能力跟随飞书 CLI：它开放的能力越多，i豆 能直接替你完成的事越多。</span></div></li>
@@ -630,10 +630,10 @@ npm run check   # 全部测试，不花钱、不连真实飞书</pre>
     <div class="notes" role="note">
       <h4>数据说明</h4>
       <ol>
-        <li>发布门禁：2026-10-13，在签名版本 0.1.0-20261010.295 上运行严格检查，3,067 / 3,067 通过。</li>
-        <li>监控网站：飞书测试账号里的真实多维表格（2 万条告警，飞书单表上限），由 i豆 建表、写数据、写页面；打开速度在本机网站服务上用 Chromium 测得，4G 为模拟网速。</li>
-        <li>管理后台：用产品自己的后台代码，加一个合成的十万人组织（姓名和标识都是编的）实测；不是十万并发用户测试。</li>
-        <li>知识库的 96% 指在近似副本干扰下，候选集合包含当前文档的比例，不是最终回答正确率。</li>
+        <li>发布门禁：2026-11-05，签名桌面版本 0.1.0-20261105.402；3,684 通过、0 失败、2 项跳过。跳过项为 Mac 无法执行的 Linux 专属检查。</li>
+        <li>监控网站（2026-10-13 既有演示，本次未复跑）：飞书测试账号里的真实多维表格（2 万条告警，飞书单表上限），由 i豆 建表、写数据、写页面；打开速度在本机网站服务上用 Chromium 测得，4G 为模拟网速。</li>
+        <li>管理后台（2026-10-13 历史基准，本次未复跑）：用产品自己的后台代码，加一个合成的十万人组织（姓名和标识都是编的）实测；不是十万并发用户测试。</li>
+        <li>知识库候选命中指标属于检索实验，不等于最终回答正确率；个人助理视频展示的是本次完成的具体任务。</li>
         <li>历史编程抽测、知识检索改进和一万篇压力实验保留在仓库技术文档中，首页不再把旧基线或小样本结果作为当前卖点。</li>
       </ol>
     </div>

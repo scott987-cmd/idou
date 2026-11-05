@@ -1,10 +1,15 @@
 {
   "schemaVersion": 1,
-  "asOf": "2026-10-13",
+  "asOf": "2026-11-05",
   "release": {
-    "id": "0.1.0-20261010.295",
-    "strictGateTotal": 3067,
-    "strictGatePassed": 3067
+    "id": "0.1.0-20261105.402",
+    "strictGateTotal": 3686,
+    "strictGatePassed": 3684,
+    "strictGateSkipped": 2,
+    "strictGateFailed": 0,
+    "controlPlane": "0.1.0-20261105.401",
+    "publicMain": "0.1.0-20261009.283",
+    "personalAssistantAvailability": "acceptance-preview-not-yet-in-public-main"
   },
   "source": {
     "files": 391,
@@ -20,11 +25,26 @@
   "dependencies": {
     "total": 180,
     "licenses": [
-      ["MIT", 154],
-      ["ISC", 11],
-      ["BSD", 6],
-      ["Apache-2.0", 5],
-      ["其他宽松许可", 4]
+      [
+        "MIT",
+        154
+      ],
+      [
+        "ISC",
+        11
+      ],
+      [
+        "BSD",
+        6
+      ],
+      [
+        "Apache-2.0",
+        5
+      ],
+      [
+        "其他宽松许可",
+        4
+      ]
     ]
   },
   "website": {
@@ -43,5 +63,14 @@
     "localStoreLimitMiB": 64,
     "candidateDocumentLimit": 8,
     "nearDuplicateCurrentDocumentHitPercent": 96
-  }
+  },
+  "assistant": {
+    "memoryRecall": "live-verified",
+    "responsibilities": 2,
+    "templateReuse": "live-verified",
+    "cloudComputer": "deployment-deferred",
+    "film": "media/idou-assistant-20261105.mp4",
+    "filmNarration": "music-and-editorial-captions"
+  },
+  "historicalBenchmarksAsOf": "2026-10-13"
 }
