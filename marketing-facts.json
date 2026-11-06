@@ -66,6 +66,8 @@
     ]
   },
   "website": {
+    "heroFilm": "media/idou-promo.mp4",
+    "heroFilmSeconds": 88.566667,
     "rows": 20000,
     "localFirstPaintSeconds": 0.38,
     "simulated4gFirstPaintSeconds": 1.4

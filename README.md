@@ -1,12 +1,17 @@
 # i豆 · 懂你的飞书工作助理
 
-**你的工作，有人记得。** 用长期记忆、飞书上下文、任务执行和持续关注，连接一句交办与可预览的成果。管理员完成服务部署和飞书应用配置后，员工通过飞书 OAuth 登录。个人助理读取当前账号有权访问的资料，工作与编程任务交付报告、文件和网站，企业问答保留来源。
+**从飞书资料，到真正交付。** i豆 在同一个窗口里连接工作任务、编程、企业问答与个人助理。管理员完成服务部署和飞书应用配置后，员工通过飞书 OAuth 登录。个人助理读取当前账号有权访问的资料，工作与编程任务交付报告、文件和网站，企业问答保留来源。
 
 > **非飞书官方软件。** i豆 是从零开发的独立开源项目，不是字节跳动或飞书 / Lark 的产品，没有得到它们的授权、认可或背书，也不是任何飞书客户端的修改版或插件。见文末的[免责声明](#免责声明)。
 
-[![观看个人助理演示](media/assistant-offline-poster.jpg)](media/idou-assistant-offline-20261106.mp4)
+[![观看 i豆 产品总览](media/poster.jpg)](media/idou-promo.mp4)
+
+产品总览之后，另有[个人助理单账号验收影片](media/idou-assistant-offline-20261106.mp4)：
+
+[![观看个人助理实录](media/assistant-offline-poster.jpg)](media/idou-assistant-offline-20261106.mp4)
 
 - 宣传页：`gh-pages` 分支的 `index.html`，在线地址 <https://scott987-cmd.github.io/idou/>
+- 产品总览：`media/idou-promo.mp4`（约 89 秒，横版，中文字幕）。
 - 个人助理新视频：`media/idou-assistant-offline-20261106.mp4`（121 秒横版；另有手机竖版、中英字幕）。真实对话录屏与明确标注的架构说明、重启复测截图及离线任务事实排版组合。
 - 4 分钟技术演示：`media/idou-technical.mp4`（720p）
 - 两个全程在 i豆 里完成的演示：两万行的监控网站（`media/monitor.mp4`）、一段话做出的 FPS 游戏（`media/game.mp4`）
