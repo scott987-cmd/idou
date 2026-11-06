@@ -2,15 +2,16 @@
   "schemaVersion": 1,
   "asOf": "2026-11-06",
   "release": {
-    "id": "0.1.0-20261105.409",
-    "strictGateTotal": 3697,
-    "strictGatePassed": 3695,
+    "id": "0.1.0-20261106.412",
+    "strictGateTotal": 3707,
+    "strictGatePassed": 3705,
     "strictGateSkipped": 2,
     "strictGateFailed": 0,
-    "controlPlane": "0.1.0-20261105.406",
+    "controlPlane": "0.1.0-20261106.412",
     "publicMain": "0.1.0-20261009.283",
     "personalAssistantAvailability": "acceptance-preview-not-yet-in-public-main",
-    "cloudGuest": "0.1.0-20261105.406"
+    "cloudGuest": "0.1.0-20261105.406",
+    "cloudTaskManager": "0.1.0-20261106.411"
   },
   "source": {
     "metrics": "not-remeasured-for-this-preview"
@@ -86,7 +87,16 @@
     "templateReuse": "live-verified",
     "cloudComputer": "single-account-live-registered-native-ecs-browser-and-desktop",
     "multiUser": "logic-and-simulation-only",
-    "generalCloudTasks": "disabled",
+    "generalCloudTasks": "single-account-user-supplied-material-file-tasks-live-verified",
+    "offlineFileTask": {
+      "testDate": "2026-11-06",
+      "permission": "standard",
+      "clientQuitThenTaskCompletedSeconds": 159.324,
+      "artifactBytes": 733,
+      "artifactMatchesClientDownload": true,
+      "taskDeadlineHours": 2,
+      "scope": "registered-single-account-pilot"
+    },
     "cloudComputerAcceptedActions": [
       "explicit-open",
       "read",
@@ -95,14 +105,15 @@
       "explicit-session-close"
     ],
     "statePersistence": "noncredential-cookie verified across session recreation, service restart and VM reboot with owner unlock; not permanent website authentication",
-    "film": "media/idou-assistant-ecs-20261105.mp4",
-    "filmVertical": "media/idou-assistant-ecs-20261105-vertical.mp4",
-    "filmSeconds": 103,
+    "film": "media/idou-assistant-offline-20261106.mp4",
+    "filmVertical": "media/idou-assistant-offline-20261106-vertical.mp4",
+    "filmSeconds": 121,
     "filmNarration": "music-and-editorial-captions",
     "filmSources": {
       "workFootage": ".402",
       "cloudFootage": ".409",
-      "labelledRebootAcceptanceCapture": ".406"
+      "labelledRebootAcceptanceCapture": ".406",
+      "labelledOfflineTaskEditorialReconstruction": ".412"
     }
   },
   "historicalBenchmarksAsOf": "2026-10-13"

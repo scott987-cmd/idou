@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>i豆 · 懂你的飞书工作助理</title>
-<meta name="description" content="i豆，把长期记忆、飞书资料、工作执行与企业问答串在一起。用对话交办，交付可预览的报告与文件；指定来源可授权持续关注。独立开源项目。">
+<meta name="description" content="i豆，把长期记忆、飞书资料、工作执行与企业问答串在一起。当前测试账号已实测专属云电脑：交办文件任务，退出客户端后继续执行，回来在原对话取回成果。独立开源项目。">
 <meta property="og:title" content="i豆 · 你的工作，有人记得。">
-<meta property="og:description" content="长期记忆、飞书上下文、任务执行与持续关注，接进同一个工作助理。观看 103 秒实机演示与机器逻辑说明。独立开源项目，非飞书官方软件。">
-<meta property="og:image" content="https://scott987-cmd.github.io/idou/media/assistant-ecs-poster.jpg">
+<meta property="og:description" content="长期记忆、飞书上下文、专属云电脑与离线任务。观看 121 秒实录、机器逻辑说明及单账号离线任务验收。独立开源项目，非飞书官方软件。">
+<meta property="og:image" content="https://scott987-cmd.github.io/idou/media/assistant-offline-poster.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0.05' y1='0' x2='0.72' y2='1'%3E%3Cstop offset='0' stop-color='%23F6B13A'/%3E%3Cstop offset='0.48' stop-color='%23E07A24'/%3E%3Cstop offset='1' stop-color='%23A83E17'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='116' fill='url(%23g)'/%3E%3Crect x='228' y='226' width='56' height='172' rx='28' fill='%23FFFAF0'/%3E%3Cellipse cx='256' cy='146' rx='54' ry='43' fill='%23FFFAF0' transform='rotate(-22 256 146)'/%3E%3C/svg%3E">
 <style>
@@ -345,7 +345,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
     <div class="hero">
       <div class="eyebrow"><span class="bean"></span>个人助理预览 · 懂你 · 会执行</div>
       <h1><span class="ph">你的工作，</span><span class="ph amber">有人记得。</span></h1>
-      <p class="lead">记得你的工作偏好，读懂有权访问的飞书资料，把一句交办变成<strong>看得见的成果</strong>。个人助理、工作任务、编程与企业问答，在同一个窗口接上。<strong>对指定来源授权持续关注，离线时也能检查变化。</strong></p>
+      <p class="lead">记得你的工作偏好，读懂有权访问的飞书资料，把一句交办变成<strong>看得见的成果</strong>。个人助理、工作任务、编程与企业问答，在同一个窗口接上。<strong>当前单账号试点已实测：退出客户端，云端文件任务继续执行；回来在原对话取回成果。</strong></p>
       <p class="unofficial">非飞书官方软件 · 从零开发的独立开源项目 · 与字节跳动、飞书 / Lark 没有隶属或授权关系（<a href="#disclaimer">免责声明</a>）</p>
       <div class="cta">
         <a class="btn primary" href="#film">看个人助理实录</a>
@@ -353,15 +353,15 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
         <a class="btn" href="https://github.com/scott987-cmd/idou">查看源代码</a>
       </div>
       <div class="film" id="film">
-        <video id="promo" controls playsinline preload="metadata" poster="media/assistant-ecs-poster.jpg">
-          <source src="media/idou-assistant-ecs-20261105.mp4" type="video/mp4">
-          <track kind="captions" srclang="zh-CN" label="简体中文" src="media/idou-assistant-ecs-20261105.vtt">
-          <track kind="captions" srclang="en" label="English" src="media/idou-assistant-ecs-20261105.en.vtt">
-          你的浏览器不能直接播放视频，可以<a href="media/idou-assistant-ecs-20261105.mp4">下载后观看</a>。
+        <video id="promo" controls playsinline preload="metadata" poster="media/assistant-offline-poster.jpg">
+          <source src="media/idou-assistant-offline-20261106.mp4" type="video/mp4">
+          <track kind="captions" srclang="zh-CN" label="简体中文" src="media/idou-assistant-offline-20261106.vtt">
+          <track kind="captions" srclang="en" label="English" src="media/idou-assistant-offline-20261106.en.vtt">
+          你的浏览器不能直接播放视频，可以<a href="media/idou-assistant-offline-20261106.mp4">下载后观看</a>。
         </video>
         <button class="play" type="button" aria-label="播放个人助理实机演示"><span><i></i>播放个人助理实录</span></button>
       </div>
-      <div class="caption"><span>个人助理验收预览 · i豆 真实任务录屏 · 架构示意与复测截图已标注</span><span>103 秒 · 1080p · 配乐与中文说明字幕 · <a href="media/idou-assistant-ecs-20261105-vertical.mp4">手机竖版</a> · <a href="media/idou-assistant-ecs-20261105.en.srt" download>English 字幕</a> · <a href="media/idou-technical.mp4">既有技术演示</a></span></div>
+      <div class="caption"><span>个人助理验收预览 · 真实任务录屏 · 架构示意、复测截图和离线任务事实排版均有标注</span><span>121 秒 · 1080p · 配乐与中文说明字幕 · <a href="media/idou-assistant-offline-20261106-vertical.mp4">手机竖版</a> · <a href="media/idou-assistant-offline-20261106.en.srt" download>English 字幕</a> · <a href="media/idou-technical.mp4">既有技术演示</a></span></div>
     </div>
 
     <section id="assistant" aria-labelledby="assistant-title">
@@ -371,15 +371,15 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
       <div class="assistant-grid">
         <article class="assistant-feature"><span class="tag">01 · 记得你</span><h3>不用每次从头解释。</h3><p>你明确要求保存的工作偏好，下一次对话继续使用。记忆有独立入口，可以查看和删除。</p></article>
         <article class="assistant-feature"><span class="tag">02 · 理解工作</span><h3>从原文，到下一步。</h3><p>以你当前的飞书身份读取资料，提炼判断、保留出处，再交付报告、网页和本机文件。企业问答也先复核来源权限。</p></article>
-        <article class="assistant-feature"><span class="tag">03 · 真的执行</span><h3>在对话里安排，回来验收。</h3><p>工作任务接住交办，执行过程可以展开；文字与图片成果直接预览，HTML 成果在浏览器打开。浏览器可以接受自然语言任务，真实打开页面、查看内容并结束会话。</p></article>
+        <article class="assistant-feature"><span class="tag">03 · 真的执行</span><h3>在对话里安排，回来验收。</h3><p>工作任务接住交办，执行过程可以展开；文字与图片成果直接预览，HTML 成果在浏览器打开。当前测试账号还能将文件任务交给专属云电脑，退出客户端后继续执行，回来取回成果。</p></article>
         <article class="assistant-feature"><span class="tag">04 · 持续跟进</span><h3>值得关注的事，留给它。</h3><p>选定固定来源并授权后，服务端在你离线时只读检查变化。做过的任务还可以保存为常用任务，先编辑再复用。</p></article>
       </div>
       <figure class="assistant-screen"><img src="media/assistant-result.jpg" width="1600" height="1060" alt="i豆 助理从飞书原文生成的知识行动简报，在浏览器查看" loading="lazy"><figcaption>本次实录：真实飞书原文 → CIO 决策简报 → 可打开的 HTML 与 Markdown。未修改原文，也未对外发送。</figcaption></figure>
       <div class="duo">
         <div class="panel"><h3>为飞书工作做深一层</h3><p class="sub">将飞书身份、来源复核、企业问答、任务成果和持续关注串成工作闭环。已有技能与 MCP 扩展点，把企业系统接进同一套执行流程。</p></div>
-        <div class="panel"><h3>当前版本的执行范围</h3><p class="sub">专属机器已接通云浏览器与桌面，当前完成单账号实测。本机工作任务仍需要客户端运行；离线只读关注在服务端执行，云端通用任务尚未开启。</p></div>
+        <div class="panel"><h3>当前版本的执行范围</h3><p class="sub">专属机器已接通云浏览器与桌面；当前测试账号的云端文件任务已完成“交办 → 退出客户端 → 继续执行 → 回来取回”实测。本机工作任务仍需要客户端运行。云端浏览器操作和飞书写入尚未纳入这次离线任务验收。</p></div>
       </div>
-      <p class="note" style="margin-top:20px">个人助理仍为验收预览，公开 main 尚未同步此版本。上方 103 秒影片串联工作成果与专属机器实录，架构示意和重启复测截图在画面内分别标明。2026-11-05 的单账号 ECS 部署及状态恢复已实测，完整多人云管控未实测。</p>
+      <p class="note" style="margin-top:20px">个人助理仍为验收预览，公开 main 尚未同步此版本。上方影片串联旧版真实工作成果、专属机器实录和 2026-11-06 离线文件任务验收；最后 18 秒为根据实测记录制作的事实排版，并非软件录屏。当前完成单账号试点，完整多人云管控未实测。</p>
     </section>
 
     <section id="cloud-machine" aria-labelledby="cloud-machine-title">
@@ -392,6 +392,18 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
         <div class="panel"><h3>使用边界说清楚</h3><p class="sub">Cookie 恢复不代表网站永久登录；网站可要求重新认证。当前桌面验收覆盖浏览器窗口，尚未验证任意桌面应用。部分站点在演示环境可能超时，不能据此承诺所有网站可用。</p></div>
       </div>
       <p class="note" style="margin-top:20px"><a href="media/cloud-machine-logic.mp4">8 秒机器逻辑说明（横版）</a> · <a href="media/cloud-machine-logic-vertical.mp4">手机竖版</a>。这是架构说明动画；本次只实测单账号，不代表已经完成多人实际部署。</p>
+    </section>
+
+    <section id="cloud-work" aria-labelledby="cloud-work-title">
+      <div class="kicker"><span class="rule"></span>云端文件任务 · 单账号实测</div>
+      <h2 id="cloud-work-title">你先离开，<br>任务继续完成。</h2>
+      <p class="intro">2026 年 11 月 6 日，当前测试账号用标准权限把报告交给专属云电脑。新加坡时间 10:29:47，Mac 客户端正常退出；10:30:00 同一任务仍在运行；10:32:26 云端完成。重新打开 i豆 后，原对话可以预览并保存 <code>offline-report.md</code>，下载件与云端文件逐字节一致。</p>
+      <div class="stats">
+        <div class="stat"><div class="n">159<small>秒</small></div><div class="k">退出客户端后继续执行</div><div class="d">同一任务完成时间减去确认退出时间；不是后台定时检查。</div></div>
+        <div class="stat"><div class="n">1<small>份</small></div><div class="k">可取回的 Markdown 报告</div><div class="d">在原对话预览并保存，云端原文件与客户端下载件哈希一致。</div></div>
+        <div class="stat"><div class="n">2<small>小时</small></div><div class="k">单项任务截止时间</div><div class="d">从服务端接单时起算；当前只面向登记的单个测试账号。</div></div>
+      </div>
+      <figure class="assistant-screen"><img src="media/offline-result.png" width="1920" height="1080" alt="单账号离线文件任务的成果摘录，画面为事实排版重现" loading="lazy"><figcaption>真实生成文件的标题与章节摘录，重新排版展示。此次实测只覆盖使用用户提供材料的云端文件任务；没有证明电脑关机、任意网站自动操作、飞书写入或多人云电脑分配。</figcaption></figure>
     </section>
 
     <section id="how" aria-labelledby="how-title">
@@ -542,7 +554,7 @@ pre.cmd { margin: 12px 0 0; padding: 14px 16px; border-radius: 10px; background:
         <div class="layer2"><span class="no">7</span><div><h3>定时任务</h3><p>生产只认 gVisor：只读根、去掉全部权限、内部网络、资源上限；凭据在沙箱外的出口代理上加。</p></div></div>
         <div class="layer2"><span class="no">8</span><div><h3>供应链</h3><p>发布清单签名；随附的 Codex、飞书 CLI、Node 每次启动按摘要校验，从不去 PATH 上找；关掉 Electron 的三个调试与注入开关。</p></div></div>
       </div>
-      <p class="intro" style="margin-top:22px">桌面 .409 的严格发布门禁有 3,695 项通过、0 失败、2 项平台跳过；权限与隔离边界持续由回归测试覆盖。审查发现的问题先固化成会失败的回归测试，再进入发布门禁。</p>
+      <p class="intro" style="margin-top:22px">签名桌面版本 0.1.0-20261106.412 的严格发布门禁有 3,705 项通过、0 失败；2 项 Linux 专属检查在 Mac 跳过。权限与隔离边界持续由回归测试覆盖。审查发现的问题先固化成会失败的回归测试，再进入发布门禁。</p>
     </section>
     <section id="admin" aria-labelledby="admin-title">
       <div class="kicker"><span class="rule"></span>管理后台</div>
@@ -641,7 +653,7 @@ npm run check   # 全部测试，不花钱、不连真实飞书</pre>
     <div class="notes" role="note">
       <h4>数据说明</h4>
       <ol>
-        <li>影片中的工作成果、记忆与关注沿用 .402 录屏；新增 ECS 浏览器、桌面和明确关闭使用 .409 录屏，重启状态恢复使用片内标注的 .406 复测截图；ECS 控制面与客体均为 .406。自动化门禁不代表任务成功率，也不证明任意网站或应用可用。</li>
+        <li>影片中的工作成果、记忆与关注沿用 .402 录屏；ECS 浏览器、桌面和明确关闭使用 .409 录屏；重启状态恢复使用片内标注的 .406 复测截图。2026-11-06 新增云端文件任务章节来自 .412 已安装版的同一任务验收记录和真实成果文字，画面标明为排版重现；单账号试点的任务管理器 .411，浏览器和桌面客体 .406。自动化门禁不代表任务成功率，也不证明任意网站或应用可用。</li>
         <li>监控网站（2026-10-13 既有演示，本次未复跑）：飞书测试账号里的真实多维表格（2 万条告警，飞书单表上限），由 i豆 建表、写数据、写页面；打开速度在本机网站服务上用 Chromium 测得，4G 为模拟网速。</li>
         <li>管理后台（2026-10-13 历史基准，本次未复跑）：用产品自己的后台代码，加一个合成的十万人组织（姓名和标识都是编的）实测；不是十万并发用户测试。</li>
         <li>知识库候选命中指标属于检索实验，不等于最终回答正确率；个人助理视频展示的是本次完成的具体任务。</li>
